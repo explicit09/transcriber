@@ -73,18 +73,37 @@ export async function generateTranscriptPDF(
     doc.fontSize(10).font('Helvetica').text(transcription.summary);
   }
   
-  // Actionable items (extracted from summary)
-  if (transcription.summary) {
-    const actionItems = extractActionItems(transcription.summary);
-    if (actionItems.length > 0) {
-      doc.moveDown();
-      doc.fontSize(12).font('Helvetica-Bold').text('Action Items');
+  // Action items section
+  if (transcription.actionItems) {
+    try {
+      // Parse the JSON string into an array
+      const actionItems = JSON.parse(transcription.actionItems);
       
-      actionItems.forEach((item, index) => {
-        doc.fontSize(10).font('Helvetica').text(`${index + 1}. ${item}`, {
-          bulletRadius: 2,
+      if (actionItems && actionItems.length > 0) {
+        doc.moveDown();
+        doc.fontSize(12).font('Helvetica-Bold').text('Action Items');
+        
+        actionItems.forEach((item, index) => {
+          doc.fontSize(10).font('Helvetica').text(`${index + 1}. ${item}`, {
+            bulletRadius: 2,
+          });
         });
-      });
+      }
+    } catch (error) {
+      // Fallback to extracting from summary if JSON parsing fails
+      if (transcription.summary) {
+        const extractedItems = extractActionItems(transcription.summary);
+        if (extractedItems.length > 0) {
+          doc.moveDown();
+          doc.fontSize(12).font('Helvetica-Bold').text('Action Items');
+          
+          extractedItems.forEach((item, index) => {
+            doc.fontSize(10).font('Helvetica').text(`${index + 1}. ${item}`, {
+              bulletRadius: 2,
+            });
+          });
+        }
+      }
     }
   }
   

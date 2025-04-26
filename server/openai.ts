@@ -165,6 +165,7 @@ async function processSpeakerDiarization(
 // Generate transcript summary using GPT-4o
 export async function generateTranscriptSummary(text: string): Promise<{ 
   summary: string;
+  actionItems: string[];
   keywords: string[];
 }> {
   try {

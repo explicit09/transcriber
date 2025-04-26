@@ -365,6 +365,34 @@ export default function TranscriptionDetail() {
                 </div>
               )}
               
+              {/* Action Items section */}
+              {transcription.actionItems && (
+                <div className="border rounded-md p-4 mt-4">
+                  <h3 className="text-lg font-medium mb-3 flex items-center">
+                    <CheckSquare className="h-5 w-5 mr-2 text-gray-500" />
+                    Action Items
+                  </h3>
+                  <div className="space-y-2">
+                    {(() => {
+                      try {
+                        const actionItems = JSON.parse(transcription.actionItems);
+                        return (
+                          <ul className="list-disc pl-5 space-y-1">
+                            {actionItems.map((item, index) => (
+                              <li key={index} className="text-gray-700">
+                                {item}
+                              </li>
+                            ))}
+                          </ul>
+                        );
+                      } catch (e) {
+                        return <p className="text-gray-500">No action items found</p>;
+                      }
+                    })()}
+                  </div>
+                </div>
+              )}
+              
               {/* Keywords section */}
               {transcription.keywords && (
                 <div className="border rounded-md p-4">

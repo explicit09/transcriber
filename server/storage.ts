@@ -75,6 +75,7 @@ export class MemStorage implements IStorage {
       language: null,
       translatedText: null,
       summary: null,
+      actionItems: null,
       keywords: null,
       // Status and metadata
       status: insertTranscription.status || "pending",
