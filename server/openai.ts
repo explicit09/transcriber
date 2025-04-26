@@ -139,6 +139,15 @@ COMMON CONVERSATION PATTERNS:
 - Questions are usually followed by answers from a different speaker
 - When the pronoun usage changes from "I" to "you" (or vice versa), it often indicates a speaker change
 
+ACADEMIC CONVERSATION PATTERNS:
+- When a speaker uses academic terms or explains concepts in depth, they're likely a professor/instructor
+- When a speaker uses "we" to describe a project or research, they're likely a student presenting their work
+- Short acknowledgments ("OK", "Yeah", "That's true") followed by longer explanations often indicate student-professor dynamics
+- When someone asks probing questions about implementation or feasibility, they're often the professor/instructor
+- Phrases like "I would ask", "my concern would be", "one thing is that" often indicate the professor speaking
+- References to "students", "classroom", "teaching", or "instructor" provide role-context clues
+- Look for shifts between theoretical discussion and practical implementation details
+
 INTERVIEW/DISCUSSION PATTERNS:
 - Look for interviewer/interviewee dynamics with question-answer patterns
 - Statements seeking clarification ("So what you're saying is...") indicate a different speaker
@@ -158,6 +167,14 @@ EXAMPLES OF GOOD DIARIZATION:
 [00:17] Speaker 2: You can begin tomorrow. I'll send the access credentials.
 [00:22] Speaker 1: Great. Let's move to the next agenda item.
 
+ACADEMIC CONTEXT EXAMPLE:
+[00:01] Student: We are building an AI assistant for Canvas that helps students understand their course materials better.
+[00:10] Professor: How would that be different from just using ChatGPT directly?
+[00:15] Student: Our system only uses the specific course materials as context, so it won't give information outside the syllabus.
+[00:22] Professor: That's interesting. Have you thought about how instructors might view this tool?
+[00:28] Student: Yes, we're also adding analytics for professors to see what concepts students find difficult.
+[00:35] Professor: OK, I can see how that would be useful. What about privacy concerns?
+
 Format your response as a JSON object with the following structure:
 {
   "speakerCount": number,
@@ -172,7 +189,7 @@ Format your response as a JSON object with the following structure:
   ]
 }
 
-Number speakers consecutively (Speaker 1, Speaker 2, etc.) unless specific roles like "Interviewer/Interviewee" or "Professor/Student" are very clear. Be consistent in speaker assignment throughout the entire transcript.
+For academic conversations, you can use role-based labels like "Student" and "Professor" if the roles are very clear from the context. Otherwise, use "Speaker 1", "Speaker 2", etc.
 For best results, read the full transcript first to understand the overall conversation before assigning speakers.`
         },
         {
