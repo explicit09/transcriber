@@ -3,49 +3,51 @@
 @tailwind utilities;
 
 :root {
-      --background: 0 0% 100%;
---foreground: 20 14.3% 4.1%;
---muted: 60 4.8% 95.9%;
---muted-foreground: 25 5.3% 44.7%;
---popover: 0 0% 100%;
---popover-foreground: 20 14.3% 4.1%;
---card: 0 0% 100%;
---card-foreground: 20 14.3% 4.1%;
---border: 20 5.9% 90%;
---input: 20 5.9% 90%;
---primary: 207 90% 54%;
---primary-foreground: 211 100% 99%;
---secondary: 60 4.8% 95.9%;
---secondary-foreground: 24 9.8% 10%;
---accent: 60 4.8% 95.9%;
---accent-foreground: 24 9.8% 10%;
---destructive: 0 84.2% 60.2%;
---destructive-foreground: 60 9.1% 97.8%;
---ring: 20 14.3% 4.1%;
---radius: 0.5rem;
-  }
-  .dark {
-      --background: 240 10% 3.9%;
---foreground: 0 0% 98%;
---muted: 240 3.7% 15.9%;
---muted-foreground: 240 5% 64.9%;
---popover: 240 10% 3.9%;
---popover-foreground: 0 0% 98%;
---card: 240 10% 3.9%;
---card-foreground: 0 0% 98%;
---border: 240 3.7% 15.9%;
---input: 240 3.7% 15.9%;
---primary: 207 90% 54%;
---primary-foreground: 211 100% 99%;
---secondary: 240 3.7% 15.9%;
---secondary-foreground: 0 0% 98%;
---accent: 240 3.7% 15.9%;
---accent-foreground: 0 0% 98%;
---destructive: 0 62.8% 30.6%;
---destructive-foreground: 0 0% 98%;
---ring: 240 4.9% 83.9%;
---radius: 0.5rem;
-  }
+  /* LEARN-X brand colors - based on the logo */
+  --background: 0 0% 100%;
+  --foreground: 20 14.3% 4.1%;
+  --muted: 195 10% 95%;
+  --muted-foreground: 195 40% 40%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 20 14.3% 4.1%;
+  --card: 0 0% 100%;
+  --card-foreground: 20 14.3% 4.1%;
+  --border: 195 10% 85%;
+  --input: 195 10% 90%;
+  --primary: 195 100% 30%; /* LEARN-X blue */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 195 30% 95%;
+  --secondary-foreground: 195 100% 20%;
+  --accent: 195 80% 40%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 60 9.1% 97.8%;
+  --ring: 195 70% 40%;
+  --radius: 0.5rem;
+}
+.dark {
+  /* LEARN-X dark mode colors */
+  --background: 200 15% 15%;
+  --foreground: 0 0% 98%;
+  --muted: 195 15% 25%;
+  --muted-foreground: 195 10% 80%;
+  --popover: 200 15% 15%;
+  --popover-foreground: 0 0% 98%;
+  --card: 200 15% 20%;
+  --card-foreground: 0 0% 98%;
+  --border: 195 15% 25%;
+  --input: 195 15% 25%;
+  --primary: 195 80% 50%; /* LEARN-X blue - brighter in dark mode */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 195 20% 30%;
+  --secondary-foreground: 0 0% 98%;
+  --accent: 195 70% 50%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 62.8% 50%;
+  --destructive-foreground: 0 0% 98%;
+  --ring: 195 70% 50%;
+  --radius: 0.5rem;
+}
 
 @layer base {
   * {
