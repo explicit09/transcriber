@@ -20,7 +20,12 @@ export default function TranscriptionResult({
   // Parse and format the transcript with speaker information
   const formattedTranscript = useMemo(() => {
     // Check if transcript contains speaker information
-    const hasSpeakerLabels = transcriptionText.includes('Speaker ') && transcriptionText.includes(':');
+    // Look for clear turn-taking patterns, not just "Speaker" keyword
+    const hasSpeakerLabels = transcriptionText.includes(':') && 
+      (transcriptionText.includes('Speaker ') || 
+       // Detect conversation pattern with multiple short exchanges
+       (transcriptionText.split('\n').length > 5 && 
+        transcriptionText.split('\n').filter(line => line.includes(':')).length > 3));
     
     if (!hasSpeakerLabels) {
       return { lines: transcriptionText.split('\n'), hasSpeakerLabels: false };
@@ -32,11 +37,41 @@ export default function TranscriptionResult({
     // Create a map of speakers to colors for consistent coloring
     const speakers = new Set<string>();
     lines.forEach(line => {
-      const speakerMatch = line.match(/^(?:\[\d\d:\d\d\]\s+)?([^:]+):/);
+      // More flexible pattern to detect speakers at the beginning of lines
+      const speakerMatch = line.match(/^(?:\[\d\d:\d\d\]\s*)?([^:]+):/);
       if (speakerMatch && speakerMatch[1]) {
         speakers.add(speakerMatch[1].trim());
       }
     });
+    
+    // If we didn't find any clear speakers but the text looks like a conversation,
+    // let's try to infer speakers based on paragraph breaks
+    if (speakers.size < 2 && lines.length > 5) {
+      // Attempt to identify turn-taking in conversation by assigning alternating speakers
+      let currentSpeaker = 1;
+      const processedLines = lines.map(line => {
+        // Skip lines that already have speaker labels
+        if (line.includes(':')) return line;
+        
+        // Otherwise assign a speaker
+        currentSpeaker = currentSpeaker === 1 ? 2 : 1;
+        return `Speaker ${currentSpeaker}: ${line}`;
+      });
+      
+      // Reprocess with the new speaker labels
+      speakers.clear();
+      speakers.add('Speaker 1');
+      speakers.add('Speaker 2');
+      
+      return {
+        lines: processedLines,
+        hasSpeakerLabels: true,
+        speakerColorMap: new Map([
+          ['Speaker 1', { bg: 'bg-blue-100', text: 'text-blue-800' }],
+          ['Speaker 2', { bg: 'bg-green-100', text: 'text-green-800' }]
+        ])
+      };
+    }
     
     // Define speaker colors
     const speakerColors = [

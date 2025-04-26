@@ -23,6 +23,10 @@ interface Transcription {
   meetingTitle: string | null;
   meetingDate: string | null;
   participants: string | null;
+  speakerLabels: boolean;
+  speakerCount: number | null;
+  hasTimestamps: boolean;
+  duration: number | null;
   createdAt: string | null;
   updatedAt: string | null;
 }
