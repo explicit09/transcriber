@@ -234,11 +234,25 @@ export default function TranscriptionContainer() {
         )}
 
         {view === "result" && transcription?.text && (
-          <TranscriptionResult
-            transcriptionText={transcription.text}
-            fileName={currentFile?.name || "transcript"}
-            onNewTranscription={handleTryAgain}
-          />
+          <div className="space-y-4">
+            {transcription.meetingTitle && (
+              <div className="border-b pb-4">
+                <h3 className="text-xl font-medium">{transcription.meetingTitle}</h3>
+                {transcription.meetingDate && (
+                  <div className="text-sm text-gray-500 mt-1">
+                    {new Date(transcription.meetingDate).toLocaleDateString()} 
+                    {transcription.participants && ` • ${transcription.participants}`}
+                  </div>
+                )}
+              </div>
+            )}
+            
+            <TranscriptionResult
+              transcriptionText={transcription.text}
+              fileName={transcription.meetingTitle || currentFile?.name || "transcript"}
+              onNewTranscription={handleTryAgain}
+            />
+          </div>
         )}
 
         {view === "error" && (
