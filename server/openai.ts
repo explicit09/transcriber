@@ -230,11 +230,11 @@ export async function generateTranscriptSummary(text: string): Promise<{
       messages: [
         {
           role: "system",
-          content: `Summarize the following meeting transcript concisely. 
+          content: `Analyze the following meeting transcript and provide a comprehensive summary with key actionables.
           
           Extract these components:
-          1. Key points and decisions made in the meeting
-          2. Action items with clear owners and deadlines (if mentioned)
+          1. Key points and decisions made in the meeting (1-2 paragraphs)
+          2. ACTION ITEMS with clear owners and deadlines (if mentioned) - this is critical
           3. Important discussion topics
           4. Up to 10 important keywords or phrases
           
@@ -249,7 +249,14 @@ export async function generateTranscriptSummary(text: string): Promise<{
             "keywords": ["keyword1", "keyword2", "etc"]
           }
           
-          For the action items, make them very specific and begin with the person or team responsible.
+          For the action items:
+          - Make them VERY specific and actionable
+          - Begin with the person or team responsible
+          - Include deadlines if mentioned
+          - Focus on concrete tasks rather than vague responsibilities
+          - If no clear action items are mentioned, identify what needs to be done next based on the discussion
+          - Label high-priority items with [PRIORITY] prefix
+          
           Structure the summary with clear paragraphs and use bullet points for important lists.`
         },
         {

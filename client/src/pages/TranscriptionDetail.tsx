@@ -469,6 +469,41 @@ export default function TranscriptionDetail() {
                     <p className="whitespace-pre-line">{transcription.summary}</p>
                   </div>
                   
+                  {transcription.actionItems && (
+                    <div className="bg-white border rounded-md p-5 border-l-4 border-l-green-500">
+                      <h3 className="text-lg font-medium mb-3 flex items-center">
+                        <CheckSquare className="h-5 w-5 text-green-500 mr-2" />
+                        Key Actionables
+                      </h3>
+                      <ul className="space-y-3">
+                        {transcription.actionItems.split('\n').filter(Boolean).map((item, index) => {
+                          const isPriority = item.includes("[PRIORITY]");
+                          const cleanItem = item.replace("[PRIORITY]", "").trim();
+                          
+                          return (
+                            <li key={index} className={`flex items-start ${isPriority ? 'bg-amber-50 p-2 rounded-md border-l-2 border-l-amber-400' : ''}`}>
+                              <div className="flex-shrink-0 mt-0.5 mr-3">
+                                {isPriority ? (
+                                  <div className="h-5 w-5 rounded-full bg-amber-500 flex items-center justify-center">
+                                    <span className="text-white text-xs font-bold">!</span>
+                                  </div>
+                                ) : (
+                                  <CheckSquare className="h-5 w-5 text-green-500" />
+                                )}
+                              </div>
+                              <div className="flex-1">
+                                <span className={`${isPriority ? 'font-medium' : ''}`}>{cleanItem}</span>
+                                {isPriority && (
+                                  <span className="text-xs font-medium text-amber-600 ml-2">Priority</span>
+                                )}
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+                  
                   {transcription.keywords && (
                     <div className="bg-white border rounded-md p-5">
                       <h3 className="text-lg font-medium mb-3">Keywords</h3>
@@ -482,20 +517,6 @@ export default function TranscriptionDetail() {
                           </span>
                         ))}
                       </div>
-                    </div>
-                  )}
-                  
-                  {transcription.actionItems && (
-                    <div className="bg-white border rounded-md p-5">
-                      <h3 className="text-lg font-medium mb-3">Action Items</h3>
-                      <ul className="space-y-2">
-                        {transcription.actionItems.split('\n').filter(Boolean).map((item, index) => (
-                          <li key={index} className="flex items-start">
-                            <CheckSquare className="h-5 w-5 text-green-500 mr-2 mt-0.5" />
-                            <span>{item.trim()}</span>
-                          </li>
-                        ))}
-                      </ul>
                     </div>
                   )}
                 </div>
