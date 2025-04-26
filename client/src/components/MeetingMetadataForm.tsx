@@ -170,14 +170,14 @@ export default function MeetingMetadataForm({
               <div className="space-y-1">
                 <Label htmlFor="language" className="block">Language (optional)</Label>
                 <Select 
-                  value={language || ""} 
-                  onValueChange={(value) => setLanguage(value || null)}
+                  value={language || "auto"} 
+                  onValueChange={(value) => setLanguage(value === "auto" ? null : value)}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Auto-detect language" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Auto-detect</SelectItem>
+                    <SelectItem value="auto">Auto-detect</SelectItem>
                     <SelectItem value="en">English</SelectItem>
                     <SelectItem value="es">Spanish</SelectItem>
                     <SelectItem value="fr">French</SelectItem>
