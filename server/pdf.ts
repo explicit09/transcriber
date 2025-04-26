@@ -81,20 +81,12 @@ export async function generateTranscriptPDF(
       
       if (actionItems && Array.isArray(actionItems) && actionItems.length > 0) {
         doc.moveDown();
-        doc.fontSize(12).font('Helvetica-Bold').text('Key Actionables');
+        doc.fontSize(12).font('Helvetica-Bold').text('Action Items');
         
         actionItems.forEach((item, index) => {
-          const isPriority = item.includes("[PRIORITY]");
-          const cleanItem = item.replace("[PRIORITY]", "").trim();
-          
-          if (isPriority) {
-            // For priority items, add a visual indicator
-            doc.fontSize(10).font('Helvetica-Bold').text(`${index + 1}. `, { continued: true });
-            doc.fillColor('rgb(217, 119, 6)').text('PRIORITY: ', { continued: true });
-            doc.fillColor('black').font('Helvetica-Bold').text(cleanItem);
-          } else {
-            doc.fontSize(10).font('Helvetica').text(`${index + 1}. ${cleanItem}`);
-          }
+          doc.fontSize(10).font('Helvetica').text(`${index + 1}. ${item}`, {
+            bulletRadius: 2,
+          });
         });
       }
     } catch (error) {
@@ -106,20 +98,12 @@ export async function generateTranscriptPDF(
         
         if (items.length > 0) {
           doc.moveDown();
-          doc.fontSize(12).font('Helvetica-Bold').text('Key Actionables');
+          doc.fontSize(12).font('Helvetica-Bold').text('Action Items');
           
           items.forEach((item, index) => {
-            const isPriority = item.includes("[PRIORITY]");
-            const cleanItem = item.replace("[PRIORITY]", "").trim();
-            
-            if (isPriority) {
-              // For priority items, add a visual indicator
-              doc.fontSize(10).font('Helvetica-Bold').text(`${index + 1}. `, { continued: true });
-              doc.fillColor('rgb(217, 119, 6)').text('PRIORITY: ', { continued: true });
-              doc.fillColor('black').font('Helvetica-Bold').text(cleanItem);
-            } else {
-              doc.fontSize(10).font('Helvetica').text(`${index + 1}. ${cleanItem}`);
-            }
+            doc.fontSize(10).font('Helvetica').text(`${index + 1}. ${item.trim()}`, {
+              bulletRadius: 2,
+            });
           });
         }
       } 
@@ -128,10 +112,12 @@ export async function generateTranscriptPDF(
         const extractedItems = extractActionItems(transcription.summary);
         if (extractedItems.length > 0) {
           doc.moveDown();
-          doc.fontSize(12).font('Helvetica-Bold').text('Key Actionables');
+          doc.fontSize(12).font('Helvetica-Bold').text('Action Items');
           
           extractedItems.forEach((item, index) => {
-            doc.fontSize(10).font('Helvetica').text(`${index + 1}. ${item}`);
+            doc.fontSize(10).font('Helvetica').text(`${index + 1}. ${item}`, {
+              bulletRadius: 2,
+            });
           });
         }
       }

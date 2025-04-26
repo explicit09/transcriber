@@ -35,7 +35,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import TranscriptEditor from "@/components/TranscriptEditor";
 import InteractiveTranscript from "@/components/InteractiveTranscript";
-import SpeakerManager from "@/components/SpeakerManager";
 import { StructuredTranscript } from "@shared/schema";
 
 // Type definition for transcription data from the API
@@ -71,16 +70,14 @@ export default function TranscriptionDetail() {
   const id = params?.id ? parseInt(params.id) : undefined;
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<string>("view");
-  const [refreshCounter, setRefreshCounter] = useState(0);
   
   // Query to get transcription data
   const { 
     data: transcription, 
     isLoading,
-    error,
-    refetch
+    error
   } = useQuery<Transcription>({
-    queryKey: [`/api/transcriptions/${id}`, refreshCounter],
+    queryKey: [`/api/transcriptions/${id}`],
     enabled: !!id,
   });
   
@@ -111,11 +108,6 @@ export default function TranscriptionDetail() {
       });
     },
   });
-  
-  // Function to refresh transcription data
-  const refreshTranscription = () => {
-    setRefreshCounter(prev => prev + 1);
-  };
   
   // Format date for display
   const formatDate = (dateString: string | null) => {
@@ -338,33 +330,6 @@ export default function TranscriptionDetail() {
           Download PDF
         </Button>
         
-        {!transcription.summary && (
-          <Button 
-            variant="secondary" 
-            onClick={async () => {
-              try {
-                const result = await apiRequest("POST", `/api/transcriptions/${transcription.id}/summary`);
-                if (result) {
-                  toast({
-                    title: "Summary Generated",
-                    description: "The summary has been successfully generated.",
-                  });
-                  refreshTranscription();
-                }
-              } catch (error) {
-                toast({
-                  title: "Failed to Generate Summary",
-                  description: "There was an error generating the summary. Please try again.",
-                  variant: "destructive",
-                });
-              }
-            }}
-          >
-            <MessageSquareText className="mr-2 h-4 w-4" />
-            Generate Summary
-          </Button>
-        )}
-        
         {transcription.language && (
           <div className="flex items-center space-x-1 border px-3 py-1.5 rounded-md text-sm text-gray-600">
             <Languages className="h-4 w-4 text-gray-500" />
@@ -387,171 +352,138 @@ export default function TranscriptionDetail() {
       
       {/* Transcript content */}
       {transcription.text && (
-        <>
-          {/* Add Speaker Manager if transcript has speaker labels */}
-          {transcription.speakerLabels && (
-            <SpeakerManager
-              transcriptionId={transcription.id}
-              transcriptionText={transcription.text}
-              onTranscriptionUpdated={refreshTranscription}
-            />
-          )}
+        <Tabs defaultValue="view" className="space-y-4" onValueChange={(value) => setActiveTab(value)}>
+          <TabsList>
+            <TabsTrigger value="view">View</TabsTrigger>
+            <TabsTrigger value="edit">Edit</TabsTrigger>
+            {transcription.summary && (
+              <TabsTrigger value="summary">Summary</TabsTrigger>
+            )}
+          </TabsList>
           
-          <Tabs defaultValue="view" className="space-y-4" onValueChange={(value) => setActiveTab(value)}>
-            <TabsList>
-              <TabsTrigger value="view">View</TabsTrigger>
-              <TabsTrigger value="edit">Edit</TabsTrigger>
-              {transcription.summary && (
-                <TabsTrigger value="summary">Summary</TabsTrigger>
-              )}
-            </TabsList>
-            
-            <TabsContent value="view" className="prose max-w-none">
-              {transcription.text ? (
-                <div>
-                  {transcription.hasTimestamps || transcription.speakerLabels ? (
-                    // Show with enhanced formatting for timestamped/speaker content
-                    <div className="space-y-3">
-                      {/* Split by double newlines which separate different speaker blocks */}
-                      {transcription.text.split('\n\n').map((block, index) => {
-                        // Check if block contains timestamp pattern [00:00]
-                        const hasTimestamp = block.match(/\[\d+:\d+\]/);
-                        // Check if block contains speaker pattern
-                        const hasSpeaker = block.match(/(?:\[\d+:\d+\]\s*([^:]+):|([^[]+)\s*\[\d+:\d+\]:)/);
+          <TabsContent value="view" className="prose max-w-none">
+            {transcription.text ? (
+              <div>
+                {transcription.hasTimestamps || transcription.speakerLabels ? (
+                  // Show with enhanced formatting for timestamped/speaker content
+                  <div className="space-y-3">
+                    {transcription.text.split('\n').map((line, index) => {
+                      // Check if line contains timestamp pattern [00:00]
+                      const hasTimestamp = line.match(/\[\d+:\d+\]/);
+                      // Check if line contains speaker pattern
+                      const hasSpeaker = line.match(/(?:\[\d+:\d+\]\s*([^:]+):|([^[]+)\s*\[\d+:\d+\]:)/);
+                      
+                      if (hasTimestamp) {
+                        // Extract the timestamp and speaker
+                        const timestampMatch = line.match(/\[\d+:\d+\]/);
+                        const timestamp = timestampMatch ? timestampMatch[0] : '';
                         
-                        if (hasTimestamp) {
-                          // Extract the timestamp and speaker
-                          const timestampMatch = block.match(/\[\d+:\d+\]/);
-                          const timestamp = timestampMatch ? timestampMatch[0] : '';
+                        if (hasSpeaker) {
+                          // If we have a speaker format like "[00:00] Speaker 1: Text"
+                          const speakerEndIndex = line.indexOf(':', timestamp ? line.indexOf(timestamp) + timestamp.length : 0);
                           
-                          if (hasSpeaker) {
-                            // If we have a speaker format like "[00:00] Speaker 1: Text"
-                            const speakerEndIndex = block.indexOf(':', timestamp ? block.indexOf(timestamp) + timestamp.length : 0);
+                          if (speakerEndIndex > 0) {
+                            const speaker = line.substring(
+                              timestamp.length, 
+                              speakerEndIndex
+                            ).trim();
+                            const text = line.substring(speakerEndIndex + 1).trim();
                             
-                            if (speakerEndIndex > 0) {
-                              const speaker = block.substring(
-                                timestamp.length, 
-                                speakerEndIndex
-                              ).trim();
-                              const text = block.substring(speakerEndIndex + 1).trim();
-                              
-                              return (
-                                <div key={index} className="pb-3 border-b last:border-b-0">
-                                  <div className="flex flex-wrap items-baseline gap-2 mb-1">
-                                    <span className="text-xs font-semibold text-gray-500">{timestamp}</span>
-                                    <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
-                                      {speaker}
-                                    </span>
-                                  </div>
-                                  <p className="text-gray-800 ml-12">{text}</p>
+                            return (
+                              <div key={index} className="pb-3 border-b last:border-b-0">
+                                <div className="flex flex-wrap items-baseline gap-2 mb-1">
+                                  <span className="text-xs font-semibold text-gray-500">{timestamp}</span>
+                                  <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
+                                    {speaker}
+                                  </span>
                                 </div>
-                              );
-                            }
+                                <p className="text-gray-800 ml-12">{text}</p>
+                              </div>
+                            );
                           }
-                          
-                          // If no clear speaker but has timestamp
-                          return (
-                            <div key={index} className="pb-2">
-                              <span className="text-xs font-semibold text-gray-500 mr-2">{timestamp}</span>
-                              <span>{block.replace(timestamp, '').trim()}</span>
-                            </div>
-                          );
                         }
                         
-                        // Regular text block
-                        return <p key={index} className="text-gray-800">{block}</p>;
-                      })}
-                    </div>
-                  ) : (
-                    // Regular text with proper line breaks
-                    <div className="whitespace-pre-wrap">
-                      {transcription.text}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-center py-12 bg-gray-50 rounded-md">
-                  <MessageSquareText className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                  <p className="text-gray-500">No transcript content available</p>
-                </div>
-              )}
-            </TabsContent>
-            
-            <TabsContent value="edit">
-              <TranscriptEditor 
-                transcriptionId={transcription.id}
-                originalText={transcription.text || ''}
-                fileName={transcription.fileName}
-                hasTimestamps={transcription.hasTimestamps}
-                speakerLabels={transcription.speakerLabels}
-                structuredTranscript={structuredTranscript}
-                duration={transcription.duration}
-              />
-            </TabsContent>
-            
-            {transcription.summary && (
-              <TabsContent value="summary">
-                <div className="space-y-6">
-                  <div className="bg-white border rounded-md p-5">
-                    <h3 className="text-lg font-medium mb-3">Summary</h3>
-                    <p className="whitespace-pre-line">{transcription.summary}</p>
+                        // If no clear speaker but has timestamp
+                        return (
+                          <div key={index} className="pb-2">
+                            <span className="text-xs font-semibold text-gray-500 mr-2">{timestamp}</span>
+                            <span>{line.replace(timestamp, '').trim()}</span>
+                          </div>
+                        );
+                      }
+                      
+                      // Regular text line
+                      return <p key={index} className="text-gray-800">{line}</p>;
+                    })}
                   </div>
-                  
-                  {transcription.actionItems && (
-                    <div className="bg-white border rounded-md p-5 border-l-4 border-l-green-500">
-                      <h3 className="text-lg font-medium mb-3 flex items-center">
-                        <CheckSquare className="h-5 w-5 text-green-500 mr-2" />
-                        Key Actionables
-                      </h3>
-                      <ul className="space-y-3">
-                        {transcription.actionItems.split('\n').filter(Boolean).map((item, index) => {
-                          const isPriority = item.includes("[PRIORITY]");
-                          const cleanItem = item.replace("[PRIORITY]", "").trim();
-                          
-                          return (
-                            <li key={index} className={`flex items-start ${isPriority ? 'bg-amber-50 p-2 rounded-md border-l-2 border-l-amber-400' : ''}`}>
-                              <div className="flex-shrink-0 mt-0.5 mr-3">
-                                {isPriority ? (
-                                  <div className="h-5 w-5 rounded-full bg-amber-500 flex items-center justify-center">
-                                    <span className="text-white text-xs font-bold">!</span>
-                                  </div>
-                                ) : (
-                                  <CheckSquare className="h-5 w-5 text-green-500" />
-                                )}
-                              </div>
-                              <div className="flex-1">
-                                <span className={`${isPriority ? 'font-medium' : ''}`}>{cleanItem}</span>
-                                {isPriority && (
-                                  <span className="text-xs font-medium text-amber-600 ml-2">Priority</span>
-                                )}
-                              </div>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  )}
-                  
-                  {transcription.keywords && (
-                    <div className="bg-white border rounded-md p-5">
-                      <h3 className="text-lg font-medium mb-3">Keywords</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {transcription.keywords.split(',').map((keyword, index) => (
-                          <span 
-                            key={index}
-                            className="bg-blue-50 text-blue-700 px-2 py-1 rounded-md text-sm"
-                          >
-                            {keyword.trim()}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </TabsContent>
+                ) : (
+                  // Regular text with proper line breaks
+                  <div className="whitespace-pre-wrap">
+                    {transcription.text}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-12 bg-gray-50 rounded-md">
+                <MessageSquareText className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-gray-500">No transcript content available</p>
+              </div>
             )}
-          </Tabs>
-        </>
+          </TabsContent>
+          
+          <TabsContent value="edit">
+            <TranscriptEditor 
+              transcriptionId={transcription.id}
+              originalText={transcription.text || ''}
+              fileName={transcription.fileName}
+              hasTimestamps={transcription.hasTimestamps}
+              speakerLabels={transcription.speakerLabels}
+              structuredTranscript={structuredTranscript}
+              duration={transcription.duration}
+            />
+          </TabsContent>
+          
+          {transcription.summary && (
+            <TabsContent value="summary">
+              <div className="space-y-6">
+                <div className="bg-white border rounded-md p-5">
+                  <h3 className="text-lg font-medium mb-3">Summary</h3>
+                  <p className="whitespace-pre-line">{transcription.summary}</p>
+                </div>
+                
+                {transcription.keywords && (
+                  <div className="bg-white border rounded-md p-5">
+                    <h3 className="text-lg font-medium mb-3">Keywords</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {transcription.keywords.split(',').map((keyword, index) => (
+                        <span 
+                          key={index}
+                          className="bg-blue-50 text-blue-700 px-2 py-1 rounded-md text-sm"
+                        >
+                          {keyword.trim()}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {transcription.actionItems && (
+                  <div className="bg-white border rounded-md p-5">
+                    <h3 className="text-lg font-medium mb-3">Action Items</h3>
+                    <ul className="space-y-2">
+                      {transcription.actionItems.split('\n').filter(Boolean).map((item, index) => (
+                        <li key={index} className="flex items-start">
+                          <CheckSquare className="h-5 w-5 text-green-500 mr-2 mt-0.5" />
+                          <span>{item.trim()}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+          )}
+        </Tabs>
       )}
     </div>
   );
