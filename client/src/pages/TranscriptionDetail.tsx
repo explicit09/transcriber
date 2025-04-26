@@ -112,6 +112,29 @@ export default function TranscriptionDetail() {
     },
   });
   
+  // Generate summary mutation
+  const { mutate: generateSummary, isPending: isGeneratingSummary } = useMutation({
+    mutationFn: async () => {
+      if (!id) return;
+      return await apiRequest("POST", `/api/transcriptions/${id}/summary`);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Summary Generated",
+        description: "The summary has been successfully generated.",
+        variant: "default",
+      });
+      refreshTranscription();
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to Generate Summary",
+        description: "There was an error generating the summary. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+  
   // Function to refresh transcription data
   const refreshTranscription = () => {
     setRefreshCounter(prev => prev + 1);
@@ -340,28 +363,21 @@ export default function TranscriptionDetail() {
         
         {!transcription.summary && (
           <Button 
-            variant="secondary" 
-            onClick={async () => {
-              try {
-                const result = await apiRequest("POST", `/api/transcriptions/${transcription.id}/summary`);
-                if (result) {
-                  toast({
-                    title: "Summary Generated",
-                    description: "The summary has been successfully generated.",
-                  });
-                  refreshTranscription();
-                }
-              } catch (error) {
-                toast({
-                  title: "Failed to Generate Summary",
-                  description: "There was an error generating the summary. Please try again.",
-                  variant: "destructive",
-                });
-              }
-            }}
+            variant="secondary"
+            onClick={() => generateSummary()}
+            disabled={isGeneratingSummary}
           >
-            <MessageSquareText className="mr-2 h-4 w-4" />
-            Generate Summary
+            {isGeneratingSummary ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <MessageSquareText className="mr-2 h-4 w-4" />
+                Generate Summary
+              </>
+            )}
           </Button>
         )}
         
