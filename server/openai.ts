@@ -120,43 +120,29 @@ async function processSpeakerDiarization(
       messages: [
         {
           role: "system",
-          content: `You are an expert speech and conversation analyst with extensive experience in speaker diarization and identification. Your task is to analyze a transcript and accurately identify different speakers.
+          content: `You are an expert speech and conversation analyst specializing in precise speaker diarization. Your task is to analyze a transcript and accurately identify different speakers, even with minimal context.
 
-ANALYSIS APPROACH:
-1. Carefully identify unique speaking patterns, vocabulary choices, and conversation roles for each speaker
-2. Track conversation turns, interruptions, and responses to accurately map dialogue flow
-3. Note speech patterns like formal/informal language, technical terms, and verbal tics unique to each speaker
-4. Pay special attention to self-references and explicit speaker mentions ("As I said earlier", "John, what do you think?")
-5. Analyze topic continuity - a new speaker often changes the subject or asks questions
-6. For meeting contexts, identify roles (facilitator, presenter, participant) from conversational dynamics
-7. In natural conversations, look for turn-taking patterns, response pairs (question→answer), and shifts in perspective
+IMPROVED SPEAKER ANALYSIS APPROACH:
+1. First, read the entire transcript to understand the overall flow, topics, and speaking styles
+2. Identify clear vocal patterns, terminology preferences, and distinct roles for each speaker
+3. Track topic ownership - speakers often maintain control of their introduced topics
+4. Note linguistic markers that identify individuals (personal anecdotes, self-references, etc.)
+5. Pay special attention to question-answer patterns, which almost always involve different speakers
+6. In longer monologues, look for subtle style changes that might indicate speaker transitions
 
-COMMON CONVERSATION PATTERNS:
-- Long explanations followed by questions typically indicate different speakers
-- Statements like "That's true" or "I agree" often indicate a speaker change
-- First-person perspective shifts ("I think..." vs "You mentioned...") indicate speaker changes
-- Verbal acknowledgments ("OK", "Yeah", "Right") often signal the start of a new speaker's turn
-- Questions are usually followed by answers from a different speaker
-- When the pronoun usage changes from "I" to "you" (or vice versa), it often indicates a speaker change
+CONVERSATION PATTERN RECOGNITION:
+- First-person pronoun shifts ("I believe" vs "You mentioned") strongly indicate different speakers
+- Speech pattern changes (formal/academic vs casual/colloquial) often signal different speakers
+- Technical explanations followed by clarifying questions typically indicate different speakers
+- Statements of agreement ("Yes," "I agree," "That's right") nearly always indicate a speaker change
+- Very short utterances followed by longer explanations usually indicate speaker transitions
 
-INTERVIEW/DISCUSSION PATTERNS:
-- Look for interviewer/interviewee dynamics with question-answer patterns
-- Statements seeking clarification ("So what you're saying is...") indicate a different speaker
-- Short acknowledgment phrases followed by longer statements indicate turn-taking
-- References to "you" vs "we" can indicate organizational roles or perspectives
-- Longer monologues interspersed with brief agreements typically indicate a primary and secondary speaker
-
-For ambiguous segments, prioritize:
-1. Contextual clues from surrounding dialogue
-2. Consistent speaking style and vocabulary 
-3. Natural conversation flow
-
-EXAMPLES OF GOOD DIARIZATION:
-[00:01] Speaker 1: Welcome everyone to today's meeting. Let's start with project updates.
-[00:05] Speaker 2: My team completed the database migration. We're ready for testing.
-[00:12] Speaker 1: When can we start the testing phase? We need at least a week.
-[00:17] Speaker 2: You can begin tomorrow. I'll send the access credentials.
-[00:22] Speaker 1: Great. Let's move to the next agenda item.
+ACCURACY GUIDELINES:
+- Be conservative with speaker assignments - when in doubt, prefer more speakers rather than fewer
+- Consistently assign the same speaker ID to the same person throughout the transcript
+- Prefer "Speaker 1," "Speaker 2" format unless roles are extremely clear (like "Interviewer/Interviewee")
+- For meeting contexts, the first speaker is usually the meeting organizer/facilitator
+- Closely analyze sentences that begin with conjunctions - they often continue a speaker's thought
 
 Format your response as a JSON object with the following structure:
 {
@@ -172,8 +158,9 @@ Format your response as a JSON object with the following structure:
   ]
 }
 
-Number speakers consecutively (Speaker 1, Speaker 2, etc.) unless specific roles like "Interviewer/Interviewee" or "Professor/Student" are very clear. Be consistent in speaker assignment throughout the entire transcript.
-For best results, read the full transcript first to understand the overall conversation before assigning speakers.`
+For academic contexts, use role-based labels like "Student" and "Professor" only if extremely clear from context.
+In business contexts, use "Facilitator" and "Participant" only if the roles are unambiguous.
+Otherwise, use "Speaker 1", "Speaker 2", etc.`
         },
         {
           role: "user",
@@ -181,7 +168,7 @@ For best results, read the full transcript first to understand the overall conve
         }
       ],
       response_format: { type: "json_object" },
-      temperature: 0.3 // Lower temperature for more consistent results
+      temperature: 0.2 // Lower temperature for more consistent results
     });
 
     // Parse the JSON response
