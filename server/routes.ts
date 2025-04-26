@@ -128,6 +128,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(500).json({ message: "Internal server error" });
     }
   });
+  
+  // Get all transcriptions
+  app.get('/api/transcriptions', async (req: Request, res: Response) => {
+    try {
+      const transcriptions = await storage.listTranscriptions();
+      return res.status(200).json(transcriptions);
+    } catch (error) {
+      console.error("Error retrieving transcriptions:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
 
   const httpServer = createServer(app);
   return httpServer;
