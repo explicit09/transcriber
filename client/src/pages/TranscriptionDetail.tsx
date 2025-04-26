@@ -109,6 +109,34 @@ export default function TranscriptionDetail() {
     },
   });
   
+  // Generate summary mutation
+  const { mutate: generateSummary, isPending: isGeneratingSummary } = useMutation({
+    mutationFn: async () => {
+      if (!id) return;
+      return await apiRequest("POST", `/api/transcriptions/${id}/summary`);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Summary Generated",
+        description: "The summary has been successfully generated.",
+        variant: "default",
+      });
+      refreshTranscription();
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to Generate Summary",
+        description: "There was an error generating the summary. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  // Function to refresh transcription data
+  const refreshTranscription = () => {
+    queryClient.invalidateQueries({ queryKey: [`/api/transcriptions/${id}`] });
+  };
+  
   // Format date for display
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "Unknown date";
@@ -329,6 +357,26 @@ export default function TranscriptionDetail() {
           <FileDown className="mr-2 h-4 w-4" />
           Download PDF
         </Button>
+        
+        {!transcription.summary && (
+          <Button 
+            variant="secondary"
+            onClick={() => generateSummary()}
+            disabled={isGeneratingSummary}
+          >
+            {isGeneratingSummary ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <MessageSquareText className="mr-2 h-4 w-4" />
+                Generate Summary
+              </>
+            )}
+          </Button>
+        )}
         
         {transcription.language && (
           <div className="flex items-center space-x-1 border px-3 py-1.5 rounded-md text-sm text-gray-600">
