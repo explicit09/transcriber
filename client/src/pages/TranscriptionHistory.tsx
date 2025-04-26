@@ -1,11 +1,23 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Loader2, Calendar, Users, Clock, MessageSquare, Search } from "lucide-react";
+import { 
+  Loader2, 
+  Calendar, 
+  Users, 
+  Clock, 
+  MessageSquare, 
+  Search,
+  Languages,
+  Mic,
+  Timer,
+  FileAudio 
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 
 // Type definition for transcription data from the API
@@ -171,6 +183,55 @@ export default function TranscriptionHistory() {
                     </div>
                   </div>
                 )}
+                
+                {/* Feature badges */}
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {transcription.speakerLabels && (
+                    <Badge variant="outline" className="text-xs bg-blue-50 border-blue-200">
+                      <Mic className="h-3 w-3 mr-1 text-blue-500" />
+                      Speaker Detection
+                    </Badge>
+                  )}
+                  
+                  {transcription.hasTimestamps && (
+                    <Badge variant="outline" className="text-xs bg-purple-50 border-purple-200">
+                      <Timer className="h-3 w-3 mr-1 text-purple-500" />
+                      Timestamps
+                    </Badge>
+                  )}
+                  
+                  {transcription.language && transcription.language !== 'en' && (
+                    <Badge variant="outline" className="text-xs bg-green-50 border-green-200">
+                      <Languages className="h-3 w-3 mr-1 text-green-500" />
+                      {(() => {
+                        // Convert language code to full name
+                        const languageMap: Record<string, string> = {
+                          'es': 'Spanish',
+                          'fr': 'French',
+                          'de': 'German',
+                          'zh': 'Chinese',
+                          'ja': 'Japanese',
+                          'ko': 'Korean'
+                        };
+                        return languageMap[transcription.language] || transcription.language;
+                      })()}
+                    </Badge>
+                  )}
+                  
+                  {transcription.summary && (
+                    <Badge variant="outline" className="text-xs bg-amber-50 border-amber-200">
+                      <MessageSquare className="h-3 w-3 mr-1 text-amber-500" />
+                      Summary
+                    </Badge>
+                  )}
+                  
+                  {transcription.duration && (
+                    <Badge variant="outline" className="text-xs bg-gray-50 border-gray-200">
+                      <FileAudio className="h-3 w-3 mr-1 text-gray-500" />
+                      {Math.floor(transcription.duration / 60)}:{(transcription.duration % 60).toString().padStart(2, '0')}
+                    </Badge>
+                  )}
+                </div>
               </div>
               
               <div className="flex flex-row lg:flex-col items-center gap-3 lg:items-end justify-between lg:min-w-[180px]">
