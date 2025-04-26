@@ -140,13 +140,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 const speakerStr = segment.speaker ? `${segment.speaker}: ` : '';
                 return `${timeStr}${speakerStr}${segment.text}`;
               }).join('\n\n');
-
-              // If we have identified speakers, ensure the text format is clear and consistent
-              // Add a header to clarify this is speaker-identified content
-              if (result.structuredTranscript.metadata?.speakerCount && result.structuredTranscript.metadata.speakerCount > 1) {
-                const speakerCount = result.structuredTranscript.metadata.speakerCount;
-                formattedText = `Speaker Detection: Identified ${speakerCount} speakers in this conversation.\n\n${formattedText}`;
-              }
             }
             
             // Generate a summary if requested
@@ -614,13 +607,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     const speakerStr = segment.speaker ? `${segment.speaker}: ` : '';
                     return `${timeStr}${speakerStr}${segment.text}`;
                   }).join('\n\n');
-                  
-                  // If we have identified speakers, ensure the text format is clear and consistent
-                  // Add a header to clarify this is speaker-identified content
-                  if (result.structuredTranscript.metadata?.speakerCount && result.structuredTranscript.metadata.speakerCount > 1) {
-                    const speakerCount = result.structuredTranscript.metadata.speakerCount;
-                    formattedText = `Speaker Detection: Identified ${speakerCount} speakers in this conversation.\n\n${formattedText}`;
-                  }
                 }
                 
                 // Generate a summary if requested

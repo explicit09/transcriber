@@ -35,8 +35,8 @@ export default function TranscriptionResult({
         cleanedText.split('\n').filter(line => line.includes(':')).length > 3));
     
     if (!hasSpeakerLabels) {
-      // For long text blocks, attempt to split by turn-taking indicators more aggressively
-      if (cleanedText.length > 300) {
+      // For long text blocks, attempt to split by turn-taking indicators
+      if (cleanedText.length > 500) {
         // Break up long text blocks by conversational turns
         const lines = processConversationText(cleanedText);
         
@@ -132,32 +132,29 @@ export default function TranscriptionResult({
   const processConversationText = (text: string): string[] => {
     // Look for turn-taking indicators specific to academic discussions
     const turnTakingPatterns = [
-      // Common acknowledgment phrases that often indicate turn change - Make this more aggressive
-      /\b(?:OK\.|Okay\.|OK,|Okay,|OK\s+OK|Yes\.|Yeah\.|No\.|Right\.|Sure\.|Mm-hmm\.|That's true\.|Hmm\.|Um\.|Hm\.)\s+(?=[A-Z])/g,
+      // Common acknowledgment phrases that often indicate turn change
+      /\b(?:OK\.|Okay\.|OK,|Okay,|Yes\.|Yeah\.|No\.|Right\.|Sure\.|Mm-hmm\.|That's true\.)\s+(?=[A-Z])/g,
       
       // Questions and responses
       /\?\s+(?=[A-Z])/g, // Question marks followed by a new sentence
       
       // Academic conversation patterns
-      /\b(?:I think|That's true|I guess|I don't know|I mean|So,|Well,|That's right|That's fair|keep me posted|good luck)\b(?=\s+[A-Z])/g,
+      /\b(?:I think|That's true|I guess|I don't know|I mean|So,|Well,)\b(?=\s+[A-Z])/g,
       
       // Transition words at start of sentences
-      /\.\s+(?=(?:But|And|So|Because|However|Yeah|Definitely|OK)\b)/g,
+      /\.\s+(?=(?:But|And|So|Because|However)\b)/g,
       
       // Longer pauses in speech (multiple periods)
       /\.\s\.\s\./g,
       
       // Sentence breaks with speaker transition cues
-      /\.\s+(?=[A-Z][^\.]{15,})/g, // Period followed by space and capital letter starting a longer sentence
-      
-      // Specific phrases from the transcript that indicate turn changes
-      /\b(?:Do you think|Have you|Would you|Could you|What do you|For example)\b/g
+      /\.\s+(?=[A-Z][^\.]{20,})/g // Period followed by space and capital letter starting a longer sentence
     ];
     
     // First, try to split by paragraphs if they exist
     let segments = text.split(/\n\n+/);
     
-    // If no clear paragraphs or too few segments, split by sentences that likely indicate speaker changes
+    // If no clear paragraphs or too few speakers, split by sentences that likely indicate speaker changes
     if (segments.length < 3) {
       // Start with the full text
       segments = [text];
@@ -168,7 +165,7 @@ export default function TranscriptionResult({
         
         for (const segment of segments) {
           // Skip very short segments or segments that already look like they have a speaker
-          if (segment.length < 25 || segment.includes(':')) {
+          if (segment.length < 30 || segment.includes(':')) {
             newSegments.push(segment);
             continue;
           }
@@ -177,7 +174,16 @@ export default function TranscriptionResult({
           const parts = segment.split(pattern).filter(part => part.trim().length > 0);
           
           if (parts.length > 1) {
-            newSegments.push(...parts);
+            // Add the pattern back to the beginning of subsequent parts for context
+            for (let i = 0; i < parts.length; i++) {
+              const match = segment.match(pattern);
+              if (i > 0 && match && match[0]) {
+                // Get the actual matched text and add it to the beginning of this part
+                // We match it from the original text to preserve the pattern
+                parts[i] = parts[i].trim();
+              }
+              newSegments.push(parts[i]);
+            }
           } else {
             // Otherwise keep the original segment
             newSegments.push(segment);
@@ -188,20 +194,20 @@ export default function TranscriptionResult({
       }
     }
     
-    // Further split long segments by sentence boundaries - more aggressive splitting
+    // Refine segments by merging very short ones and splitting extra long ones
     const refinedSegments: string[] = [];
     for (const segment of segments) {
       if (segment.length < 20 && refinedSegments.length > 0) {
         // Merge very short segments with the previous one
         const lastIndex = refinedSegments.length - 1;
         refinedSegments[lastIndex] = `${refinedSegments[lastIndex]} ${segment}`;
-      } else if (segment.length > 300) {
+      } else if (segment.length > 500) {
         // Split extra long segments by sentence boundaries
         const sentences = segment.match(/[^.!?]+[.!?]+/g) || [segment];
         
         let currentGroup = '';
         for (const sentence of sentences) {
-          if ((currentGroup + sentence).length > 200 && currentGroup.length > 0) {
+          if ((currentGroup + sentence).length > 250 && currentGroup.length > 0) {
             refinedSegments.push(currentGroup.trim());
             currentGroup = sentence;
           } else {
@@ -217,7 +223,7 @@ export default function TranscriptionResult({
       }
     }
     
-    // Assign speakers to the segments, using specific cues from academic conversations
+    // Assign speakers to the segments, using cues from content to guess speaker roles
     let currentSpeaker = 1;
     let lastSpeaker = 0;
     
@@ -227,48 +233,20 @@ export default function TranscriptionResult({
         // Skip segments that already have speaker labels
         if (segment.includes(':')) return segment;
         
-        // Try to identify speaker based on more specific content clues for academic conversations
-        if (segment.includes('professor') || segment.includes('instructor') || 
-            segment.includes('I would ask') || segment.includes('I like Canvas') ||
-            segment.includes('as an instructor') || segment.includes('I don\'t know how your machine') ||
-            segment.includes('my evaluation') || segment.includes('I\'ve taught') ||
-            segment.includes('I guess I would be wondering')) {
+        // Try to identify speaker based on content
+        if (segment.includes('professor') || segment.includes('instructor') || segment.includes('I would ask')) {
           currentSpeaker = 2; // Professor
         } else if (segment.includes('we are building') || segment.includes('we are trying') || 
-                  segment.includes('we discovered') || segment.includes('we are looking') ||
-                  segment.includes('our customer discovery') || segment.includes('what we are') ||
-                  segment.includes('our core value') || segment.includes('we\'re thinking') ||
-                  segment.includes('That was the initial thought')) {
+                  segment.includes('we discovered') || segment.includes('we are looking')) {
           currentSpeaker = 1; // Student presenting a project
-        } else if (segment.length < 60 && 
-                  (segment.includes('Yeah') || segment.includes('OK') || 
-                   segment.includes('That\'s true') || segment.includes('Right') ||
-                   segment.includes('Mm-hmm') || segment.includes('that\'s a thing'))) {
-          // Short responses are likely from a listener - switch speakers
-          currentSpeaker = currentSpeaker === 1 ? 2 : 1;
+        } else if (segment.length < 50 && 
+                  (segment.includes('Yeah') || segment.includes('OK') || segment.includes('That\'s true'))) {
+          currentSpeaker = 3; // Brief acknowledgment, likely third speaker
         } else if (lastSpeaker > 0) {
-          // For question/answer patterns, alternate speakers
-          if (segment.includes('?')) {
-            currentSpeaker = lastSpeaker === 1 ? 2 : 1;
-          } 
-          // For very short exchanges (likely a dialog)
-          else if (segment.length < 100) {
-            currentSpeaker = lastSpeaker === 1 ? 2 : 1;
-          } else {
-            // For longer segments, try to determine by content
-            // Look for academic roles in conversation
-            if (segment.includes('you might know') || segment.includes('you might want') ||
-                segment.includes('I like') || segment.includes('I imagine')) {
-              currentSpeaker = 2; // Professor giving advice
-            }
-            else if (segment.includes('we are') || segment.includes('we believe')) {
-              currentSpeaker = 1; // Student presenting
-            }
-            else {
-              // Otherwise maintain the same speaker for longer monologues
-              currentSpeaker = lastSpeaker;
-            }
-          }
+          // If we can't identify by content, alternate speakers but avoid repeating
+          do {
+            currentSpeaker = currentSpeaker % 3 + 1;
+          } while (currentSpeaker === lastSpeaker && segments.length > 3);
         }
         
         lastSpeaker = currentSpeaker;
