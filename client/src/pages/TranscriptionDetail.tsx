@@ -338,6 +338,33 @@ export default function TranscriptionDetail() {
           Download PDF
         </Button>
         
+        {!transcription.summary && (
+          <Button 
+            variant="secondary" 
+            onClick={async () => {
+              try {
+                const result = await apiRequest("POST", `/api/transcriptions/${transcription.id}/summary`);
+                if (result) {
+                  toast({
+                    title: "Summary Generated",
+                    description: "The summary has been successfully generated.",
+                  });
+                  refreshTranscription();
+                }
+              } catch (error) {
+                toast({
+                  title: "Failed to Generate Summary",
+                  description: "There was an error generating the summary. Please try again.",
+                  variant: "destructive",
+                });
+              }
+            }}
+          >
+            <MessageSquareText className="mr-2 h-4 w-4" />
+            Generate Summary
+          </Button>
+        )}
+        
         {transcription.language && (
           <div className="flex items-center space-x-1 border px-3 py-1.5 rounded-md text-sm text-gray-600">
             <Languages className="h-4 w-4 text-gray-500" />
