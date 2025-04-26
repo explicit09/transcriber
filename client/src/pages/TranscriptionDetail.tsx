@@ -273,9 +273,17 @@ export default function TranscriptionDetail() {
               </div>
             )}
             
-            <div className="flex items-center">
-              <Clock className="h-4 w-4 mr-1" />
-              <span>Updated {formatDate(transcription.updatedAt || transcription.createdAt)}</span>
+            <div className="flex flex-col">
+              <div className="flex items-center">
+                <Clock className="h-4 w-4 mr-1" />
+                <span>Created: {formatDate(transcription.createdAt)}</span>
+              </div>
+              {transcription.updatedAt && transcription.updatedAt !== transcription.createdAt && (
+                <div className="flex items-center mt-1">
+                  <Clock className="h-4 w-4 mr-1" />
+                  <span>Updated: {formatDate(transcription.updatedAt)}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
