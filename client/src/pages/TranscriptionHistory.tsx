@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { 
   Loader2, 
@@ -11,7 +11,9 @@ import {
   Languages,
   Mic,
   Timer,
-  FileAudio 
+  FileAudio,
+  Trash2,
+  CheckCircle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
@@ -19,6 +21,19 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
+import { Checkbox } from "@/components/ui/checkbox";
+import { apiRequest } from "@/lib/queryClient";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 // Type definition for transcription data from the API
 interface Transcription {
@@ -50,10 +65,73 @@ interface Transcription {
 export default function TranscriptionHistory() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedItems, setSelectedItems] = useState<number[]>([]);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const queryClient = useQueryClient();
   
   // Query to get all transcriptions
   const { data: transcriptions, isLoading, error } = useQuery<Transcription[]>({
     queryKey: ['/api/transcriptions'],
+  });
+  
+  // Toggle selection mode
+  const toggleSelectionMode = () => {
+    setIsSelectionMode(!isSelectionMode);
+    setSelectedItems([]);
+  };
+  
+  // Toggle item selection
+  const toggleItemSelection = (id: number) => {
+    setSelectedItems(prev => 
+      prev.includes(id) 
+        ? prev.filter(itemId => itemId !== id) 
+        : [...prev, id]
+    );
+  };
+  
+  // Select all items
+  const selectAll = () => {
+    if (filteredTranscriptions.length === selectedItems.length) {
+      setSelectedItems([]);
+    } else {
+      setSelectedItems(filteredTranscriptions.map(t => t.id));
+    }
+  };
+  
+  // Delete multiple transcriptions
+  const { mutate: deleteTranscriptions } = useMutation({
+    mutationFn: async (ids: number[]) => {
+      setIsDeleting(true);
+      try {
+        const promises = ids.map(id => 
+          apiRequest('DELETE', `/api/transcriptions/${id}`)
+        );
+        await Promise.all(promises);
+        return ids;
+      } finally {
+        setIsDeleting(false);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/transcriptions'] });
+      setSelectedItems([]);
+      setIsSelectionMode(false);
+      setIsDeleteDialogOpen(false);
+      
+      toast({
+        title: "Transcriptions deleted",
+        description: `Successfully deleted ${selectedItems.length} transcription(s)`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error deleting transcriptions",
+        description: error.message || "An error occurred",
+        variant: "destructive",
+      });
+    }
   });
 
   // Format file size for display
@@ -108,9 +186,77 @@ export default function TranscriptionHistory() {
     <div className="container mx-auto py-8 max-w-6xl">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">Meeting Transcriptions</h1>
-        <Link href="/">
-          <Button>New Transcription</Button>
-        </Link>
+        <div className="flex space-x-2">
+          {isSelectionMode ? (
+            <>
+              <Button 
+                variant="outline" 
+                onClick={selectAll}
+                disabled={filteredTranscriptions.length === 0}
+              >
+                {selectedItems.length === filteredTranscriptions.length && filteredTranscriptions.length > 0
+                  ? "Deselect All"
+                  : "Select All"
+                }
+              </Button>
+              
+              <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                <AlertDialogTrigger asChild>
+                  <Button 
+                    variant="destructive" 
+                    disabled={selectedItems.length === 0 || isDeleting}
+                  >
+                    {isDeleting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Deleting...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete Selected ({selectedItems.length})
+                      </>
+                    )}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This action cannot be undone. This will permanently delete the
+                      {selectedItems.length === 1 
+                        ? " selected transcription" 
+                        : ` ${selectedItems.length} selected transcriptions`
+                      } and all of their data.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction 
+                      onClick={() => deleteTranscriptions(selectedItems)}
+                      className="bg-red-600 hover:bg-red-700"
+                    >
+                      {isDeleting ? "Deleting..." : "Delete"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+              
+              <Button variant="outline" onClick={toggleSelectionMode}>
+                Cancel
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={toggleSelectionMode}>
+                Select Items
+              </Button>
+              <Link href="/">
+                <Button>New Transcription</Button>
+              </Link>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="mb-6 relative">
@@ -148,9 +294,27 @@ export default function TranscriptionHistory() {
 
       <div className="grid grid-cols-1 gap-6">
         {sortedTranscriptions.map((transcription) => (
-          <Card key={transcription.id} className="p-5 hover:shadow-md transition-shadow">
+          <Card 
+            key={transcription.id} 
+            className={`p-5 hover:shadow-md transition-shadow ${
+              isSelectionMode && selectedItems.includes(transcription.id) 
+                ? 'bg-blue-50 border-blue-200' 
+                : ''
+            }`}
+            onClick={() => isSelectionMode && toggleItemSelection(transcription.id)}
+            role={isSelectionMode ? "button" : undefined}
+          >
             <div className="flex flex-col lg:flex-row gap-4">
-              <div className="flex-1">
+              <div className={`flex-1 ${isSelectionMode ? 'cursor-pointer' : ''}`}>
+                {isSelectionMode && (
+                  <div className="float-left mr-3 mt-1">
+                    <Checkbox 
+                      checked={selectedItems.includes(transcription.id)}
+                      onCheckedChange={() => toggleItemSelection(transcription.id)}
+                      className="pointer-events-none"
+                    />
+                  </div>
+                )}
                 <h3 className="text-xl font-semibold line-clamp-1">
                   {transcription.meetingTitle || transcription.fileName}
                 </h3>
@@ -240,11 +404,36 @@ export default function TranscriptionHistory() {
                   <div className="mt-1">{transcription.fileType.toUpperCase()} file</div>
                 </div>
                 
-                <Link href={`/transcription/${transcription.id}`}>
-                  <Button variant="outline" size="sm">
-                    View Details
+                {isSelectionMode ? (
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleItemSelection(transcription.id);
+                    }}
+                  >
+                    {selectedItems.includes(transcription.id) ? (
+                      <>
+                        <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
+                        Selected
+                      </>
+                    ) : (
+                      <>
+                        Select
+                      </>
+                    )}
                   </Button>
-                </Link>
+                ) : (
+                  <Link 
+                    href={`/transcription/${transcription.id}`}
+                    onClick={(e) => isSelectionMode && e.preventDefault()}
+                  >
+                    <Button variant="outline" size="sm">
+                      View Details
+                    </Button>
+                  </Link>
+                )}
               </div>
             </div>
           </Card>

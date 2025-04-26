@@ -46,8 +46,8 @@ export default function UploadArea({ onFileSelected, isUploading }: UploadAreaPr
     <div 
       className={`border-2 border-dashed rounded-lg p-8 text-center transition-all cursor-pointer ${
         isDragActive 
-          ? "border-primary bg-primary-50" 
-          : "border-gray-300 hover:border-primary-400 hover:bg-gray-50"
+          ? "border-primary bg-primary/10" 
+          : "border-border hover:border-primary/70 hover:bg-secondary/50"
       }`}
       onClick={handleUploadClick}
       onDragOver={handleDragOver}
@@ -56,21 +56,21 @@ export default function UploadArea({ onFileSelected, isUploading }: UploadAreaPr
     >
       <div>
         {/* Icon for upload */}
-        <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-primary-50 mb-4">
-          <CloudUpload className="h-6 w-6 text-primary" />
+        <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-primary/10 mb-5">
+          <CloudUpload className="h-8 w-8 text-primary" />
         </div>
         
-        <h3 className="text-lg font-medium text-gray-900 mb-1">Upload your audio file</h3>
-        <p className="text-sm text-gray-500 mb-4">Drag and drop your audio file here or click to browse</p>
+        <h3 className="text-xl font-semibold text-primary mb-2">Upload your audio file</h3>
+        <p className="text-sm text-muted-foreground mb-5">Drag and drop your audio file here or click to browse</p>
         
         <Button
           disabled={isUploading}
-          className="px-4 py-2 text-sm font-medium"
+          className="px-6 py-2 text-sm font-medium bg-primary hover:bg-primary/90"
         >
           Select file
         </Button>
         
-        <p className="mt-2 text-xs text-gray-500">Supports MP3, WAV, M4A (Max 25MB)</p>
+        <p className="mt-3 text-xs text-muted-foreground">Supports MP3, WAV, M4A (Max 25MB)</p>
       </div>
       
       <input 
