@@ -213,7 +213,7 @@ export default function TranscriptionContainer() {
               <TabsContent value="record">
                 <AudioRecorder 
                   onRecordingComplete={handleFileSelected}
-                  maxDuration={300} // 5 minutes
+                  maxDuration={3600} // 60 minutes (1 hour)
                 />
               </TabsContent>
             </Tabs>

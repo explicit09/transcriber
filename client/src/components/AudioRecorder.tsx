@@ -55,8 +55,8 @@ export default function AudioRecorder({
       };
       
       mediaRecorder.onstop = () => {
-        // Create a blob from the recorded chunks
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        // Create a blob from the recorded chunks - using wav format for better compatibility
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
         setAudioBlob(audioBlob);
         
         // Create a URL for the blob
@@ -121,7 +121,7 @@ export default function AudioRecorder({
     try {
       // Create a File object from the Blob
       const now = new Date();
-      const fileName = `recording_${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}.webm`;
+      const fileName = `recording_${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}.wav`;
       
       // Convert to MP3 or WAV if needed (not implemented here - would require additional libraries)
       const file = new File([audioBlob], fileName, { type: audioBlob.type });
@@ -250,7 +250,7 @@ export default function AudioRecorder({
       )}
       
       <div className="text-xs text-gray-500 text-center">
-        Recordings are limited to {Math.floor(maxDuration / 60)} minutes and will be saved in WebM format.
+        Recordings are limited to {Math.floor(maxDuration / 60)} minutes and will be saved in WAV format.
       </div>
     </div>
   );
