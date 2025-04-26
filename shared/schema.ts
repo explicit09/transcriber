@@ -40,6 +40,9 @@ export const insertTranscriptionSchema = createInsertSchema(transcriptions).pick
   meetingTitle: true,
   meetingDate: true,
   participants: true,
+  speakerLabels: true,
+  hasTimestamps: true,
+  language: true,
 });
 
 export type InsertTranscription = z.infer<typeof insertTranscriptionSchema>;

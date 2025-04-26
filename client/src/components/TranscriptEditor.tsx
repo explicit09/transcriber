@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -15,22 +15,48 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
 
+import { StructuredTranscript, TranscriptSegment } from "@shared/schema";
+
 interface TranscriptEditorProps {
   transcriptionId: number;
   originalText: string;
   fileName: string;
+  hasTimestamps?: boolean;
+  speakerLabels?: boolean;
+  structuredTranscript?: StructuredTranscript;
+  duration?: number;
 }
 
 export default function TranscriptEditor({ 
   transcriptionId, 
   originalText,
-  fileName 
+  fileName,
+  hasTimestamps = false,
+  speakerLabels = false,
+  structuredTranscript,
+  duration
 }: TranscriptEditorProps) {
   const [editedText, setEditedText] = useState(originalText);
   const [showDiff, setShowDiff] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [viewMode, setViewMode] = useState<'plain' | 'structured'>('plain');
   const { toast } = useToast();
+  
+  // Parse structured transcript if available
+  const parsedTranscript = useMemo(() => {
+    if (!structuredTranscript && hasTimestamps) {
+      // Try to parse from text if not provided directly but timestamps are enabled
+      try {
+        return JSON.parse(originalText) as StructuredTranscript;
+      } catch (e) {
+        // If parsing fails, we'll fall back to plain text
+        console.error("Failed to parse structured transcript", e);
+        return null;
+      }
+    }
+    return structuredTranscript;
+  }, [structuredTranscript, originalText, hasTimestamps]);
   
   // Text analytics
   const wordCount = editedText.trim().split(/\s+/).filter(Boolean).length;
@@ -143,18 +169,32 @@ export default function TranscriptEditor({
           <span>{wordCount} words</span>
           <span>{characterCount} characters</span>
           <span>{sentenceCount} sentences</span>
+          {duration && <span>{Math.floor(duration / 60)}:{(duration % 60).toString().padStart(2, '0')} duration</span>}
           {totalFillerWords > 0 && (
             <span>{totalFillerWords} filler words</span>
           )}
         </div>
         
-        <div className="flex items-center space-x-2">
-          <Switch
-            id="show-diff"
-            checked={showDiff}
-            onCheckedChange={setShowDiff}
-          />
-          <Label htmlFor="show-diff">Show changes</Label>
+        <div className="flex items-center space-x-4">
+          {(parsedTranscript || hasTimestamps) && (
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="view-mode"
+                checked={viewMode === 'structured'}
+                onCheckedChange={(checked) => setViewMode(checked ? 'structured' : 'plain')}
+              />
+              <Label htmlFor="view-mode">Show timestamps{speakerLabels ? ' & speakers' : ''}</Label>
+            </div>
+          )}
+          
+          <div className="flex items-center space-x-2">
+            <Switch
+              id="show-diff"
+              checked={showDiff}
+              onCheckedChange={setShowDiff}
+            />
+            <Label htmlFor="show-diff">Show changes</Label>
+          </div>
         </div>
       </div>
       
@@ -181,6 +221,24 @@ export default function TranscriptEditor({
               {editedText.slice(originalText.length)}
             </span>
           )}
+        </div>
+      ) : viewMode === 'structured' && parsedTranscript ? (
+        <div className="min-h-[400px] border rounded-md p-3 overflow-auto">
+          {parsedTranscript.segments.map((segment, index) => (
+            <div key={index} className="mb-4 pb-3 border-b last:border-b-0">
+              <div className="flex justify-between items-start mb-1">
+                <div className="text-xs font-semibold text-gray-500">
+                  {formatTimestamp(segment.start)} - {formatTimestamp(segment.end)}
+                </div>
+                {segment.speaker && (
+                  <div className="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
+                    {segment.speaker}
+                  </div>
+                )}
+              </div>
+              <div className="text-sm">{segment.text}</div>
+            </div>
+          ))}
         </div>
       ) : (
         <Textarea
