@@ -15,7 +15,8 @@ import {
   FileAudio, 
   MessageSquareText,
   Download,
-  FileDown
+  FileDown,
+  CheckSquare
 } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
@@ -54,6 +55,7 @@ interface Transcription {
   duration: number | null;
   language: string | null;
   summary: string | null;
+  actionItems: string | null;
   keywords: string | null;
   translatedText: string | null;
   // Timestamps
