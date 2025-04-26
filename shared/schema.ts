@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -17,7 +17,7 @@ export const transcriptions = pgTable("transcriptions", {
   speakerCount: integer("speaker_count"),
   // Transcript timestamps
   hasTimestamps: boolean("has_timestamps").default(false),
-  duration: integer("duration"), // Audio duration in seconds
+  duration: real("duration"), // Audio duration in seconds (floating point)
   // Advanced features
   language: text("language"), // Detected language
   translatedText: text("translated_text"), // Translated version
