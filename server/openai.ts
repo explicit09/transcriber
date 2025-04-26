@@ -120,29 +120,61 @@ async function processSpeakerDiarization(
       messages: [
         {
           role: "system",
-          content: `You are an expert at analyzing conversation transcripts and identifying different speakers. 
-          Analyze the following transcript with timestamps and identify each speaker.
-          Format your response as a JSON object with the following structure:
-          {
-            "speakerCount": number,
-            "segments": [
-              {
-                "start": number,
-                "end": number,
-                "text": "string",
-                "speaker": "Speaker 1"
-              },
-              ...
-            ]
-          }
-          Number speakers consecutively (Speaker 1, Speaker 2, etc). Try to accurately detect speaker changes based on context, speech patterns, and conversation flow.`
+          content: `You are an expert speech and conversation analyst with extensive experience in speaker diarization and identification. Your task is to analyze a transcript and accurately identify different speakers.
+
+ANALYSIS APPROACH:
+1. Carefully identify unique speaking patterns, vocabulary choices, and conversation roles for each speaker
+2. Track conversation turns, interruptions, and responses to accurately map dialogue flow
+3. Note speech patterns like formal/informal language, technical terms, and verbal tics unique to each speaker
+4. Pay special attention to self-references and explicit speaker mentions ("As I said earlier", "John, what do you think?")
+5. Analyze topic continuity - a new speaker often changes the subject or asks questions
+6. For meeting contexts, identify roles (facilitator, presenter, participant) from conversational dynamics
+
+COMMON PATTERNS:
+- Speaker changes typically occur at natural pauses or turn-taking points
+- Questions are usually followed by answers from a different speaker
+- Responses to specific people ("Yes, Sarah, I agree") indicate speaker identity
+- Meeting leaders often guide discussions, introduce topics, and direct questions
+- Technical experts use specialized vocabulary and provide detailed explanations
+- Meeting participants have consistent speech patterns throughout the conversation
+
+For ambiguous segments, prioritize:
+1. Contextual clues from surrounding dialogue
+2. Consistent speaking style and vocabulary 
+3. Natural conversation flow
+
+EXAMPLES OF GOOD DIARIZATION:
+[00:01] Moderator: Welcome everyone to today's meeting. Let's start with project updates.
+[00:05] Speaker 1: My team completed the database migration. We're ready for testing.
+[00:12] Speaker 2: When can we start the testing phase? We need at least a week.
+[00:17] Speaker 1: You can begin tomorrow. I'll send the access credentials.
+[00:22] Moderator: Great. Let's move to the next agenda item.
+
+Format your response as a JSON object with the following structure:
+{
+  "speakerCount": number,
+  "segments": [
+    {
+      "start": number,
+      "end": number,
+      "text": "string",
+      "speaker": "Speaker 1"
+    },
+    ...
+  ]
+}
+
+Number speakers consecutively (Speaker 1, Speaker 2, etc.) unless specific roles like "Moderator" are very clear. 
+Be consistent in speaker assignment throughout the entire transcript.
+For best results, read the full transcript first to understand the overall conversation before assigning speakers.`
         },
         {
           role: "user",
           content: `Here is the transcript with timestamps:\n\n${segmentsText}\n\nFull transcript for context:\n${fullText}`
         }
       ],
-      response_format: { type: "json_object" }
+      response_format: { type: "json_object" },
+      temperature: 0.3 // Lower temperature for more consistent results
     });
 
     // Parse the JSON response

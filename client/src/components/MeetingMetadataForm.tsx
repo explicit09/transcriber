@@ -61,7 +61,7 @@ export default function MeetingMetadataForm({
   
   // Advanced options 
   const [enableSpeakerLabels, setEnableSpeakerLabels] = useState<boolean>(
-    defaultValues.enableSpeakerLabels || false
+    defaultValues.enableSpeakerLabels || true
   );
   const [enableTimestamps, setEnableTimestamps] = useState<boolean>(
     defaultValues.enableTimestamps || false
@@ -134,16 +134,18 @@ export default function MeetingMetadataForm({
         />
       </div>
       
-      <Accordion type="single" collapsible className="w-full">
+      <Accordion type="single" collapsible className="w-full" defaultValue="advanced-options">
         <AccordionItem value="advanced-options">
-          <AccordionTrigger className="text-sm">Advanced Transcription Options</AccordionTrigger>
+          <AccordionTrigger className="text-sm">Transcription Features <span className="text-green-600 ml-2 font-medium text-xs">Speaker ID enabled</span></AccordionTrigger>
           <AccordionContent>
             <div className="space-y-4 py-2">
               <div className="flex items-center justify-between">
                 <div>
-                  <Label htmlFor="speaker-labels" className="block mb-1">Speaker Labels</Label>
+                  <Label htmlFor="speaker-labels" className="block mb-1 font-semibold">
+                    Speaker Identification <span className="text-green-600 text-xs font-medium ml-1">Recommended</span>
+                  </Label>
                   <p className="text-xs text-muted-foreground">
-                    Identify different speakers in the audio
+                    Automatically identify and label different speakers in the transcript
                   </p>
                 </div>
                 <Switch 

@@ -42,7 +42,7 @@ export default function TranscriptionContainer() {
     meetingTitle: "",
     meetingDate: new Date(),
     participants: "",
-    enableSpeakerLabels: false,
+    enableSpeakerLabels: true,
     enableTimestamps: false,
     language: null,
     generateSummary: false
