@@ -16,6 +16,11 @@ export interface MeetingMetadata {
   meetingTitle: string;
   meetingDate: Date;
   participants: string;
+  // Advanced options
+  enableSpeakerLabels: boolean;
+  enableTimestamps: boolean;
+  language: string | null;
+  generateSummary: boolean;
 }
 
 interface MeetingMetadataFormProps {
@@ -39,13 +44,31 @@ export default function MeetingMetadataForm({
   const [participants, setParticipants] = useState<string>(
     defaultValues.participants || ""
   );
+  
+  // Advanced options 
+  const [enableSpeakerLabels, setEnableSpeakerLabels] = useState<boolean>(
+    defaultValues.enableSpeakerLabels || false
+  );
+  const [enableTimestamps, setEnableTimestamps] = useState<boolean>(
+    defaultValues.enableTimestamps || false
+  );
+  const [language, setLanguage] = useState<string | null>(
+    defaultValues.language || null
+  );
+  const [generateSummary, setGenerateSummary] = useState<boolean>(
+    defaultValues.generateSummary || false
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit({
       meetingTitle,
       meetingDate,
-      participants
+      participants,
+      enableSpeakerLabels,
+      enableTimestamps,
+      language,
+      generateSummary
     });
   };
 

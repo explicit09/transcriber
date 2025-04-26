@@ -9,7 +9,8 @@ import {
   RotateCcw, 
   Download,
   FileText,
-  File
+  File,
+  Clock
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -157,9 +158,73 @@ export default function TranscriptEditor({
     });
   };
   
+  // Download as structured text with timestamps and speakers
+  const downloadStructuredText = () => {
+    if (!parsedTranscript) return;
+    
+    setIsExporting(true);
+    
+    try {
+      // Format the transcript with timestamps and speakers
+      let formattedText = "";
+      
+      if (parsedTranscript.metadata) {
+        formattedText += `Duration: ${formatTimestamp(parsedTranscript.metadata.duration || 0)}\n`;
+        
+        if (parsedTranscript.metadata.speakerCount) {
+          formattedText += `Speakers: ${parsedTranscript.metadata.speakerCount}\n`;
+        }
+        
+        if (parsedTranscript.metadata.language) {
+          formattedText += `Language: ${parsedTranscript.metadata.language}\n`;
+        }
+        
+        formattedText += "\n";
+      }
+      
+      // Format each segment with timestamp and speaker
+      parsedTranscript.segments.forEach((segment) => {
+        const timestamp = `[${formatTimestamp(segment.start)} - ${formatTimestamp(segment.end)}]`;
+        const speaker = segment.speaker ? `[${segment.speaker}]` : "";
+        formattedText += `${timestamp} ${speaker}\n${segment.text}\n\n`;
+      });
+      
+      // Create and download the file
+      const element = document.createElement("a");
+      const file = new Blob([formattedText], {type: 'text/plain'});
+      element.href = URL.createObjectURL(file);
+      element.download = `${sanitizeFileName(fileName)}_with_timestamps.txt`;
+      document.body.appendChild(element);
+      element.click();
+      document.body.removeChild(element);
+      
+      toast({
+        title: "Downloaded structured transcript",
+        description: "Transcript with timestamps has been downloaded as a text file.",
+        variant: "default",
+      });
+    } catch (error) {
+      toast({
+        title: "Export failed",
+        description: "Failed to export structured transcript. Please try again.",
+        variant: "destructive",
+      });
+      console.error("Error exporting structured transcript:", error);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  
   // Sanitize filename for download
   const sanitizeFileName = (name: string) => {
     return name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+  };
+  
+  // Format timestamp from seconds to MM:SS format
+  const formatTimestamp = (seconds: number): string => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
   
   return (
@@ -276,6 +341,17 @@ export default function TranscriptEditor({
             <FileText className="h-4 w-4 mr-2" />
             Export TXT
           </Button>
+          
+          {(parsedTranscript || hasTimestamps) && (
+            <Button 
+              variant="secondary" 
+              onClick={downloadStructuredText}
+              disabled={isExporting}
+            >
+              <Clock className="h-4 w-4 mr-2" />
+              {isExporting ? "Exporting..." : "Export with Timestamps"}
+            </Button>
+          )}
         </div>
       </div>
       
