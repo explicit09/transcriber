@@ -19,20 +19,52 @@ export default function TranscriptionResult({
 
   // Parse and format the transcript with speaker information
   const formattedTranscript = useMemo(() => {
+    // Remove any system messages or metadata about speaker detection at the beginning
+    let cleanedText = transcriptionText;
+    const systemMessageMatch = transcriptionText.match(/^(?:result:|Speaker Detection:).+?(?:\r?\n|$)/i);
+    if (systemMessageMatch) {
+      cleanedText = transcriptionText.substring(systemMessageMatch[0].length).trim();
+    }
+    
     // Check if transcript contains speaker information
     // Look for clear turn-taking patterns, not just "Speaker" keyword
-    const hasSpeakerLabels = transcriptionText.includes(':') && 
-      (transcriptionText.includes('Speaker ') || 
+    const hasSpeakerLabels = cleanedText.includes(':') && 
+      (cleanedText.includes('Speaker ') || 
        // Detect conversation pattern with multiple short exchanges
-       (transcriptionText.split('\n').length > 5 && 
-        transcriptionText.split('\n').filter(line => line.includes(':')).length > 3));
+       (cleanedText.split('\n').length > 5 && 
+        cleanedText.split('\n').filter(line => line.includes(':')).length > 3));
     
     if (!hasSpeakerLabels) {
-      return { lines: transcriptionText.split('\n'), hasSpeakerLabels: false };
+      // For long text blocks, attempt to split by turn-taking indicators
+      if (cleanedText.length > 500) {
+        // Break up long text blocks by conversational turns
+        const lines = processConversationText(cleanedText);
+        
+        // Create speaker colors
+        const speakerColors = [
+          { bg: 'bg-blue-100', text: 'text-blue-800' },
+          { bg: 'bg-green-100', text: 'text-green-800' },
+          { bg: 'bg-purple-100', text: 'text-purple-800' },
+        ];
+        
+        const speakerColorMap = new Map<string, typeof speakerColors[0]>([
+          ['Speaker 1', speakerColors[0]],
+          ['Speaker 2', speakerColors[1]],
+          ['Speaker 3', speakerColors[2]],
+        ]);
+        
+        return {
+          lines,
+          hasSpeakerLabels: true,
+          speakerColorMap
+        };
+      }
+      
+      return { lines: cleanedText.split('\n'), hasSpeakerLabels: false };
     }
     
     // Process the transcript with speaker labels
-    const lines = transcriptionText.split('\n').filter(line => line.trim() !== '');
+    const lines = cleanedText.split('\n').filter(line => line.trim() !== '');
     
     // Create a map of speakers to colors for consistent coloring
     const speakers = new Set<string>();
@@ -95,6 +127,132 @@ export default function TranscriptionResult({
       speakerColorMap
     };
   }, [transcriptionText]);
+
+  // Function to process text that appears as a conversation but doesn't have explicit speaker labels
+  const processConversationText = (text: string): string[] => {
+    // Look for turn-taking indicators specific to academic discussions
+    const turnTakingPatterns = [
+      // Common acknowledgment phrases that often indicate turn change
+      /\b(?:OK\.|Okay\.|OK,|Okay,|Yes\.|Yeah\.|No\.|Right\.|Sure\.|Mm-hmm\.|That's true\.)\s+(?=[A-Z])/g,
+      
+      // Questions and responses
+      /\?\s+(?=[A-Z])/g, // Question marks followed by a new sentence
+      
+      // Academic conversation patterns
+      /\b(?:I think|That's true|I guess|I don't know|I mean|So,|Well,)\b(?=\s+[A-Z])/g,
+      
+      // Transition words at start of sentences
+      /\.\s+(?=(?:But|And|So|Because|However)\b)/g,
+      
+      // Longer pauses in speech (multiple periods)
+      /\.\s\.\s\./g,
+      
+      // Sentence breaks with speaker transition cues
+      /\.\s+(?=[A-Z][^\.]{20,})/g // Period followed by space and capital letter starting a longer sentence
+    ];
+    
+    // First, try to split by paragraphs if they exist
+    let segments = text.split(/\n\n+/);
+    
+    // If no clear paragraphs or too few speakers, split by sentences that likely indicate speaker changes
+    if (segments.length < 3) {
+      // Start with the full text
+      segments = [text];
+      
+      // Apply each turn-taking pattern to further split segments
+      for (const pattern of turnTakingPatterns) {
+        const newSegments: string[] = [];
+        
+        for (const segment of segments) {
+          // Skip very short segments or segments that already look like they have a speaker
+          if (segment.length < 30 || segment.includes(':')) {
+            newSegments.push(segment);
+            continue;
+          }
+          
+          // Split by the pattern
+          const parts = segment.split(pattern).filter(part => part.trim().length > 0);
+          
+          if (parts.length > 1) {
+            // Add the pattern back to the beginning of subsequent parts for context
+            for (let i = 0; i < parts.length; i++) {
+              const match = segment.match(pattern);
+              if (i > 0 && match && match[0]) {
+                // Get the actual matched text and add it to the beginning of this part
+                // We match it from the original text to preserve the pattern
+                parts[i] = parts[i].trim();
+              }
+              newSegments.push(parts[i]);
+            }
+          } else {
+            // Otherwise keep the original segment
+            newSegments.push(segment);
+          }
+        }
+        
+        segments = newSegments;
+      }
+    }
+    
+    // Refine segments by merging very short ones and splitting extra long ones
+    const refinedSegments: string[] = [];
+    for (const segment of segments) {
+      if (segment.length < 20 && refinedSegments.length > 0) {
+        // Merge very short segments with the previous one
+        const lastIndex = refinedSegments.length - 1;
+        refinedSegments[lastIndex] = `${refinedSegments[lastIndex]} ${segment}`;
+      } else if (segment.length > 500) {
+        // Split extra long segments by sentence boundaries
+        const sentences = segment.match(/[^.!?]+[.!?]+/g) || [segment];
+        
+        let currentGroup = '';
+        for (const sentence of sentences) {
+          if ((currentGroup + sentence).length > 250 && currentGroup.length > 0) {
+            refinedSegments.push(currentGroup.trim());
+            currentGroup = sentence;
+          } else {
+            currentGroup += sentence;
+          }
+        }
+        
+        if (currentGroup.length > 0) {
+          refinedSegments.push(currentGroup.trim());
+        }
+      } else {
+        refinedSegments.push(segment);
+      }
+    }
+    
+    // Assign speakers to the segments, using cues from content to guess speaker roles
+    let currentSpeaker = 1;
+    let lastSpeaker = 0;
+    
+    return refinedSegments
+      .filter(segment => segment.trim().length > 0)
+      .map(segment => {
+        // Skip segments that already have speaker labels
+        if (segment.includes(':')) return segment;
+        
+        // Try to identify speaker based on content
+        if (segment.includes('professor') || segment.includes('instructor') || segment.includes('I would ask')) {
+          currentSpeaker = 2; // Professor
+        } else if (segment.includes('we are building') || segment.includes('we are trying') || 
+                  segment.includes('we discovered') || segment.includes('we are looking')) {
+          currentSpeaker = 1; // Student presenting a project
+        } else if (segment.length < 50 && 
+                  (segment.includes('Yeah') || segment.includes('OK') || segment.includes('That\'s true'))) {
+          currentSpeaker = 3; // Brief acknowledgment, likely third speaker
+        } else if (lastSpeaker > 0) {
+          // If we can't identify by content, alternate speakers but avoid repeating
+          do {
+            currentSpeaker = currentSpeaker % 3 + 1;
+          } while (currentSpeaker === lastSpeaker && segments.length > 3);
+        }
+        
+        lastSpeaker = currentSpeaker;
+        return `Speaker ${currentSpeaker}: ${segment.trim()}`;
+      });
+  };
 
   const handleCopyText = async () => {
     try {
@@ -176,16 +334,16 @@ export default function TranscriptionResult({
                 const colorClass = formattedTranscript.speakerColorMap?.get(speaker);
                 
                 return (
-                  <div key={index} className="pb-2">
-                    <div className="flex items-center gap-2 mb-1">
+                  <div key={index} className="pb-4 mb-3 border-b border-gray-200">
+                    <div className="flex items-center gap-2 mb-2">
                       {time && (
                         <span className="text-xs font-mono text-gray-500">{time}</span>
                       )}
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colorClass?.bg} ${colorClass?.text}`}>
+                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${colorClass?.bg} ${colorClass?.text}`}>
                         {speaker}
                       </span>
                     </div>
-                    <p className="ml-6 text-gray-800">{text}</p>
+                    <p className="ml-6 text-gray-800 whitespace-pre-line">{text}</p>
                   </div>
                 );
               }
