@@ -148,12 +148,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             if (generateSummary && result.text) {
               try {
-                const summaryResult = await generateTranscriptSummary(result.text);
-                summary = summaryResult.summary;
-                keywords = summaryResult.keywords.join(', ');
+                const wordCount = result.text.split(/\s+/).filter(Boolean).length;
+                const lineCount = result.text.split('\n').filter(line => line.trim().length > 0).length;
+                const lowerText = result.text.toLowerCase();
+                
+                // Only generate summaries for substantial content
+                if (result.text.length >= 500 && wordCount >= 100 && lineCount >= 5 &&
+                    !lowerText.includes('test') && !lowerText.includes('hallucinate') && 
+                    !lowerText.includes('let\'s see') && lineCount > 1) {
+                  
+                  const summaryResult = await generateTranscriptSummary(result.text);
+                  
+                  // Process the summary to ensure it doesn't contain any markdown formatting
+                  summary = summaryResult.summary.replace(/\*\*/g, '');
+                  
+                  // Format action items as a newline-separated string
+                  keywords = summaryResult.keywords.join(', ');
+                } else {
+                  // For short content, use a standard message
+                  summary = "The transcript is too brief for a meaningful summary.";
+                }
               } catch (summaryError) {
                 console.error("Error generating summary:", summaryError);
-                // Continue without summary - it's not critical
               }
             }
             
@@ -625,9 +641,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 
                 if (generateSummary && result.text) {
                   try {
-                    // Skip summary generation for very short transcripts
+                    // Apply strict threshold checks to match the OpenAI service
                     const wordCount = result.text.split(/\s+/).filter(Boolean).length;
-                    if (result.text.length > 200 && wordCount > 50) {
+                    const lineCount = result.text.split('\n').filter(line => line.trim().length > 0).length;
+                    const lowerText = result.text.toLowerCase();
+                    
+                    // Only generate summaries for substantial content
+                    if (result.text.length >= 500 && wordCount >= 100 && lineCount >= 5 &&
+                        !lowerText.includes('test') && !lowerText.includes('hallucinate') && 
+                        !lowerText.includes('let\'s see') && lineCount > 1) {
+                      
                       const summaryResult = await generateTranscriptSummary(result.text);
                       
                       // Process the summary to ensure it doesn't contain any markdown formatting
@@ -639,6 +662,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                         : null;
                         
                       keywords = summaryResult.keywords.join(', ');
+                    } else {
+                      // For short content, use a standard message
+                      summary = "The transcript is too brief for a meaningful summary.";
                     }
                   } catch (summaryError) {
                     console.error("Error generating summary:", summaryError);

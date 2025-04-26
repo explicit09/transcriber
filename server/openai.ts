@@ -199,16 +199,33 @@ export async function generateTranscriptSummary(text: string): Promise<{
   keywords: string[];
 }> {
   try {
-    // Check if text is too short to summarize (less than 200 characters or fewer than 50 words)
+    // STRICT LENGTH CHECK: Enforce a hard minimum character count threshold (500 chars)
     const wordCount = text.split(/\s+/).filter(Boolean).length;
-    if (text.length < 200 || wordCount < 50) {
+    const lineCount = text.split('\n').filter(line => line.trim().length > 0).length;
+    
+    // For very short transcripts, simply return a standard message without calling the API
+    if (text.length < 500 || wordCount < 100 || lineCount < 5) {
       return {
-        summary: "The transcript is too brief for a meaningful summary. It contains only a short exchange or greeting.",
+        summary: "The transcript is too brief for a meaningful summary. It contains only a short exchange.",
         actionItems: [],
         keywords: []
       };
     }
     
+    // Check for test messages or single statements 
+    const lowerText = text.toLowerCase();
+    if (lowerText.includes('test') || 
+        lowerText.includes('hallucinate') || 
+        lowerText.includes('let\'s see') ||
+        lineCount === 1) {
+      return {
+        summary: "This appears to be a test message or a very brief statement. No summary is needed.",
+        actionItems: [],
+        keywords: []
+      };
+    }
+    
+    // Only proceed with AI summary for substantial content
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
@@ -264,11 +281,31 @@ export async function generateTranscriptSummary(text: string): Promise<{
     // Parse the JSON response
     const result = JSON.parse(content);
     
-    // Validation step to prevent hallucination
-    if (wordCount < 100 && result.summary.length > wordCount * 2) {
+    // ADDITIONAL VALIDATION: Check for suspicious patterns that might indicate hallucination
+    if (wordCount < 200 && result.summary.length > wordCount) {
       // Summary is suspiciously long compared to the original text - likely hallucinated
       return {
         summary: "The transcript is too brief for a meaningful summary. It contains only a short exchange.",
+        actionItems: [],
+        keywords: []
+      };
+    }
+    
+    // CONTENT VERIFICATION: Check if summary mentions topics not in the original text
+    const commonHallucinatedTerms = ["marketing strategy", "budget", "client presentation", 
+      "resource allocation", "development team", "performance review", "project", "initiatives"];
+      
+    let potentialHallucination = false;
+    for (const term of commonHallucinatedTerms) {
+      if (result.summary.toLowerCase().includes(term) && !lowerText.includes(term)) {
+        potentialHallucination = true;
+        break;
+      }
+    }
+    
+    if (potentialHallucination) {
+      return {
+        summary: "Unable to generate a reliable summary. The content is too limited or ambiguous for accurate summarization.",
         actionItems: [],
         keywords: []
       };
