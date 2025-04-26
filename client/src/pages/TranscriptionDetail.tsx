@@ -134,258 +134,228 @@ export default function TranscriptionDetail() {
     try {
       return JSON.parse(transcription.text) as StructuredTranscript;
     } catch (e) {
-      // If not valid JSON, check if it has timestamps or speaker labels
-      if (transcription.hasTimestamps || transcription.speakerLabels) {
-        // Try to extract structured data from text format
-        try {
-          // Check if the text has timestamp patterns
-          const hasStructuredContent = transcription.text && (
-            transcription.text.includes('[') && 
-            (transcription.text.includes(']: ') || transcription.text.includes('Speaker') || 
-            transcription.text.match(/\[\d+:\d+\]/))
-          );
-          
-          if (hasStructuredContent) {
-            // Try to extract segments using regex patterns
-            // Format: [00:00] Speaker 1: This is what they said
-            let segments = [];
-            let timeMatches = transcription.text.match(/\[([0-9:]+)\](?:\s*([^:]+))?:\s*(.+?)(?=\n\[|$)/gs);
-            
-            // If no matches found, try another common format
-            // Format: Speaker 1 [00:00]: This is what they said
-            if (!timeMatches || timeMatches.length === 0) {
-              timeMatches = transcription.text.match(/([^[]+)\s*\[([0-9:]+)\]:\s*(.+?)(?=\n[^[]+\s*\[|$)/gs);
-            }
-            
-            if (timeMatches && timeMatches.length > 0) {
-              segments = timeMatches.map(match => {
-                let timeMatch, speakerMatch, textMatch, startTime;
-                
-                // Try first format: [00:00] Speaker: Text
-                if (match.match(/^\[([0-9:]+)\]/)) {
-                  timeMatch = match.match(/\[([0-9:]+)\]/);
-                  speakerMatch = match.match(/\[[0-9:]+\]\s*([^:]+):/);
-                  textMatch = match.match(/\[[0-9:]+\](?:\s*[^:]+)?:\s*(.+)/s);
-                } 
-                // Try second format: Speaker [00:00]: Text
-                else if (match.match(/[^[]+\s*\[([0-9:]+)\]:/)) {
-                  timeMatch = match.match(/\[([0-9:]+)\]/);
-                  speakerMatch = match.match(/^([^[]+)\s*\[[0-9:]+\]:/);
-                  textMatch = match.match(/[^[]+\s*\[[0-9:]+\]:\s*(.+)/s);
-                }
-                
-                // Extract time components
-                const time = timeMatch ? timeMatch[1] : "00:00";
-                const [minutes, seconds] = time.split(':').map(Number);
-                startTime = minutes * 60 + (seconds || 0);
-                
-                const speaker = speakerMatch ? speakerMatch[1].trim() : undefined;
-                const text = textMatch ? textMatch[1].trim() : match;
-                
-                return {
-                  start: startTime || 0,
-                  end: (startTime || 0) + 10, // Approximate 10-second segments
-                  text,
-                  speaker
-                };
-              });
-              
-              return {
-                segments,
-                metadata: {
-                  speakerCount: transcription.speakerLabels ? transcription.speakerCount : undefined,
-                  duration: transcription.duration,
-                  language: transcription.language || undefined
-                }
-              };
-            }
-          }
-        } catch (parseError) {
-          console.error("Error parsing structured format from text:", parseError);
-        }
-      }
-      
-      // If all parsing attempts fail, return null
-      return null;
+      return null; // Not a JSON structure, which is fine
     }
   };
-  
+
+  // Get structured transcript if available
+  const structuredTranscript = parseStructuredTranscript();
+
+  // Calculate duration display
+  const formatDuration = (seconds: number | null) => {
+    if (!seconds) return "Unknown duration";
+    
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    
+    let result = "";
+    if (hours > 0) {
+      result += `${hours} hour${hours > 1 ? "s" : ""} `;
+    }
+    if (minutes > 0 || hours > 0) {
+      result += `${minutes} minute${minutes !== 1 ? "s" : ""} `;
+    }
+    if (secs > 0 || (hours === 0 && minutes === 0)) {
+      result += `${secs} second${secs !== 1 ? "s" : ""}`;
+    }
+    
+    return result.trim();
+  };
+
+  // Download transcript as PDF
+  const downloadPDF = async () => {
+    if (!id) return;
+    
+    try {
+      const response = await apiRequest("GET", `/api/transcriptions/${id}/pdf`, null, {
+        responseType: 'blob'
+      });
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${transcription?.meetingTitle || 'transcript'}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      
+      toast({
+        title: "PDF Downloaded",
+        description: "The transcript PDF has been downloaded successfully.",
+      });
+    } catch (error) {
+      toast({
+        title: "Download Failed",
+        description: "There was an error generating the PDF. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // If loading
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="flex flex-col items-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
-          <span className="text-gray-500">Loading transcription...</span>
-        </div>
+      <div className="flex flex-col items-center justify-center min-h-[50vh]">
+        <Loader2 className="h-8 w-8 text-primary animate-spin mb-4" />
+        <p className="text-gray-500">Loading transcription...</p>
       </div>
     );
   }
-  
+
+  // If error
   if (error || !transcription) {
     return (
-      <div className="container mx-auto max-w-4xl px-4 py-8">
-        <div className="bg-red-50 p-6 rounded-lg">
-          <h2 className="text-xl text-red-800 font-semibold mb-2">Error loading transcription</h2>
-          <p className="text-red-600 mb-4">
-            The transcription could not be found or there was an error loading it.
-          </p>
+      <div className="flex flex-col items-center justify-center min-h-[50vh] p-6">
+        <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+        <h2 className="text-xl font-bold text-gray-900 mb-2">Transcription Not Found</h2>
+        <p className="text-gray-500 mb-6 text-center">
+          The transcription you're looking for doesn't exist or couldn't be loaded.
+        </p>
+        <Link href="/history">
+          <Button variant="default">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to History
+          </Button>
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header with navigation */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2">
           <Link href="/history">
-            <Button>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Return to History
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back
             </Button>
           </Link>
         </div>
-      </div>
-    );
-  }
-  
-  // Parse structured transcript
-  const structuredTranscript = parseStructuredTranscript();
-  
-  return (
-    <div className="container mx-auto max-w-4xl px-4 py-8">
-      <div className="mb-6 flex flex-col sm:flex-row sm:items-center gap-4">
-        <Link href="/history">
-          <Button variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
-        </Link>
         
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold">
-            {transcription.meetingTitle || transcription.fileName}
-          </h1>
-          
-          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
-            {transcription.meetingDate && (
-              <div className="flex items-center">
-                <Calendar className="h-4 w-4 mr-1" />
-                <span>{formatDate(transcription.meetingDate)}</span>
-              </div>
-            )}
-            
-            {transcription.participants && (
-              <div className="flex items-center">
-                <Users className="h-4 w-4 mr-1" />
-                <span>{transcription.participants}</span>
-              </div>
-            )}
-            
-            <div className="flex flex-col">
-              <div className="flex items-center">
-                <Clock className="h-4 w-4 mr-1" />
-                <span>Created: {formatDate(transcription.createdAt)}</span>
-              </div>
-              {transcription.updatedAt && transcription.updatedAt !== transcription.createdAt && (
-                <div className="flex items-center mt-1">
-                  <Clock className="h-4 w-4 mr-1" />
-                  <span>Updated: {formatDate(transcription.updatedAt)}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        
-        <div className="flex gap-2">
-          <a 
-            href={`/api/transcriptions/${transcription.id}/pdf`} 
-            target="_blank" 
-            rel="noopener noreferrer"
-          >
-            <Button variant="outline" size="sm">
-              <FileDown className="h-4 w-4 mr-2" />
-              PDF
+        {/* Delete button and dialog */}
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="outline" size="sm" className="text-red-500 border-red-200 hover:bg-red-50 hover:text-red-600">
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete
             </Button>
-          </a>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete the transcription. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction 
+                className="bg-red-500 hover:bg-red-600" 
+                onClick={() => deleteTranscription()}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>Delete</>
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+      
+      {/* Transcription header */}
+      <div className="bg-white rounded-lg border p-4">
+        <h1 className="text-2xl font-bold text-gray-900 mb-4">
+          {transcription.meetingTitle || transcription.fileName}
+        </h1>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+          <div className="flex items-center text-gray-500">
+            <FileAudio className="h-4 w-4 mr-2 text-gray-400" />
+            <span>{transcription.fileName}</span>
+          </div>
           
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="outline" size="sm" className="text-red-500 border-red-200 hover:bg-red-50">
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will permanently delete the transcription and cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction 
-                  onClick={() => deleteTranscription()}
-                  className="bg-red-500 hover:bg-red-600"
-                  disabled={isDeleting}
-                >
-                  {isDeleting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Deleting...
-                    </>
-                  ) : (
-                    "Delete"
-                  )}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          {transcription.meetingDate && (
+            <div className="flex items-center text-gray-500">
+              <Calendar className="h-4 w-4 mr-2 text-gray-400" />
+              <span>{new Date(transcription.meetingDate).toLocaleDateString()}</span>
+            </div>
+          )}
+          
+          {transcription.participants && (
+            <div className="flex items-center text-gray-500">
+              <Users className="h-4 w-4 mr-2 text-gray-400" />
+              <span>{transcription.participants}</span>
+            </div>
+          )}
+          
+          {transcription.duration !== null && (
+            <div className="flex items-center text-gray-500">
+              <Clock className="h-4 w-4 mr-2 text-gray-400" />
+              <span>{formatDuration(transcription.duration)}</span>
+            </div>
+          )}
+        </div>
+        
+        {/* Creation/update timestamps */}
+        <div className="mt-4 pt-3 border-t border-gray-100 text-xs text-gray-500 flex flex-wrap gap-x-6 gap-y-1">
+          {transcription.createdAt && (
+            <div>
+              <span className="font-medium">Uploaded:</span> {formatDate(transcription.createdAt)}
+            </div>
+          )}
+          
+          {transcription.updatedAt && transcription.updatedAt !== transcription.createdAt && (
+            <div>
+              <span className="font-medium">Last modified:</span> {formatDate(transcription.updatedAt)}
+            </div>
+          )}
         </div>
       </div>
       
-      {/* File Info */}
-      <div className="mb-6 bg-gray-50 p-4 rounded-md text-sm">
-        <div className="flex flex-wrap gap-x-6 gap-y-2">
-          <div>
-            <span className="text-gray-500">File:</span>{" "}
-            <span className="font-medium">{transcription.fileName}</span>
+      {/* Action buttons */}
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" onClick={downloadPDF}>
+          <FileDown className="mr-2 h-4 w-4" />
+          Download PDF
+        </Button>
+        
+        {transcription.language && (
+          <div className="flex items-center space-x-1 border px-3 py-1.5 rounded-md text-sm text-gray-600">
+            <Languages className="h-4 w-4 text-gray-500" />
+            <span>{transcription.language}</span>
           </div>
-          <div>
-            <span className="text-gray-500">Size:</span>{" "}
-            <span className="font-medium">{formatFileSize(transcription.fileSize)}</span>
-          </div>
-          <div>
-            <span className="text-gray-500">Type:</span>{" "}
-            <span className="font-medium">.{transcription.fileType}</span>
-          </div>
-          {transcription.language && (
-            <div>
-              <span className="text-gray-500">Language:</span>{" "}
-              <span className="font-medium">{transcription.language}</span>
-            </div>
-          )}
-          {transcription.duration && (
-            <div>
-              <span className="text-gray-500">Duration:</span>{" "}
-              <span className="font-medium">
-                {Math.floor(transcription.duration / 60)}m {Math.floor(transcription.duration % 60)}s
+        )}
+        
+        {transcription.speakerLabels && (
+          <div className="flex items-center space-x-1 border px-3 py-1.5 rounded-md text-sm text-gray-600">
+            <Users className="h-4 w-4 text-gray-500" />
+            <span>Speaker Detection</span>
+            {transcription.speakerCount && (
+              <span className="ml-1 bg-gray-100 px-1.5 py-0.5 rounded-full text-xs">
+                {transcription.speakerCount}
               </span>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
       
-      {transcription.error ? (
-        <div className="bg-red-50 p-6 rounded-lg mb-6">
-          <div className="flex items-start">
-            <AlertTriangle className="h-6 w-6 text-red-500 mr-3 mt-0.5" />
-            <div>
-              <h3 className="text-lg font-medium text-red-800">Transcription Failed</h3>
-              <p className="mt-2 text-red-700">{transcription.error}</p>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <Tabs defaultValue="view" value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="mb-4">
+      {/* Transcript content */}
+      {transcription.text && (
+        <Tabs defaultValue="view" className="space-y-4" onValueChange={(value) => setActiveTab(value)}>
+          <TabsList>
             <TabsTrigger value="view">View</TabsTrigger>
             <TabsTrigger value="edit">Edit</TabsTrigger>
-            {transcription.hasTimestamps && structuredTranscript && (
-              <TabsTrigger value="interactive">Interactive</TabsTrigger>
-            )}
             {transcription.summary && (
               <TabsTrigger value="summary">Summary</TabsTrigger>
             )}
@@ -393,10 +363,6 @@ export default function TranscriptionDetail() {
           
           <TabsContent value="view" className="prose max-w-none">
             {transcription.text ? (
-<<<<<<< HEAD
-              <div className="bg-white border rounded-md p-5 whitespace-pre-line">
-                {transcription.text}
-=======
               <div>
                 {transcription.hasTimestamps || transcription.speakerLabels ? (
                   // Show with enhanced formatting for timestamped/speaker content
@@ -431,29 +397,23 @@ export default function TranscriptionDetail() {
                                     {speaker}
                                   </span>
                                 </div>
-                                <div className="ml-1">{text}</div>
+                                <p className="text-gray-800 ml-12">{text}</p>
                               </div>
                             );
                           }
                         }
                         
-                        // Just has timestamp without clear speaker format
+                        // If no clear speaker but has timestamp
                         return (
-                          <div key={index} className="pb-3 border-b last:border-b-0">
-                            <div className="flex items-baseline gap-2 mb-1">
-                              <span className="text-xs font-semibold text-gray-500">{timestamp}</span>
-                            </div>
-                            <div className="ml-1">{line.replace(timestamp, '').trim()}</div>
+                          <div key={index} className="pb-2">
+                            <span className="text-xs font-semibold text-gray-500 mr-2">{timestamp}</span>
+                            <span>{line.replace(timestamp, '').trim()}</span>
                           </div>
                         );
                       }
                       
-                      // Regular line without timestamp
-                      return (
-                        <div key={index} className={line.trim() === '' ? 'h-4' : 'mb-2'}>
-                          {line}
-                        </div>
-                      );
+                      // Regular text line
+                      return <p key={index} className="text-gray-800">{line}</p>;
                     })}
                   </div>
                 ) : (
@@ -462,7 +422,6 @@ export default function TranscriptionDetail() {
                     {transcription.text}
                   </div>
                 )}
->>>>>>> aa5f53d99eaf3558d057fcd15e5eb9ed663500f7
               </div>
             ) : (
               <div className="text-center py-12 bg-gray-50 rounded-md">
@@ -473,29 +432,16 @@ export default function TranscriptionDetail() {
           </TabsContent>
           
           <TabsContent value="edit">
-            {transcription.text && (
-              <TranscriptEditor
-                transcriptionId={transcription.id}
-                originalText={transcription.text}
-                fileName={transcription.fileName}
-                hasTimestamps={transcription.hasTimestamps}
-                speakerLabels={transcription.speakerLabels}
-                structuredTranscript={structuredTranscript || undefined}
-                duration={transcription.duration || undefined}
-              />
-            )}
+            <TranscriptEditor 
+              transcriptionId={transcription.id}
+              originalText={transcription.text || ''}
+              fileName={transcription.fileName}
+              hasTimestamps={transcription.hasTimestamps}
+              speakerLabels={transcription.speakerLabels}
+              structuredTranscript={structuredTranscript}
+              duration={transcription.duration}
+            />
           </TabsContent>
-          
-          {transcription.hasTimestamps && structuredTranscript && (
-            <TabsContent value="interactive">
-              <InteractiveTranscript
-                transcriptionId={transcription.id}
-                structuredTranscript={structuredTranscript}
-                originalText={transcription.text || ""}
-                fileName={transcription.fileName}
-              />
-            </TabsContent>
-          )}
           
           {transcription.summary && (
             <TabsContent value="summary">
