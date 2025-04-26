@@ -7,6 +7,7 @@ export interface IStorage {
   getTranscription(id: number): Promise<Transcription | undefined>;
   updateTranscription(id: number, updates: Partial<Transcription>): Promise<Transcription | undefined>;
   listTranscriptions(): Promise<Transcription[]>;
+  deleteTranscription(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -37,6 +38,10 @@ export class DatabaseStorage implements IStorage {
 
   async listTranscriptions(): Promise<Transcription[]> {
     return await db.select().from(transcriptions);
+  }
+  
+  async deleteTranscription(id: number): Promise<void> {
+    await db.delete(transcriptions).where(eq(transcriptions.id, id));
   }
 }
 
@@ -91,6 +96,10 @@ export class MemStorage implements IStorage {
 
   async listTranscriptions(): Promise<Transcription[]> {
     return Array.from(this.transcriptions.values());
+  }
+  
+  async deleteTranscription(id: number): Promise<void> {
+    this.transcriptions.delete(id);
   }
 }
 

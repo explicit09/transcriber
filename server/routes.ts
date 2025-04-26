@@ -153,6 +153,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(500).json({ message: "Internal server error" });
     }
   });
+  
+  // Update a transcription
+  app.patch('/api/transcriptions/:id', async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid transcription ID" });
+      }
+      
+      const { text } = req.body;
+      if (!text || typeof text !== 'string') {
+        return res.status(400).json({ message: "Text field is required and must be a string" });
+      }
+      
+      const transcription = await storage.getTranscription(id);
+      if (!transcription) {
+        return res.status(404).json({ message: "Transcription not found" });
+      }
+      
+      const updatedTranscription = await storage.updateTranscription(id, {
+        text,
+        updatedAt: new Date(),
+      });
+      
+      return res.status(200).json(updatedTranscription);
+    } catch (error) {
+      console.error("Error updating transcription:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  // Delete a transcription
+  app.delete('/api/transcriptions/:id', async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid transcription ID" });
+      }
+      
+      const transcription = await storage.getTranscription(id);
+      if (!transcription) {
+        return res.status(404).json({ message: "Transcription not found" });
+      }
+      
+      await storage.deleteTranscription(id);
+      
+      return res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting transcription:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
 
   const httpServer = createServer(app);
   return httpServer;

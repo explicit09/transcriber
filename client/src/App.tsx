@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
 import TranscriptionHistory from "@/pages/TranscriptionHistory";
+import TranscriptionDetail from "@/pages/TranscriptionDetail";
 import { Headphones, History } from "lucide-react";
 
 // Navigation bar component
@@ -45,6 +46,7 @@ function Router() {
         <Switch>
           <Route path="/" component={Home} />
           <Route path="/history" component={TranscriptionHistory} />
+          <Route path="/transcription/:id" component={TranscriptionDetail} />
           <Route component={NotFound} />
         </Switch>
       </main>
