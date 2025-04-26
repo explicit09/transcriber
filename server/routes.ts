@@ -72,8 +72,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Process transcription in the background
       (async () => {
         try {
-          // Transcribe the audio file
-          const result = await transcribeAudio(req.file.path);
+          // Transcribe the audio file (we already checked req.file exists above)
+          const filePath = file.path;
+          const result = await transcribeAudio(filePath);
           
           // Update the transcription record
           await storage.updateTranscription(transcription.id, {
@@ -82,19 +83,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
 
           // Clean up the file
-          fs.unlink(req.file.path, (err) => {
-            if (err) console.error(`Error deleting file: ${err.message}`);
+          fs.unlink(filePath, (err) => {
+            if (err) console.error(`Error deleting file: ${err?.message || 'Unknown error'}`);
           });
         } catch (error) {
           // Handle errors and update the record
+          const errorMessage = error instanceof Error ? error.message : String(error);
           await storage.updateTranscription(transcription.id, {
-            error: error.message,
+            error: errorMessage,
             status: "error",
           });
 
           // Clean up the file even on error
-          fs.unlink(req.file.path, (err) => {
-            if (err) console.error(`Error deleting file: ${err.message}`);
+          fs.unlink(file.path, (err) => {
+            if (err) console.error(`Error deleting file: ${err?.message || 'Unknown error'}`);
           });
         }
       })();
