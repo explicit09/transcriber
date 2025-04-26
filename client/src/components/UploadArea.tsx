@@ -46,8 +46,8 @@ export default function UploadArea({ onFileSelected, isUploading }: UploadAreaPr
     <div 
       className={`border-2 border-dashed rounded-lg p-8 text-center transition-all cursor-pointer ${
         isDragActive 
-          ? "border-primary bg-primary-50" 
-          : "border-gray-300 hover:border-primary-400 hover:bg-gray-50"
+          ? "border-primary bg-primary/10" 
+          : "border-border hover:border-primary/70 hover:bg-secondary/50"
       }`}
       onClick={handleUploadClick}
       onDragOver={handleDragOver}
