@@ -65,6 +65,18 @@ export class MemStorage implements IStorage {
       id,
       text: null, 
       error: null,
+      // Speaker diarization
+      speakerLabels: false,
+      speakerCount: null,
+      // Timestamps
+      hasTimestamps: false,
+      duration: null,
+      // Advanced features
+      language: null,
+      translatedText: null,
+      summary: null,
+      keywords: null,
+      // Status and metadata
       status: insertTranscription.status || "pending",
       meetingTitle: insertTranscription.meetingTitle || null,
       meetingDate: insertTranscription.meetingDate || now,

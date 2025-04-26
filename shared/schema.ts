@@ -12,6 +12,17 @@ export const transcriptions = pgTable("transcriptions", {
   status: text("status").notNull().default("pending"),
   text: text("text"),
   error: text("error"),
+  // Speaker diarization
+  speakerLabels: boolean("speaker_labels").default(false),
+  speakerCount: integer("speaker_count"),
+  // Transcript timestamps
+  hasTimestamps: boolean("has_timestamps").default(false),
+  duration: integer("duration"), // Audio duration in seconds
+  // Advanced features
+  language: text("language"), // Detected language
+  translatedText: text("translated_text"), // Translated version
+  summary: text("summary"), // AI generated summary
+  keywords: text("keywords"), // Extracted keywords
   // Meeting metadata
   meetingTitle: text("meeting_title"),
   meetingDate: timestamp("meeting_date").defaultNow(),
@@ -53,3 +64,26 @@ export const audioFileSchema = z.object({
 });
 
 export type AudioFile = z.infer<typeof audioFileSchema>;
+
+// Types for timestamps and speaker diarization
+export const transcriptSegmentSchema = z.object({
+  start: z.number(), // Start time in seconds
+  end: z.number(), // End time in seconds
+  text: z.string(), // Text for this segment
+  speaker: z.string().optional(), // Speaker identifier (e.g., "Speaker 1")
+  confidence: z.number().optional(), // Confidence score 0-1
+});
+
+export type TranscriptSegment = z.infer<typeof transcriptSegmentSchema>;
+
+// Schema for structured transcript with timestamps and speakers
+export const structuredTranscriptSchema = z.object({
+  segments: z.array(transcriptSegmentSchema),
+  metadata: z.object({
+    speakerCount: z.number().optional(),
+    duration: z.number().optional(), // Total duration in seconds
+    language: z.string().optional(), // Detected language
+  }).optional(),
+});
+
+export type StructuredTranscript = z.infer<typeof structuredTranscriptSchema>;
