@@ -10,7 +10,7 @@ export default function Navbar() {
           <img 
             src={learnXLogo} 
             alt="LEARN-X Logo" 
-            className="h-9 w-auto" 
+            className="h-14 w-auto" 
           />
         </div>
         
