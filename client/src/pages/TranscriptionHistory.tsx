@@ -60,6 +60,7 @@ interface Transcription {
   // Timestamps
   createdAt: string | null;
   updatedAt: string | null;
+  actionItems: string | null;
 }
 
 export default function TranscriptionHistory() {
@@ -342,9 +343,68 @@ export default function TranscriptionHistory() {
                 
                 {transcription.text && (
                   <div className="mt-4">
-                    <div className="text-sm text-gray-600 line-clamp-2">
-                      {transcription.text.substring(0, 200)}...
-                    </div>
+                    {transcription.speakerLabels ? (
+                      // Show formatted text preview with speaker diarization
+                      <div className="space-y-2">
+                        {transcription.text
+                          .split('\n')
+                          .filter(line => line.trim().length > 0)
+                          .slice(0, 2)
+                          .map((line, idx) => {
+                            // Check for speaker pattern
+                            const speakerMatch = line.match(/(?:\[[0-9:]+\]\s*)?([^:]+):/);
+                            if (speakerMatch) {
+                              const speaker = speakerMatch[1].trim();
+                              const text = line.substring(line.indexOf(':') + 1).trim();
+                              return (
+                                <div key={idx} className="flex">
+                                  <span className="text-xs font-medium bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full mr-2 flex-shrink-0">
+                                    {speaker}
+                                  </span>
+                                  <span className="text-sm text-gray-600 line-clamp-1">
+                                    {text}
+                                  </span>
+                                </div>
+                              );
+                            }
+                            return (
+                              <div key={idx} className="text-sm text-gray-600 line-clamp-1">
+                                {line}
+                              </div>
+                            );
+                          })}
+                        {transcription.text.split('\n').filter(line => line.trim().length > 0).length > 2 && (
+                          <div className="text-xs text-gray-500 italic">
+                            (more content)
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      // Default plain text preview
+                      <div className="text-sm text-gray-600 line-clamp-2">
+                        {transcription.text.substring(0, 200)}...
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {/* Action Items Display */}
+                {transcription.actionItems && (
+                  <div className="mt-3 p-2 bg-green-50 border border-green-100 rounded-md">
+                    <h4 className="text-xs font-medium text-green-700 mb-1">Action Items:</h4>
+                    <ul className="text-xs text-green-800">
+                      {transcription.actionItems.split('\n').slice(0, 2).map((item, idx) => (
+                        <li key={idx} className="flex items-start mb-1">
+                          <span className="inline-block w-3 h-3 bg-green-400 rounded-full mr-2 mt-1 flex-shrink-0"></span>
+                          <span className="line-clamp-1">{item}</span>
+                        </li>
+                      ))}
+                      {transcription.actionItems.split('\n').length > 2 && (
+                        <li className="text-green-600 italic text-xs">
+                          + {transcription.actionItems.split('\n').length - 2} more items
+                        </li>
+                      )}
+                    </ul>
                   </div>
                 )}
                 

@@ -31,9 +31,9 @@ export async function transcribeAudio(audioFilePath: string): Promise<{
       duration,
       language: transcription.language,
     };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("OpenAI Transcription Error:", error);
-    throw new Error(`Failed to transcribe audio: ${error.message}`);
+    throw new Error(`Failed to transcribe audio: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -68,7 +68,6 @@ export async function transcribeAudioWithFeatures(
       start: segment.start,
       end: segment.end,
       text: segment.text,
-      confidence: segment.confidence,
       speaker: undefined // Will be filled in if speaker diarization is enabled
     }));
 
@@ -97,9 +96,9 @@ export async function transcribeAudioWithFeatures(
       duration: transcription.duration,
       language: transcription.language,
     };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Enhanced Transcription Error:", error);
-    throw new Error(`Failed to transcribe audio with features: ${error.message}`);
+    throw new Error(`Failed to transcribe audio with features: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -124,25 +123,25 @@ async function processSpeakerDiarization(
 
 IMPROVED SPEAKER ANALYSIS APPROACH:
 1. First, read the entire transcript to understand the overall flow, topics, and speaking styles
-2. Identify clear vocal patterns, terminology preferences, and distinct roles for each speaker
-3. Track topic ownership - speakers often maintain control of their introduced topics
-4. Note linguistic markers that identify individuals (personal anecdotes, self-references, etc.)
-5. Pay special attention to question-answer patterns, which almost always involve different speakers
-6. In longer monologues, look for subtle style changes that might indicate speaker transitions
+2. For most conversations, assume 2 speakers unless there is CLEAR evidence of 3+ distinct voices
+3. Be CONSERVATIVE with speaker assignments - prefer fewer speakers rather than more
+4. Track topic ownership - speakers often maintain control of their introduced topics
+5. Note linguistic markers that identify individuals (personal anecdotes, self-references, etc.)
+6. Pay special attention to question-answer patterns, which almost always involve different speakers
 
 CONVERSATION PATTERN RECOGNITION:
 - First-person pronoun shifts ("I believe" vs "You mentioned") strongly indicate different speakers
 - Speech pattern changes (formal/academic vs casual/colloquial) often signal different speakers
 - Technical explanations followed by clarifying questions typically indicate different speakers
 - Statements of agreement ("Yes," "I agree," "That's right") nearly always indicate a speaker change
-- Very short utterances followed by longer explanations usually indicate speaker transitions
+- Short filler words like "hmm", "uh", "yeah" are not reliable indicators of speaker changes
 
 ACCURACY GUIDELINES:
-- Be conservative with speaker assignments - when in doubt, prefer more speakers rather than fewer
+- For normal dialogues, default to 2 speakers unless you have overwhelming evidence of more
 - Consistently assign the same speaker ID to the same person throughout the transcript
+- For short exchanges (1-2 sentences each), be extremely cautious about assigning more than 2 speakers
 - Prefer "Speaker 1," "Speaker 2" format unless roles are extremely clear (like "Interviewer/Interviewee")
-- For meeting contexts, the first speaker is usually the meeting organizer/facilitator
-- Closely analyze sentences that begin with conjunctions - they often continue a speaker's thought
+- Be very cautious about inferring more than 2 speakers from minor stylistic differences alone
 
 Format your response as a JSON object with the following structure:
 {
@@ -168,11 +167,16 @@ Otherwise, use "Speaker 1", "Speaker 2", etc.`
         }
       ],
       response_format: { type: "json_object" },
-      temperature: 0.2 // Lower temperature for more consistent results
+      temperature: 0.1 // Lower temperature for more consistent results
     });
 
+    const content = response.choices[0].message.content;
+    if (!content) {
+      throw new Error("Empty response from OpenAI");
+    }
+
     // Parse the JSON response
-    const result = JSON.parse(response.choices[0].message.content);
+    const result = JSON.parse(content);
     
     return {
       segments: result.segments,
@@ -210,7 +214,7 @@ export async function generateTranscriptSummary(text: string): Promise<{
           
           Format your response as a JSON object with the following structure:
           {
-            "summary": "A concise summary of the meeting (max 250 words)",
+            "summary": "A concise summary of the meeting (max 250 words). Important sections like 'Decisions Made' and 'Challenges' should be included directly in the summary without any markdown formatting symbols like asterisks (**). Use proper paragraph breaks but avoid using markdown formatting.",
             "actionItems": [
               "Person X needs to complete task Y by deadline Z",
               "Team needs to follow up on...",
@@ -220,7 +224,7 @@ export async function generateTranscriptSummary(text: string): Promise<{
           }
           
           For the action items, make them very specific and begin with the person or team responsible.
-          Structure the summary with clear paragraphs and use bullet points for important lists.`
+          Structure the summary with clear paragraphs but DO NOT use markdown formatting symbols like asterisks or hashtags.`
         },
         {
           role: "user",
@@ -230,17 +234,22 @@ export async function generateTranscriptSummary(text: string): Promise<{
       response_format: { type: "json_object" }
     });
 
+    const content = response.choices[0].message.content;
+    if (!content) {
+      throw new Error("Empty response from OpenAI");
+    }
+
     // Parse the JSON response
-    const result = JSON.parse(response.choices[0].message.content);
+    const result = JSON.parse(content);
     
     return {
       summary: result.summary,
       actionItems: result.actionItems || [],
       keywords: result.keywords || []
     };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Summary Generation Error:", error);
-    throw new Error(`Failed to generate summary: ${error.message}`);
+    throw new Error(`Failed to generate summary: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -265,12 +274,17 @@ export async function translateTranscript(
       ]
     });
 
+    const content = response.choices[0].message.content;
+    if (!content) {
+      throw new Error("Empty response from OpenAI");
+    }
+
     return {
-      translatedText: response.choices[0].message.content
+      translatedText: content
     };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Translation Error:", error);
-    throw new Error(`Failed to translate text: ${error.message}`);
+    throw new Error(`Failed to translate text: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 

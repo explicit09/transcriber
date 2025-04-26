@@ -316,16 +316,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Generate summary using OpenAI
       const result = await generateTranscriptSummary(transcription.text);
       
+      // Process the summary to ensure it doesn't contain any markdown formatting
+      const cleanSummary = result.summary.replace(/\*\*/g, '');
+      
+      // Format action items as a newline-separated string instead of JSON
+      const actionItemsText = result.actionItems?.length 
+        ? result.actionItems.join('\n') 
+        : null;
+      
       // Update the transcription with the summary and action items
       const updatedTranscription = await storage.updateTranscription(id, {
-        summary: result.summary,
-        actionItems: result.actionItems?.length ? JSON.stringify(result.actionItems) : null,
+        summary: cleanSummary,
+        actionItems: actionItemsText,
         keywords: result.keywords.join(', '),
         updatedAt: new Date(),
       });
       
       return res.status(200).json({
-        summary: result.summary,
+        summary: cleanSummary,
         actionItems: result.actionItems || [],
         keywords: result.keywords,
         transcription: updatedTranscription
@@ -409,12 +417,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           // First try matching timestamps with speaker labels
           // Format: [00:00] Speaker 1: This is what they said
-          let segments = transcription.text.match(/\[([0-9:]+)\]\s*(?:([^:]+):\s*)?(.+?)(?=\n\[|$)/gs);
+          let segments = transcription.text.match(/\[([0-9:]+)\]\s*(?:([^:]+):\s*)?(.+?)(?=\n\[|$)/g);
           
           // If no segments found with the above pattern, try another common format
           // Format: Speaker 1 [00:00]: This is what they said
           if (!segments || segments.length === 0) {
-            segments = transcription.text.match(/([^[]+)\s*\[([0-9:]+)\]:\s*(.+?)(?=\n[^[]+\s*\[|$)/gs);
+            segments = transcription.text.match(/([^[]+)\s*\[([0-9:]+)\]:\s*(.+?)(?=\n[^[]+\s*\[|$)/g);
           }
           
           if (segments && segments.length > 0) {
@@ -426,7 +434,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 if (segment.match(/^\[([0-9:]+)\]/)) {
                   timeMatch = segment.match(/\[([0-9:]+)\]/);
                   speakerMatch = segment.match(/\[[0-9:]+\]\s*([^:]+):/);
-                  textMatch = segment.match(/\[[0-9:]+\]\s*(?:[^:]+:\s*)?(.+)/s);
+                  textMatch = segment.match(/\[[0-9:]+\]\s*(?:[^:]+:\s*)?(.+)/);
                   
                   const time = timeMatch ? timeMatch[1] : "00:00";
                   // Convert MM:SS to seconds
@@ -437,7 +445,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 else if (segment.match(/[^[]+\s*\[([0-9:]+)\]:/)) {
                   timeMatch = segment.match(/\[([0-9:]+)\]/);
                   speakerMatch = segment.match(/^([^[]+)\s*\[[0-9:]+\]:/);
-                  textMatch = segment.match(/[^[]+\s*\[[0-9:]+\]:\s*(.+)/s);
+                  textMatch = segment.match(/[^[]+\s*\[[0-9:]+\]:\s*(.+)/);
                   
                   const time = timeMatch ? timeMatch[1] : "00:00";
                   // Convert MM:SS to seconds
@@ -602,6 +610,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 // Format the transcript text with speaker labels if speaker diarization is enabled
                 let formattedText = result.text;
                 if (enableSpeakerLabels && result.structuredTranscript.segments.length > 0) {
+                  // Ensure consistent speaker formatting with clear line breaks between speakers
                   formattedText = result.structuredTranscript.segments.map(segment => {
                     const timeStr = enableTimestamps ? `[${formatTime(segment.start)}] ` : '';
                     const speakerStr = segment.speaker ? `${segment.speaker}: ` : '';
@@ -612,19 +621,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 // Generate a summary if requested
                 let summary = null;
                 let keywords = null;
+                let actionItems = null;
                 
                 if (generateSummary && result.text) {
                   try {
                     const summaryResult = await generateTranscriptSummary(result.text);
                     summary = summaryResult.summary;
                     keywords = summaryResult.keywords.join(', ');
-                    const actionItems = summaryResult.actionItems?.length ? 
-                      JSON.stringify(summaryResult.actionItems) : null;
-                    
-                    // Include actionItems in the update below
-                    await storage.updateTranscription(id, {
-                      actionItems,
-                    });
+                    actionItems = summaryResult.actionItems?.length ? 
+                      summaryResult.actionItems.join('\n') : null;
                   } catch (summaryError) {
                     console.error("Error generating summary:", summaryError);
                   }
@@ -640,6 +645,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   language: result.language || null,
                   summary,
                   keywords,
+                  actionItems,
                 });
               } else {
                 // Use basic transcription
