@@ -52,13 +52,20 @@ export class MemStorage implements IStorage {
 
   async createTranscription(insertTranscription: InsertTranscription): Promise<Transcription> {
     const id = this.currentId++;
-    // Ensure status is set to avoid TypeScript error
+    const now = new Date();
+    
+    // Create transcription with all required fields
     const transcription: Transcription = { 
       ...insertTranscription, 
       id,
       text: null, 
       error: null,
-      status: insertTranscription.status || "pending"
+      status: insertTranscription.status || "pending",
+      meetingTitle: insertTranscription.meetingTitle || null,
+      meetingDate: insertTranscription.meetingDate || now,
+      participants: insertTranscription.participants || null,
+      createdAt: now,
+      updatedAt: now
     };
     this.transcriptions.set(id, transcription);
     return transcription;
@@ -72,7 +79,12 @@ export class MemStorage implements IStorage {
     const transcription = this.transcriptions.get(id);
     if (!transcription) return undefined;
     
-    const updatedTranscription = { ...transcription, ...updates };
+    // Always update the updatedAt timestamp
+    const updatedTranscription = { 
+      ...transcription, 
+      ...updates,
+      updatedAt: new Date()
+    };
     this.transcriptions.set(id, updatedTranscription);
     return updatedTranscription;
   }

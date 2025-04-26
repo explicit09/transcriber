@@ -62,11 +62,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create transcription record (we already checked req.file exists above)
       const file = req.file!;
+      
+      // Extract meeting metadata from the request
+      const meetingTitle = req.body.meetingTitle || null;
+      const meetingDate = req.body.meetingDate ? new Date(req.body.meetingDate) : new Date();
+      const participants = req.body.participants || null;
+      
       const transcription = await storage.createTranscription({
         fileName: file.originalname,
         fileSize: file.size,
         fileType: path.extname(file.originalname).substring(1),
         status: "processing",
+        meetingTitle,
+        meetingDate,
+        participants,
       });
 
       // Process transcription in the background
@@ -80,6 +89,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await storage.updateTranscription(transcription.id, {
             text: result.text,
             status: "completed",
+            updatedAt: new Date(),
           });
 
           // Clean up the file
@@ -92,6 +102,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await storage.updateTranscription(transcription.id, {
             error: errorMessage,
             status: "error",
+            updatedAt: new Date(),
           });
 
           // Clean up the file even on error
