@@ -135,12 +135,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Format the transcript text with speaker labels if speaker diarization is enabled
             let formattedText = result.text;
             if (enableSpeakerLabels && result.structuredTranscript.segments.length > 0) {
-              formattedText = result.structuredTranscript.segments.map(segment => {
-                const timeStr = enableTimestamps ? `[${formatTime(segment.start)}] ` : '';
-                const speakerStr = segment.speaker ? `${segment.speaker}: ` : '';
-                return `${timeStr}${speakerStr}${segment.text}`;
+              // Group segments by speaker to avoid redundant speaker labels
+              const groupedSegments: { speaker: string | undefined; texts: string[]; startTime: number | undefined }[] = [];
+              let currentSpeaker: string | undefined = '';
+              let currentTexts: string[] = [];
+              let currentStartTime: number | undefined = undefined;
+              
+              // Group consecutive segments from the same speaker
+              result.structuredTranscript.segments.forEach(segment => {
+                if (segment.speaker !== currentSpeaker) {
+                  // Start a new group
+                  if (currentTexts.length > 0) {
+                    groupedSegments.push({
+                      speaker: currentSpeaker,
+                      texts: currentTexts,
+                      startTime: currentStartTime
+                    });
+                  }
+                  currentSpeaker = segment.speaker;
+                  currentTexts = [segment.text];
+                  currentStartTime = enableTimestamps ? segment.start : undefined;
+                } else {
+                  // Continue current group
+                  currentTexts.push(segment.text);
+                }
+              });
+              
+              // Add the last group
+              if (currentTexts.length > 0) {
+                groupedSegments.push({
+                  speaker: currentSpeaker,
+                  texts: currentTexts,
+                  startTime: currentStartTime
+                });
+              }
+              
+              // Format the text with grouped segments
+              formattedText = groupedSegments.map(group => {
+                const timeStr = group.startTime !== undefined ? `[${formatTime(group.startTime)}] ` : '';
+                const speakerStr = group.speaker ? `${group.speaker}: ` : '';
+                return `${timeStr}${speakerStr}${group.texts.join('\n')}`;
               }).join('\n\n');
+<<<<<<< Updated upstream
 
+=======
+              
+>>>>>>> Stashed changes
               // If we have identified speakers, ensure the text format is clear and consistent
               // Add a header to clarify this is speaker-identified content
               if (result.structuredTranscript.metadata?.speakerCount && result.structuredTranscript.metadata.speakerCount > 1) {
@@ -609,10 +649,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 // Format the transcript text with speaker labels if speaker diarization is enabled
                 let formattedText = result.text;
                 if (enableSpeakerLabels && result.structuredTranscript.segments.length > 0) {
-                  formattedText = result.structuredTranscript.segments.map(segment => {
-                    const timeStr = enableTimestamps ? `[${formatTime(segment.start)}] ` : '';
-                    const speakerStr = segment.speaker ? `${segment.speaker}: ` : '';
-                    return `${timeStr}${speakerStr}${segment.text}`;
+                  // Group segments by speaker to avoid redundant speaker labels
+                  const groupedSegments: { speaker: string | undefined; texts: string[]; startTime: number | undefined }[] = [];
+                  let currentSpeaker: string | undefined = '';
+                  let currentTexts: string[] = [];
+                  let currentStartTime: number | undefined = undefined;
+                  
+                  // Group consecutive segments from the same speaker
+                  result.structuredTranscript.segments.forEach(segment => {
+                    if (segment.speaker !== currentSpeaker) {
+                      // Start a new group
+                      if (currentTexts.length > 0) {
+                        groupedSegments.push({
+                          speaker: currentSpeaker,
+                          texts: currentTexts,
+                          startTime: currentStartTime
+                        });
+                      }
+                      currentSpeaker = segment.speaker;
+                      currentTexts = [segment.text];
+                      currentStartTime = enableTimestamps ? segment.start : undefined;
+                    } else {
+                      // Continue current group
+                      currentTexts.push(segment.text);
+                    }
+                  });
+                  
+                  // Add the last group
+                  if (currentTexts.length > 0) {
+                    groupedSegments.push({
+                      speaker: currentSpeaker,
+                      texts: currentTexts,
+                      startTime: currentStartTime
+                    });
+                  }
+                  
+                  // Format the text with grouped segments
+                  formattedText = groupedSegments.map(group => {
+                    const timeStr = group.startTime !== undefined ? `[${formatTime(group.startTime)}] ` : '';
+                    const speakerStr = group.speaker ? `${group.speaker}: ` : '';
+                    return `${timeStr}${speakerStr}${group.texts.join('\n')}`;
                   }).join('\n\n');
                   
                   // If we have identified speakers, ensure the text format is clear and consistent

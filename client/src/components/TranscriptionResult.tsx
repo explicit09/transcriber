@@ -342,41 +342,109 @@ export default function TranscriptionResult({
       <div className="bg-gray-50 rounded-md border border-gray-200 p-4 max-h-96 overflow-y-auto">
         {formattedTranscript.hasSpeakerLabels ? (
           <div className="space-y-4">
-            {formattedTranscript.lines.map((line, index) => {
-              // Match timestamp and speaker
-              const timeMatch = line.match(/^\[(\d\d:\d\d)\]/);
-              const time = timeMatch ? timeMatch[1] : null;
+            {(() => {
+              // Group consecutive lines from the same speaker together
+              const groupedLines: { speaker: string; text: string[]; time?: string | null }[] = [];
+              let currentSpeaker = '';
+              let currentTexts: string[] = [];
+              let currentTime: string | null = null;
               
-              // Extract speaker and text
-              const speakerMatch = line.match(/^(?:\[\d\d:\d\d\]\s+)?([^:]+):(.*)/);
+              formattedTranscript.lines.forEach((line, i) => {
+                // Match timestamp and speaker
+                const timeMatch = line.match(/^\[(\d\d:\d\d)\]/);
+                const time = timeMatch ? timeMatch[1] : null;
+                
+                // Extract speaker and text
+                const speakerMatch = line.match(/^(?:\[\d\d:\d\d\]\s+)?([^:]+):(.*)/);
+                
+                if (speakerMatch) {
+                  const speaker = speakerMatch[1].trim();
+                  const text = speakerMatch[2].trim();
+                  
+                  // If this is a new speaker or the first item, start a new group
+                  if (speaker !== currentSpeaker) {
+                    // Add the previous group if it exists
+                    if (currentTexts.length > 0) {
+                      groupedLines.push({
+                        speaker: currentSpeaker,
+                        text: currentTexts,
+                        time: currentTime
+                      });
+                    }
+                    
+                    // Start a new group
+                    currentSpeaker = speaker;
+                    currentTexts = [text];
+                    currentTime = time;
+                  } else {
+                    // Same speaker, add to current group
+                    currentTexts.push(text);
+                    // Only update time if current group doesn't have one
+                    if (!currentTime && time) {
+                      currentTime = time;
+                    }
+                  }
+                } else {
+                  // For lines without speaker info, add as is
+                  if (currentTexts.length > 0) {
+                    groupedLines.push({
+                      speaker: currentSpeaker,
+                      text: currentTexts,
+                      time: currentTime
+                    });
+                  }
+                  currentSpeaker = '';
+                  currentTexts = [];
+                  currentTime = null;
+                  groupedLines.push({
+                    speaker: '',
+                    text: [line],
+                    time: null
+                  });
+                }
+              });
               
-              if (speakerMatch) {
-                const speaker = speakerMatch[1].trim();
-                const text = speakerMatch[2].trim();
-                const colorClass = formattedTranscript.speakerColorMap?.get(speaker);
+              // Add the last group if it exists
+              if (currentTexts.length > 0) {
+                groupedLines.push({
+                  speaker: currentSpeaker,
+                  text: currentTexts,
+                  time: currentTime
+                });
+              }
+              
+              // Render the grouped lines
+              return groupedLines.map((group, index) => {
+                if (!group.speaker) {
+                  // Just a regular line without speaker information
+                  return (
+                    <p key={index} className="text-gray-700">
+                      {group.text[0]}
+                    </p>
+                  );
+                }
+                
+                const colorClass = formattedTranscript.speakerColorMap?.get(group.speaker);
                 
                 return (
                   <div key={index} className="pb-4 mb-3 border-b border-gray-200">
                     <div className="flex items-center gap-2 mb-2">
-                      {time && (
-                        <span className="text-xs font-mono text-gray-500">{time}</span>
+                      {group.time && (
+                        <span className="text-xs font-mono text-gray-500">{group.time}</span>
                       )}
                       <span className={`px-3 py-1 rounded-full text-sm font-medium ${colorClass?.bg} ${colorClass?.text}`}>
-                        {speaker}
+                        {group.speaker}
                       </span>
                     </div>
-                    <p className="ml-6 text-gray-800 whitespace-pre-line">{text}</p>
+                    <div className="ml-6 text-gray-800 whitespace-pre-line">
+                      {group.text.map((text, i) => (
+                        <p key={i} className="mb-2 last:mb-0">{text}</p>
+                      ))}
+                    </div>
                   </div>
                 );
-              }
-              
-              // Just a regular line without speaker information
-              return (
-                <p key={index} className="text-gray-700">
-                  {line}
-                </p>
-              );
-            })}
+              });
+            })()}
           </div>
         ) : (
           <p className="text-gray-700 whitespace-pre-line">
