@@ -432,7 +432,7 @@ export default function TranscriptionResult({
                       {group.time && (
                         <span className="text-xs font-mono text-gray-500">{group.time}</span>
                       )}
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${colorClass?.bg} ${colorClass?.text}`}>
+                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${colorClass?.bg || 'bg-gray-100'} ${colorClass?.text || 'text-gray-800'}`}>
                         {group.speaker}
                       </span>
                     </div>
