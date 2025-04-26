@@ -52,6 +52,13 @@ const upload = multer({
   }
 });
 
+// Helper function to format time in MM:SS format
+function formatTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Upload and transcribe audio file
   app.post('/api/transcribe', upload.single('file'), async (req: Request, res: Response) => {
@@ -125,8 +132,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
               language: language || undefined,
             });
             
-            // Store the structured transcript as JSON string in the text field
-            const structuredTranscriptString = JSON.stringify(result.structuredTranscript);
+            // Format the transcript text with speaker labels if speaker diarization is enabled
+            let formattedText = result.text;
+            if (enableSpeakerLabels && result.structuredTranscript.segments.length > 0) {
+              formattedText = result.structuredTranscript.segments.map(segment => {
+                const timeStr = enableTimestamps ? `[${formatTime(segment.start)}] ` : '';
+                const speakerStr = segment.speaker ? `${segment.speaker}: ` : '';
+                return `${timeStr}${speakerStr}${segment.text}`;
+              }).join('\n\n');
+            }
             
             // Generate a summary if requested
             let summary = null;
@@ -145,7 +159,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             // Update the transcription record with enhanced data
             await storage.updateTranscription(transcription.id, {
-              text: result.text,
+              text: formattedText,
               status: "completed",
               updatedAt: new Date(),
               speakerCount: result.structuredTranscript.metadata?.speakerCount || null,
@@ -585,6 +599,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   language: language || undefined,
                 });
                 
+                // Format the transcript text with speaker labels if speaker diarization is enabled
+                let formattedText = result.text;
+                if (enableSpeakerLabels && result.structuredTranscript.segments.length > 0) {
+                  formattedText = result.structuredTranscript.segments.map(segment => {
+                    const timeStr = enableTimestamps ? `[${formatTime(segment.start)}] ` : '';
+                    const speakerStr = segment.speaker ? `${segment.speaker}: ` : '';
+                    return `${timeStr}${speakerStr}${segment.text}`;
+                  }).join('\n\n');
+                }
+                
                 // Generate a summary if requested
                 let summary = null;
                 let keywords = null;
@@ -608,7 +632,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 
                 // Update the transcription record with enhanced data
                 await storage.updateTranscription(id, {
-                  text: result.text,
+                  text: formattedText,
                   status: "completed",
                   updatedAt: new Date(),
                   speakerCount: result.structuredTranscript.metadata?.speakerCount || null,
