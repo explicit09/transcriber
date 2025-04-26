@@ -284,7 +284,7 @@ export default function TranscriptionContainer() {
             )}
             
             <TranscriptionResult
-              transcriptionText={transcription.text}
+              transcriptionText={transcription.text || ""}
               fileName={transcription.meetingTitle || currentFile?.name || "transcript"}
               onNewTranscription={handleTryAgain}
             />
