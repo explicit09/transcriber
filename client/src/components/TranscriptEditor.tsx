@@ -10,7 +10,8 @@ import {
   Download,
   FileText,
   File,
-  Clock
+  Clock,
+  User
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -289,21 +290,59 @@ export default function TranscriptEditor({
         </div>
       ) : viewMode === 'structured' && parsedTranscript ? (
         <div className="min-h-[400px] border rounded-md p-3 overflow-auto">
-          {parsedTranscript.segments.map((segment, index) => (
-            <div key={index} className="mb-4 pb-3 border-b last:border-b-0">
-              <div className="flex justify-between items-start mb-1">
-                <div className="text-xs font-semibold text-gray-500">
-                  {formatTimestamp(segment.start)} - {formatTimestamp(segment.end)}
-                </div>
-                {segment.speaker && (
-                  <div className="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
-                    {segment.speaker}
+          {/* Generate a map of speaker to color for consistent coloring */}
+          {(() => {
+            // Extract unique speakers
+            const speakers = Array.from(new Set(
+              parsedTranscript.segments
+                .filter(segment => segment.speaker)
+                .map(segment => segment.speaker)
+            ));
+            
+            // Define a set of distinguishable colors for speakers
+            const speakerColors = [
+              { bg: 'bg-blue-100', text: 'text-blue-800' },
+              { bg: 'bg-green-100', text: 'text-green-800' },
+              { bg: 'bg-purple-100', text: 'text-purple-800' },
+              { bg: 'bg-amber-100', text: 'text-amber-800' },
+              { bg: 'bg-rose-100', text: 'text-rose-800' },
+              { bg: 'bg-cyan-100', text: 'text-cyan-800' },
+              { bg: 'bg-indigo-100', text: 'text-indigo-800' },
+              { bg: 'bg-teal-100', text: 'text-teal-800' },
+              { bg: 'bg-fuchsia-100', text: 'text-fuchsia-800' },
+            ];
+            
+            // Create a map of speaker to color
+            const speakerColorMap = new Map();
+            speakers.forEach((speaker, index) => {
+              const colorIndex = index % speakerColors.length;
+              speakerColorMap.set(speaker, speakerColors[colorIndex]);
+            });
+            
+            return parsedTranscript.segments.map((segment, index) => {
+              const speakerColor = segment.speaker ? speakerColorMap.get(segment.speaker) : null;
+              
+              return (
+                <div key={index} className="mb-4 pb-3 border-b last:border-b-0">
+                  <div className="flex justify-between items-start mb-1">
+                    <div className="text-xs font-semibold text-gray-500 flex items-center">
+                      <Clock className="h-3 w-3 mr-1" />
+                      {formatTimestamp(segment.start)} - {formatTimestamp(segment.end)}
+                    </div>
+                    {segment.speaker && (
+                      <div className={`px-2 py-0.5 ${speakerColor.bg} ${speakerColor.text} text-xs font-medium rounded-full flex items-center`}>
+                        <User className="h-3 w-3 mr-1" />
+                        {segment.speaker}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-              <div className="text-sm">{segment.text}</div>
-            </div>
-          ))}
+                  <div className={`text-sm p-2 rounded ${segment.speaker ? speakerColor.bg + ' bg-opacity-20' : ''}`}>
+                    {segment.text}
+                  </div>
+                </div>
+              );
+            });
+          })()}
         </div>
       ) : (
         <Textarea

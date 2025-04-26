@@ -255,7 +255,7 @@ export default function TranscriptionDetail() {
           <TabsList className="mb-4">
             <TabsTrigger value="view">View</TabsTrigger>
             <TabsTrigger value="edit">Edit & Analyze</TabsTrigger>
-            {(transcription.summary || transcription.language || transcription.duration || transcription.speakerCount) && (
+            {(transcription.summary || transcription.language || transcription.duration || transcription.speakerCount || transcription.actionItems) && (
               <TabsTrigger value="metadata">Metadata</TabsTrigger>
             )}
           </TabsList>
@@ -345,9 +345,7 @@ export default function TranscriptionDetail() {
                     {transcription.speakerCount && transcription.speakerLabels && (
                       <div>
                         <h4 className="text-sm font-medium text-gray-700">Speakers</h4>
-                        <p className="text-sm text-gray-600">
-                          {transcription.speakerCount} {transcription.speakerCount === 1 ? 'person' : 'people'} speaking
-                        </p>
+                        <p className="text-sm text-gray-600">{transcription.speakerCount} detected speakers</p>
                       </div>
                     )}
                   </div>
@@ -369,26 +367,44 @@ export default function TranscriptionDetail() {
               
               {/* Action Items section */}
               {transcription.actionItems && (
-                <div className="border rounded-md p-4 mt-4">
-                  <h3 className="text-lg font-medium mb-3 flex items-center">
-                    <CheckSquare className="h-5 w-5 mr-2 text-gray-500" />
+                <div className="border rounded-md p-4 mt-4 bg-amber-50 border-amber-200">
+                  <h3 className="text-lg font-medium mb-3 flex items-center text-amber-800">
+                    <CheckSquare className="h-5 w-5 mr-2 text-amber-600" />
                     Action Items
                   </h3>
                   <div className="space-y-2">
                     {(() => {
                       try {
                         const actionItems = JSON.parse(transcription.actionItems);
+                        if (actionItems.length === 0) {
+                          return <p className="text-amber-600 italic">No action items identified in this transcript.</p>;
+                        }
                         return (
-                          <ul className="list-disc pl-5 space-y-1">
+                          <div className="space-y-2">
                             {actionItems.map((item, index) => (
-                              <li key={index} className="text-gray-700">
-                                {item}
-                              </li>
+                              <div key={index} className="flex items-start bg-white p-2 rounded border border-amber-200">
+                                <CheckSquare className="h-4 w-4 mr-2 flex-shrink-0 text-amber-600 mt-0.5" />
+                                <span className="text-gray-800">{item}</span>
+                              </div>
                             ))}
-                          </ul>
+                          </div>
                         );
                       } catch (e) {
-                        return <p className="text-gray-500">No action items found</p>;
+                        // Try to parse as string with line breaks if JSON parsing fails
+                        const items = transcription.actionItems.split('\n').filter(item => item.trim().length > 0);
+                        if (items.length === 0) {
+                          return <p className="text-amber-600 italic">No action items identified in this transcript.</p>;
+                        }
+                        return (
+                          <div className="space-y-2">
+                            {items.map((item, index) => (
+                              <div key={index} className="flex items-start bg-white p-2 rounded border border-amber-200">
+                                <CheckSquare className="h-4 w-4 mr-2 flex-shrink-0 text-amber-600 mt-0.5" />
+                                <span className="text-gray-800">{item}</span>
+                              </div>
+                            ))}
+                          </div>
+                        );
                       }
                     })()}
                   </div>
