@@ -289,15 +289,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Generate summary using OpenAI
       const result = await generateTranscriptSummary(transcription.text);
       
-      // Update the transcription with the summary
+      // Update the transcription with the summary and action items
       const updatedTranscription = await storage.updateTranscription(id, {
         summary: result.summary,
+        actionItems: result.actionItems?.length ? JSON.stringify(result.actionItems) : null,
         keywords: result.keywords.join(', '),
         updatedAt: new Date(),
       });
       
       return res.status(200).json({
         summary: result.summary,
+        actionItems: result.actionItems || [],
         keywords: result.keywords,
         transcription: updatedTranscription
       });
@@ -507,6 +509,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     const summaryResult = await generateTranscriptSummary(result.text);
                     summary = summaryResult.summary;
                     keywords = summaryResult.keywords.join(', ');
+                    const actionItems = summaryResult.actionItems?.length ? 
+                      JSON.stringify(summaryResult.actionItems) : null;
+                    
+                    // Include actionItems in the update below
+                    await storage.updateTranscription(id, {
+                      actionItems,
+                    });
                   } catch (summaryError) {
                     console.error("Error generating summary:", summaryError);
                   }

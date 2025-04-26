@@ -22,6 +22,7 @@ export const transcriptions = pgTable("transcriptions", {
   language: text("language"), // Detected language
   translatedText: text("translated_text"), // Translated version
   summary: text("summary"), // AI generated summary
+  actionItems: text("action_items"), // Extracted action items
   keywords: text("keywords"), // Extracted keywords
   // Meeting metadata
   meetingTitle: text("meeting_title"),

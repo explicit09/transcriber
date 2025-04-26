@@ -173,13 +173,27 @@ export async function generateTranscriptSummary(text: string): Promise<{
       messages: [
         {
           role: "system",
-          content: `Summarize the following meeting transcript concisely. Extract key points, 
-          action items, decisions made, and important discussion topics. Also identify up to 10 
-          important keywords or phrases. Format your response as a JSON object with the following structure:
+          content: `Summarize the following meeting transcript concisely. 
+          
+          Extract these components:
+          1. Key points and decisions made in the meeting
+          2. Action items with clear owners and deadlines (if mentioned)
+          3. Important discussion topics
+          4. Up to 10 important keywords or phrases
+          
+          Format your response as a JSON object with the following structure:
           {
-            "summary": "A concise summary of the meeting (max 300 words)",
+            "summary": "A concise summary of the meeting (max 250 words)",
+            "actionItems": [
+              "Person X needs to complete task Y by deadline Z",
+              "Team needs to follow up on...",
+              "etc."
+            ],
             "keywords": ["keyword1", "keyword2", "etc"]
-          }`
+          }
+          
+          For the action items, make them very specific and begin with the person or team responsible.
+          Structure the summary with clear paragraphs and use bullet points for important lists.`
         },
         {
           role: "user",
@@ -194,6 +208,7 @@ export async function generateTranscriptSummary(text: string): Promise<{
     
     return {
       summary: result.summary,
+      actionItems: result.actionItems || [],
       keywords: result.keywords || []
     };
   } catch (error) {
