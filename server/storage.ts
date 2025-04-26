@@ -51,8 +51,7 @@ export class DatabaseStorage implements IStorage {
     try {
       const audioPath = await this.getAudioFilePath(id);
       if (audioPath) {
-        const fs = require('fs');
-        fs.unlinkSync(await audioPath);
+        fs.unlinkSync(audioPath);
       }
     } catch (error) {
       console.error(`Error deleting audio file for transcription ${id}:`, error);
@@ -61,9 +60,6 @@ export class DatabaseStorage implements IStorage {
   }
   
   async storeAudioFile(id: number, audioBuffer: Buffer, fileType: string): Promise<string> {
-    const fs = require('fs');
-    const path = require('path');
-    
     // Create directory for audio files if it doesn't exist
     const audioDir = path.join(process.cwd(), 'audio-files');
     if (!fs.existsSync(audioDir)) {
@@ -87,9 +83,6 @@ export class DatabaseStorage implements IStorage {
   }
   
   async getAudioFilePath(id: number): Promise<string | null> {
-    const fs = require('fs');
-    const path = require('path');
-    
     const audioDir = path.join(process.cwd(), 'audio-files');
     if (!fs.existsSync(audioDir)) {
       return null;
@@ -97,7 +90,7 @@ export class DatabaseStorage implements IStorage {
     
     // Check for any file matching the pattern transcription-{id}.*
     const files = fs.readdirSync(audioDir);
-    const audioFile = files.find(file => file.startsWith(`transcription-${id}.`));
+    const audioFile = files.find((file: string) => file.startsWith(`transcription-${id}.`));
     
     if (!audioFile) {
       return null;
@@ -180,7 +173,6 @@ export class MemStorage implements IStorage {
     try {
       const audioPath = await this.getAudioFilePath(id);
       if (audioPath) {
-        const fs = require('fs');
         fs.unlinkSync(audioPath);
       }
     } catch (error) {
@@ -190,9 +182,6 @@ export class MemStorage implements IStorage {
   }
   
   async storeAudioFile(id: number, audioBuffer: Buffer, fileType: string): Promise<string> {
-    const fs = require('fs');
-    const path = require('path');
-    
     // Create directory for audio files if it doesn't exist
     const audioDir = path.join(process.cwd(), 'audio-files');
     if (!fs.existsSync(audioDir)) {
@@ -216,9 +205,6 @@ export class MemStorage implements IStorage {
   }
   
   async getAudioFilePath(id: number): Promise<string | null> {
-    const fs = require('fs');
-    const path = require('path');
-    
     const audioDir = path.join(process.cwd(), 'audio-files');
     if (!fs.existsSync(audioDir)) {
       return null;
@@ -226,7 +212,7 @@ export class MemStorage implements IStorage {
     
     // Check for any file matching the pattern transcription-{id}.*
     const files = fs.readdirSync(audioDir);
-    const audioFile = files.find(file => file.startsWith(`transcription-${id}.`));
+    const audioFile = files.find((file: string) => file.startsWith(`transcription-${id}.`));
     
     if (!audioFile) {
       return null;
