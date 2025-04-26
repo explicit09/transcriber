@@ -79,7 +79,7 @@ export async function generateTranscriptPDF(
       // Parse the JSON string into an array
       const actionItems = JSON.parse(transcription.actionItems);
       
-      if (actionItems && actionItems.length > 0) {
+      if (actionItems && Array.isArray(actionItems) && actionItems.length > 0) {
         doc.moveDown();
         doc.fontSize(12).font('Helvetica-Bold').text('Action Items');
         
@@ -90,8 +90,25 @@ export async function generateTranscriptPDF(
         });
       }
     } catch (error) {
-      // Fallback to extracting from summary if JSON parsing fails
-      if (transcription.summary) {
+      console.log("JSON parsing of action items failed, trying string-based approach", error);
+      
+      // First try as string with line breaks 
+      if (typeof transcription.actionItems === 'string' && transcription.actionItems.trim().length > 0) {
+        const items = transcription.actionItems.split('\n').filter(item => item.trim().length > 0);
+        
+        if (items.length > 0) {
+          doc.moveDown();
+          doc.fontSize(12).font('Helvetica-Bold').text('Action Items');
+          
+          items.forEach((item, index) => {
+            doc.fontSize(10).font('Helvetica').text(`${index + 1}. ${item.trim()}`, {
+              bulletRadius: 2,
+            });
+          });
+        }
+      } 
+      // Fallback to extracting from summary
+      else if (transcription.summary) {
         const extractedItems = extractActionItems(transcription.summary);
         if (extractedItems.length > 0) {
           doc.moveDown();

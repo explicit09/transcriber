@@ -375,29 +375,36 @@ export default function TranscriptionDetail() {
                   <div className="space-y-2">
                     {(() => {
                       try {
+                        // Try to parse as JSON array first
                         const actionItems = JSON.parse(transcription.actionItems);
-                        if (actionItems.length === 0) {
+                        if (Array.isArray(actionItems) && actionItems.length === 0) {
                           return <p className="text-amber-600 italic">No action items identified in this transcript.</p>;
                         }
-                        return (
-                          <div className="space-y-2">
-                            {actionItems.map((item, index) => (
-                              <div key={index} className="flex items-start bg-white p-2 rounded border border-amber-200">
-                                <CheckSquare className="h-4 w-4 mr-2 flex-shrink-0 text-amber-600 mt-0.5" />
-                                <span className="text-gray-800">{item}</span>
-                              </div>
-                            ))}
-                          </div>
-                        );
+                        if (Array.isArray(actionItems)) {
+                          return (
+                            <div className="space-y-2">
+                              {actionItems.map((item: string, index: number) => (
+                                <div key={index} className="flex items-start bg-white p-2 rounded border border-amber-200">
+                                  <CheckSquare className="h-4 w-4 mr-2 flex-shrink-0 text-amber-600 mt-0.5" />
+                                  <span className="text-gray-800">{item}</span>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        }
                       } catch (e) {
-                        // Try to parse as string with line breaks if JSON parsing fails
+                        // Not JSON, continue to next approach
+                      }
+                      
+                      // Try to parse as string with line breaks if JSON parsing fails
+                      if (typeof transcription.actionItems === 'string') {
                         const items = transcription.actionItems.split('\n').filter(item => item.trim().length > 0);
                         if (items.length === 0) {
                           return <p className="text-amber-600 italic">No action items identified in this transcript.</p>;
                         }
                         return (
                           <div className="space-y-2">
-                            {items.map((item, index) => (
+                            {items.map((item: string, index: number) => (
                               <div key={index} className="flex items-start bg-white p-2 rounded border border-amber-200">
                                 <CheckSquare className="h-4 w-4 mr-2 flex-shrink-0 text-amber-600 mt-0.5" />
                                 <span className="text-gray-800">{item}</span>
@@ -406,6 +413,9 @@ export default function TranscriptionDetail() {
                           </div>
                         );
                       }
+                      
+                      // If we get here, there's something in actionItems but we can't parse it
+                      return <p className="text-amber-600 italic">Action items are present but in an unknown format.</p>;
                     })()}
                   </div>
                 </div>

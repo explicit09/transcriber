@@ -369,29 +369,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Try to parse structured transcript from text if speakerLabels is true
       let structuredTranscript = undefined;
-      if (transcription.speakerLabels || transcription.hasTimestamps) {
+      
+      // Try to detect if we're dealing with structured content
+      const hasStructuredContent = transcription.text && (
+        transcription.text.includes('[') && 
+        transcription.text.includes(']:') || 
+        transcription.text.includes('Speaker') ||
+        transcription.text.match(/\[\d+:\d+\]/)
+      );
+      
+      if (hasStructuredContent || transcription.speakerLabels || transcription.hasTimestamps) {
         try {
-          // Try to extract structured data if available
-          const segments = transcription.text.match(/\[([0-9:]+)\]\s*(?:([^:]+):\s*)?(.+?)(?=\n\[|$)/gs);
+          // First try matching timestamps with speaker labels
+          // Format: [00:00] Speaker 1: This is what they said
+          let segments = transcription.text.match(/\[([0-9:]+)\]\s*(?:([^:]+):\s*)?(.+?)(?=\n\[|$)/gs);
+          
+          // If no segments found with the above pattern, try another common format
+          // Format: Speaker 1 [00:00]: This is what they said
+          if (!segments || segments.length === 0) {
+            segments = transcription.text.match(/([^[]+)\s*\[([0-9:]+)\]:\s*(.+?)(?=\n[^[]+\s*\[|$)/gs);
+          }
           
           if (segments && segments.length > 0) {
             structuredTranscript = {
               segments: segments.map(segment => {
-                const timeMatch = segment.match(/\[([0-9:]+)\]/);
-                const speakerMatch = segment.match(/\[[0-9:]+\]\s*([^:]+):/);
-                const textMatch = segment.match(/\[[0-9:]+\]\s*(?:[^:]+:\s*)?(.+)/s);
+                let timeMatch, speakerMatch, textMatch, startTime;
                 
-                const time = timeMatch ? timeMatch[1] : "00:00";
+                // Try first format: [00:00] Speaker: Text
+                if (segment.match(/^\[([0-9:]+)\]/)) {
+                  timeMatch = segment.match(/\[([0-9:]+)\]/);
+                  speakerMatch = segment.match(/\[[0-9:]+\]\s*([^:]+):/);
+                  textMatch = segment.match(/\[[0-9:]+\]\s*(?:[^:]+:\s*)?(.+)/s);
+                  
+                  const time = timeMatch ? timeMatch[1] : "00:00";
+                  // Convert MM:SS to seconds
+                  const [minutes, seconds] = time.split(':').map(Number);
+                  startTime = minutes * 60 + seconds;
+                } 
+                // Try second format: Speaker [00:00]: Text
+                else if (segment.match(/[^[]+\s*\[([0-9:]+)\]:/)) {
+                  timeMatch = segment.match(/\[([0-9:]+)\]/);
+                  speakerMatch = segment.match(/^([^[]+)\s*\[[0-9:]+\]:/);
+                  textMatch = segment.match(/[^[]+\s*\[[0-9:]+\]:\s*(.+)/s);
+                  
+                  const time = timeMatch ? timeMatch[1] : "00:00";
+                  // Convert MM:SS to seconds
+                  const [minutes, seconds] = time.split(':').map(Number);
+                  startTime = minutes * 60 + seconds;
+                }
+                
                 const speaker = speakerMatch ? speakerMatch[1].trim() : undefined;
                 const text = textMatch ? textMatch[1].trim() : segment;
                 
-                // Convert MM:SS to seconds
-                const [minutes, seconds] = time.split(':').map(Number);
-                const startTime = minutes * 60 + seconds;
-                
                 return {
-                  start: startTime,
-                  end: startTime + 10, // Approximate 10-second segments
+                  start: startTime || 0,
+                  end: (startTime || 0) + 10, // Approximate 10-second segments
                   text,
                   speaker
                 };
