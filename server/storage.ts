@@ -1,6 +1,8 @@
 import { transcriptions, type Transcription, type InsertTranscription } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
+import fs from 'fs';
+import path from 'path';
 
 export interface IStorage {
   createTranscription(transcription: InsertTranscription): Promise<Transcription>;

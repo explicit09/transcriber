@@ -5,12 +5,12 @@ import learnXLogo from "../assets/learn-x-logo.png";
 export default function Navbar() {
   return (
     <header className="bg-background border-b border-border">
-      <div className="container mx-auto py-3 px-4 flex items-center justify-between">
+      <div className="container mx-auto py-4 px-4 flex items-center justify-between">
         <div className="flex items-center space-x-2">
           <img 
             src={learnXLogo} 
             alt="LEARN-X Logo" 
-            className="h-14 w-auto" 
+            className="h-20 w-auto" 
           />
         </div>
         
