@@ -17,117 +17,6 @@ export default function TranscriptionResult({
   const { toast } = useToast();
   const [hasCopied, setHasCopied] = useState(false);
 
-  // Parse and format the transcript with speaker information
-  const formattedTranscript = useMemo(() => {
-    // Remove any system messages or metadata about speaker detection at the beginning
-    let cleanedText = transcriptionText;
-    const systemMessageMatch = transcriptionText.match(/^(?:result:|Speaker Detection:).+?(?:\r?\n|$)/i);
-    if (systemMessageMatch) {
-      cleanedText = transcriptionText.substring(systemMessageMatch[0].length).trim();
-    }
-    
-    // Check if transcript contains speaker information
-    // Look for clear turn-taking patterns, not just "Speaker" keyword
-    const hasSpeakerLabels = cleanedText.includes(':') && 
-      (cleanedText.includes('Speaker ') || 
-       // Detect conversation pattern with multiple short exchanges
-       (cleanedText.split('\n').length > 5 && 
-        cleanedText.split('\n').filter(line => line.includes(':')).length > 3));
-    
-    if (!hasSpeakerLabels) {
-      // For long text blocks, attempt to split by turn-taking indicators
-      if (cleanedText.length > 500) {
-        // Break up long text blocks by conversational turns
-        const lines = processConversationText(cleanedText);
-        
-        // Create speaker colors
-        const speakerColors = [
-          { bg: 'bg-blue-100', text: 'text-blue-800' },
-          { bg: 'bg-green-100', text: 'text-green-800' },
-          { bg: 'bg-purple-100', text: 'text-purple-800' },
-        ];
-        
-        const speakerColorMap = new Map<string, typeof speakerColors[0]>([
-          ['Speaker 1', speakerColors[0]],
-          ['Speaker 2', speakerColors[1]],
-          ['Speaker 3', speakerColors[2]],
-        ]);
-        
-        return {
-          lines,
-          hasSpeakerLabels: true,
-          speakerColorMap
-        };
-      }
-      
-      return { lines: cleanedText.split('\n'), hasSpeakerLabels: false };
-    }
-    
-    // Process the transcript with speaker labels
-    const lines = cleanedText.split('\n').filter(line => line.trim() !== '');
-    
-    // Create a map of speakers to colors for consistent coloring
-    const speakers = new Set<string>();
-    lines.forEach(line => {
-      // More flexible pattern to detect speakers at the beginning of lines
-      const speakerMatch = line.match(/^(?:\[\d\d:\d\d\]\s*)?([^:]+):/);
-      if (speakerMatch && speakerMatch[1]) {
-        speakers.add(speakerMatch[1].trim());
-      }
-    });
-    
-    // If we didn't find any clear speakers but the text looks like a conversation,
-    // let's try to infer speakers based on paragraph breaks
-    if (speakers.size < 2 && lines.length > 5) {
-      // Attempt to identify turn-taking in conversation by assigning alternating speakers
-      let currentSpeaker = 1;
-      const processedLines = lines.map(line => {
-        // Skip lines that already have speaker labels
-        if (line.includes(':')) return line;
-        
-        // Otherwise assign a speaker
-        currentSpeaker = currentSpeaker === 1 ? 2 : 1;
-        return `Speaker ${currentSpeaker}: ${line}`;
-      });
-      
-      // Reprocess with the new speaker labels
-      speakers.clear();
-      speakers.add('Speaker 1');
-      speakers.add('Speaker 2');
-      
-      return {
-        lines: processedLines,
-        hasSpeakerLabels: true,
-        speakerColorMap: new Map([
-          ['Speaker 1', { bg: 'bg-blue-100', text: 'text-blue-800' }],
-          ['Speaker 2', { bg: 'bg-green-100', text: 'text-green-800' }]
-        ])
-      };
-    }
-    
-    // Define speaker colors
-    const speakerColors = [
-      { bg: 'bg-blue-100', text: 'text-blue-800' },
-      { bg: 'bg-green-100', text: 'text-green-800' },
-      { bg: 'bg-purple-100', text: 'text-purple-800' },
-      { bg: 'bg-amber-100', text: 'text-amber-800' },
-      { bg: 'bg-rose-100', text: 'text-rose-800' },
-      { bg: 'bg-cyan-100', text: 'text-cyan-800' },
-      { bg: 'bg-indigo-100', text: 'text-indigo-800' },
-    ];
-    
-    const speakerColorMap = new Map<string, typeof speakerColors[0]>();
-    Array.from(speakers).forEach((speaker, index) => {
-      speakerColorMap.set(speaker, speakerColors[index % speakerColors.length]);
-    });
-    
-    return { 
-      lines, 
-      hasSpeakerLabels: true, 
-      speakerColorMap
-    };
-  }, [transcriptionText]);
-
   // Function to process text that appears as a conversation but doesn't have explicit speaker labels
   const processConversationText = (text: string): string[] => {
     // Look for turn-taking indicators specific to academic discussions
@@ -248,6 +137,117 @@ export default function TranscriptionResult({
         return `Speaker ${currentSpeaker}: ${segment.trim()}`;
       });
   };
+
+  // Parse and format the transcript with speaker information
+  const formattedTranscript = useMemo(() => {
+    // Remove any system messages or metadata about speaker detection at the beginning
+    let cleanedText = transcriptionText;
+    const systemMessageMatch = transcriptionText.match(/^(?:result:|Speaker Detection:).+?(?:\r?\n|$)/i);
+    if (systemMessageMatch) {
+      cleanedText = transcriptionText.substring(systemMessageMatch[0].length).trim();
+    }
+    
+    // Check if transcript contains speaker information
+    // Look for clear turn-taking patterns, not just "Speaker" keyword
+    const hasSpeakerLabels = cleanedText.includes(':') && 
+      (cleanedText.includes('Speaker ') || 
+       // Detect conversation pattern with multiple short exchanges
+       (cleanedText.split('\n').length > 5 && 
+        cleanedText.split('\n').filter(line => line.includes(':')).length > 3));
+    
+    if (!hasSpeakerLabels) {
+      // For long text blocks, attempt to split by turn-taking indicators
+      if (cleanedText.length > 500) {
+        // Break up long text blocks by conversational turns
+        const lines = processConversationText(cleanedText);
+        
+        // Create speaker colors
+        const speakerColors = [
+          { bg: 'bg-blue-100', text: 'text-blue-800' },
+          { bg: 'bg-green-100', text: 'text-green-800' },
+          { bg: 'bg-purple-100', text: 'text-purple-800' },
+        ];
+        
+        const speakerColorMap = new Map<string, typeof speakerColors[0]>([
+          ['Speaker 1', speakerColors[0]],
+          ['Speaker 2', speakerColors[1]],
+          ['Speaker 3', speakerColors[2]],
+        ]);
+        
+        return {
+          lines,
+          hasSpeakerLabels: true,
+          speakerColorMap
+        };
+      }
+      
+      return { lines: cleanedText.split('\n'), hasSpeakerLabels: false };
+    }
+    
+    // Process the transcript with speaker labels
+    const lines = cleanedText.split('\n').filter(line => line.trim() !== '');
+    
+    // Create a map of speakers to colors for consistent coloring
+    const speakers = new Set<string>();
+    lines.forEach(line => {
+      // More flexible pattern to detect speakers at the beginning of lines
+      const speakerMatch = line.match(/^(?:\[\d\d:\d\d\]\s*)?([^:]+):/);
+      if (speakerMatch && speakerMatch[1]) {
+        speakers.add(speakerMatch[1].trim());
+      }
+    });
+    
+    // If we didn't find any clear speakers but the text looks like a conversation,
+    // let's try to infer speakers based on paragraph breaks
+    if (speakers.size < 2 && lines.length > 5) {
+      // Attempt to identify turn-taking in conversation by assigning alternating speakers
+      let currentSpeaker = 1;
+      const processedLines = lines.map(line => {
+        // Skip lines that already have speaker labels
+        if (line.includes(':')) return line;
+        
+        // Otherwise assign a speaker
+        currentSpeaker = currentSpeaker === 1 ? 2 : 1;
+        return `Speaker ${currentSpeaker}: ${line}`;
+      });
+      
+      // Reprocess with the new speaker labels
+      speakers.clear();
+      speakers.add('Speaker 1');
+      speakers.add('Speaker 2');
+      
+      return {
+        lines: processedLines,
+        hasSpeakerLabels: true,
+        speakerColorMap: new Map([
+          ['Speaker 1', { bg: 'bg-blue-100', text: 'text-blue-800' }],
+          ['Speaker 2', { bg: 'bg-green-100', text: 'text-green-800' }]
+        ])
+      };
+    }
+    
+    // Define speaker colors
+    const speakerColors = [
+      { bg: 'bg-blue-100', text: 'text-blue-800' },
+      { bg: 'bg-green-100', text: 'text-green-800' },
+      { bg: 'bg-purple-100', text: 'text-purple-800' },
+      { bg: 'bg-amber-100', text: 'text-amber-800' },
+      { bg: 'bg-rose-100', text: 'text-rose-800' },
+      { bg: 'bg-cyan-100', text: 'text-cyan-800' },
+      { bg: 'bg-indigo-100', text: 'text-indigo-800' },
+    ];
+    
+    const speakerColorMap = new Map<string, typeof speakerColors[0]>();
+    Array.from(speakers).forEach((speaker, index) => {
+      speakerColorMap.set(speaker, speakerColors[index % speakerColors.length]);
+    });
+    
+    return { 
+      lines, 
+      hasSpeakerLabels: true, 
+      speakerColorMap
+    };
+  }, [transcriptionText]);
 
   const handleCopyText = async () => {
     try {
