@@ -1,0 +1,99 @@
+import { useState } from "react";
+import { Copy, Download } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+
+interface TranscriptionResultProps {
+  transcriptionText: string;
+  fileName: string;
+  onNewTranscription: () => void;
+}
+
+export default function TranscriptionResult({ 
+  transcriptionText, 
+  fileName,
+  onNewTranscription 
+}: TranscriptionResultProps) {
+  const { toast } = useToast();
+  const [hasCopied, setHasCopied] = useState(false);
+
+  const handleCopyText = async () => {
+    try {
+      await navigator.clipboard.writeText(transcriptionText);
+      setHasCopied(true);
+      toast({
+        title: "Copied!",
+        description: "Text copied to clipboard.",
+        duration: 2000
+      });
+      
+      // Reset copied state after 2 seconds
+      setTimeout(() => {
+        setHasCopied(false);
+      }, 2000);
+    } catch (err) {
+      toast({
+        title: "Failed to copy",
+        description: "Could not copy text to clipboard.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleDownloadText = () => {
+    const filename = `${fileName.split('.')[0]}_transcript.txt`;
+    
+    const element = document.createElement('a');
+    element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(transcriptionText));
+    element.setAttribute('download', filename);
+    
+    element.style.display = 'none';
+    document.body.appendChild(element);
+    
+    element.click();
+    
+    document.body.removeChild(element);
+  };
+
+  return (
+    <div className="mt-6">
+      <div className="mb-4 flex items-center justify-between">
+        <h3 className="text-lg font-medium text-gray-900">Transcription Result</h3>
+        <div className="flex space-x-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCopyText}
+            className={hasCopied ? "bg-green-500 text-white hover:bg-green-600" : ""}
+          >
+            <Copy className="h-4 w-4 mr-1.5" />
+            {hasCopied ? "Copied!" : "Copy"}
+          </Button>
+          <Button
+            variant="default"
+            size="sm"
+            onClick={handleDownloadText}
+          >
+            <Download className="h-4 w-4 mr-1.5" />
+            Download
+          </Button>
+        </div>
+      </div>
+      
+      <div className="bg-gray-50 rounded-md border border-gray-200 p-4 max-h-96 overflow-y-auto">
+        <p className="text-gray-700 whitespace-pre-line">
+          {transcriptionText}
+        </p>
+      </div>
+      
+      <div className="mt-4 flex justify-end">
+        <Button
+          variant="outline"
+          onClick={onNewTranscription}
+        >
+          Transcribe another file
+        </Button>
+      </div>
+    </div>
+  );
+}
