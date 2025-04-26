@@ -174,7 +174,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               formattedText = groupedSegments.map(group => {
                 const timeStr = group.startTime !== undefined ? `[${formatTime(group.startTime)}] ` : '';
                 const speakerStr = group.speaker ? `${group.speaker}: ` : '';
-                return `${timeStr}${speakerStr}${group.texts.join(' ')}`;
+                return `${timeStr}${speakerStr}${group.texts.join('\n')}`;
               }).join('\n\n');
 
               // If we have identified speakers, ensure the text format is clear and consistent
@@ -684,7 +684,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   formattedText = groupedSegments.map(group => {
                     const timeStr = group.startTime !== undefined ? `[${formatTime(group.startTime)}] ` : '';
                     const speakerStr = group.speaker ? `${group.speaker}: ` : '';
-                    return `${timeStr}${speakerStr}${group.texts.join(' ')}`;
+                    return `${timeStr}${speakerStr}${group.texts.join('\n')}`;
                   }).join('\n\n');
                   
                   // If we have identified speakers, ensure the text format is clear and consistent
