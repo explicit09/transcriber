@@ -625,11 +625,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 
                 if (generateSummary && result.text) {
                   try {
-                    const summaryResult = await generateTranscriptSummary(result.text);
-                    summary = summaryResult.summary;
-                    keywords = summaryResult.keywords.join(', ');
-                    actionItems = summaryResult.actionItems?.length ? 
-                      summaryResult.actionItems.join('\n') : null;
+                    // Skip summary generation for very short transcripts
+                    const wordCount = result.text.split(/\s+/).filter(Boolean).length;
+                    if (result.text.length > 200 && wordCount > 50) {
+                      const summaryResult = await generateTranscriptSummary(result.text);
+                      
+                      // Process the summary to ensure it doesn't contain any markdown formatting
+                      summary = summaryResult.summary.replace(/\*\*/g, '');
+                      
+                      // Format action items as a newline-separated string
+                      actionItems = summaryResult.actionItems?.length 
+                        ? summaryResult.actionItems.join('\n') 
+                        : null;
+                        
+                      keywords = summaryResult.keywords.join(', ');
+                    }
                   } catch (summaryError) {
                     console.error("Error generating summary:", summaryError);
                   }
@@ -648,9 +658,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   actionItems,
                 });
               } else {
-                // Use basic transcription
+                // Use basic transcription for simple cases
                 const result = await transcribeAudio(file.path);
                 
+                // Update the transcription record
                 await storage.updateTranscription(id, {
                   text: result.text,
                   status: "completed",

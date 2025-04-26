@@ -199,22 +199,41 @@ export async function generateTranscriptSummary(text: string): Promise<{
   keywords: string[];
 }> {
   try {
+    // Check if text is too short to summarize (less than 200 characters or fewer than 50 words)
+    const wordCount = text.split(/\s+/).filter(Boolean).length;
+    if (text.length < 200 || wordCount < 50) {
+      return {
+        summary: "The transcript is too brief for a meaningful summary. It contains only a short exchange or greeting.",
+        actionItems: [],
+        keywords: []
+      };
+    }
+    
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
         {
           role: "system",
-          content: `Summarize the following meeting transcript concisely. 
+          content: `Summarize the following meeting transcript concisely and ACCURATELY. 
           
-          Extract these components:
-          1. Key points and decisions made in the meeting
-          2. Action items with clear owners and deadlines (if mentioned)
-          3. Important discussion topics
-          4. Up to 10 important keywords or phrases
+          IMPORTANT GUIDELINES:
+          1. ONLY summarize what is EXPLICITLY stated in the transcript
+          2. NEVER add information that is not directly present in the transcript
+          3. If the transcript is very short or just contains greetings, state that it's too brief for a meaningful summary
+          4. Be EXTREMELY conservative in your summary - when in doubt, exclude information
+          5. Do NOT infer topics, decisions, or discussions that aren't clearly stated
+          6. Confirm the existence of real actionable items before listing any
+          7. For very short transcripts (just a few lines), return that it's too brief for summary
+          
+          Extract these components ONLY if they are EXPLICITLY in the transcript:
+          1. Key points and decisions actually made in the meeting (not assumptions)
+          2. Action items with clear owners and deadlines (only if explicitly mentioned)
+          3. Important discussion topics (only topics actually discussed, not inferred)
+          4. Up to 10 important keywords or phrases (that actually appear in the text)
           
           Format your response as a JSON object with the following structure:
           {
-            "summary": "A concise summary of the meeting (max 250 words). Important sections like 'Decisions Made' and 'Challenges' should be included directly in the summary without any markdown formatting symbols like asterisks (**). Use proper paragraph breaks but avoid using markdown formatting.",
+            "summary": "A concise summary of the meeting reflecting ONLY content that is actually in the transcript. Important sections like 'Decisions Made' and 'Challenges' should be included directly in the summary without any markdown formatting symbols. Use proper paragraph breaks but avoid using markdown formatting. For very short transcripts, simply state it's too brief for a meaningful summary.",
             "actionItems": [
               "Person X needs to complete task Y by deadline Z",
               "Team needs to follow up on...",
@@ -223,7 +242,9 @@ export async function generateTranscriptSummary(text: string): Promise<{
             "keywords": ["keyword1", "keyword2", "etc"]
           }
           
-          For the action items, make them very specific and begin with the person or team responsible.
+          If there are no clear action items in the transcript, return an empty array for actionItems.
+          If the transcript is just greetings or very short exchanges, return appropriate message indicating it's too brief.
+          For the action items, only include items that are SPECIFICALLY mentioned as tasks to be done with clear ownership.
           Structure the summary with clear paragraphs but DO NOT use markdown formatting symbols like asterisks or hashtags.`
         },
         {
@@ -231,7 +252,8 @@ export async function generateTranscriptSummary(text: string): Promise<{
           content: text
         }
       ],
-      response_format: { type: "json_object" }
+      response_format: { type: "json_object" },
+      temperature: 0.1 // Use very low temperature for factual responses
     });
 
     const content = response.choices[0].message.content;
@@ -241,6 +263,16 @@ export async function generateTranscriptSummary(text: string): Promise<{
 
     // Parse the JSON response
     const result = JSON.parse(content);
+    
+    // Validation step to prevent hallucination
+    if (wordCount < 100 && result.summary.length > wordCount * 2) {
+      // Summary is suspiciously long compared to the original text - likely hallucinated
+      return {
+        summary: "The transcript is too brief for a meaningful summary. It contains only a short exchange.",
+        actionItems: [],
+        keywords: []
+      };
+    }
     
     return {
       summary: result.summary,
