@@ -385,27 +385,28 @@ export default function TranscriptionDetail() {
                   {transcription.hasTimestamps || transcription.speakerLabels ? (
                     // Show with enhanced formatting for timestamped/speaker content
                     <div className="space-y-3">
-                      {transcription.text.split('\n').map((line, index) => {
-                        // Check if line contains timestamp pattern [00:00]
-                        const hasTimestamp = line.match(/\[\d+:\d+\]/);
-                        // Check if line contains speaker pattern
-                        const hasSpeaker = line.match(/(?:\[\d+:\d+\]\s*([^:]+):|([^[]+)\s*\[\d+:\d+\]:)/);
+                      {/* Split by double newlines which separate different speaker blocks */}
+                      {transcription.text.split('\n\n').map((block, index) => {
+                        // Check if block contains timestamp pattern [00:00]
+                        const hasTimestamp = block.match(/\[\d+:\d+\]/);
+                        // Check if block contains speaker pattern
+                        const hasSpeaker = block.match(/(?:\[\d+:\d+\]\s*([^:]+):|([^[]+)\s*\[\d+:\d+\]:)/);
                         
                         if (hasTimestamp) {
                           // Extract the timestamp and speaker
-                          const timestampMatch = line.match(/\[\d+:\d+\]/);
+                          const timestampMatch = block.match(/\[\d+:\d+\]/);
                           const timestamp = timestampMatch ? timestampMatch[0] : '';
                           
                           if (hasSpeaker) {
                             // If we have a speaker format like "[00:00] Speaker 1: Text"
-                            const speakerEndIndex = line.indexOf(':', timestamp ? line.indexOf(timestamp) + timestamp.length : 0);
+                            const speakerEndIndex = block.indexOf(':', timestamp ? block.indexOf(timestamp) + timestamp.length : 0);
                             
                             if (speakerEndIndex > 0) {
-                              const speaker = line.substring(
+                              const speaker = block.substring(
                                 timestamp.length, 
                                 speakerEndIndex
                               ).trim();
-                              const text = line.substring(speakerEndIndex + 1).trim();
+                              const text = block.substring(speakerEndIndex + 1).trim();
                               
                               return (
                                 <div key={index} className="pb-3 border-b last:border-b-0">
@@ -425,13 +426,13 @@ export default function TranscriptionDetail() {
                           return (
                             <div key={index} className="pb-2">
                               <span className="text-xs font-semibold text-gray-500 mr-2">{timestamp}</span>
-                              <span>{line.replace(timestamp, '').trim()}</span>
+                              <span>{block.replace(timestamp, '').trim()}</span>
                             </div>
                           );
                         }
                         
-                        // Regular text line
-                        return <p key={index} className="text-gray-800">{line}</p>;
+                        // Regular text block
+                        return <p key={index} className="text-gray-800">{block}</p>;
                       })}
                     </div>
                   ) : (

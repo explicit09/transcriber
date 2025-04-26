@@ -174,13 +174,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               formattedText = groupedSegments.map(group => {
                 const timeStr = group.startTime !== undefined ? `[${formatTime(group.startTime)}] ` : '';
                 const speakerStr = group.speaker ? `${group.speaker}: ` : '';
-                return `${timeStr}${speakerStr}${group.texts.join('\n')}`;
+                return `${timeStr}${speakerStr}${group.texts.join(' ')}`;
               }).join('\n\n');
-<<<<<<< Updated upstream
 
-=======
-              
->>>>>>> Stashed changes
               // If we have identified speakers, ensure the text format is clear and consistent
               // Add a header to clarify this is speaker-identified content
               if (result.structuredTranscript.metadata?.speakerCount && result.structuredTranscript.metadata.speakerCount > 1) {
@@ -688,7 +684,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   formattedText = groupedSegments.map(group => {
                     const timeStr = group.startTime !== undefined ? `[${formatTime(group.startTime)}] ` : '';
                     const speakerStr = group.speaker ? `${group.speaker}: ` : '';
-                    return `${timeStr}${speakerStr}${group.texts.join('\n')}`;
+                    return `${timeStr}${speakerStr}${group.texts.join(' ')}`;
                   }).join('\n\n');
                   
                   // If we have identified speakers, ensure the text format is clear and consistent
