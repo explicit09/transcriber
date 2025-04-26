@@ -19,11 +19,18 @@ export default function TranscriptionResult({
 
   // Parse and format the transcript with speaker information
   const formattedTranscript = useMemo(() => {
+    if (!transcriptionText) {
+      return { 
+        lines: [], 
+        hasSpeakerLabels: false 
+      };
+    }
+    
     // Remove any system messages or metadata about speaker detection at the beginning
-    let cleanedText = transcriptionText || '';
-    const systemMessageMatch = (transcriptionText || '').match(/^(?:result:|Speaker Detection:).+?(?:\r?\n|$)/i);
+    let cleanedText = transcriptionText;
+    const systemMessageMatch = transcriptionText.match(/^(?:result:|Speaker Detection:).+?(?:\r?\n|$)/i);
     if (systemMessageMatch) {
-      cleanedText = (transcriptionText || '').substring(systemMessageMatch[0].length).trim();
+      cleanedText = transcriptionText.substring(systemMessageMatch[0].length).trim();
     }
     
     // Check if transcript contains speaker information
