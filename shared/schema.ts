@@ -1,15 +1,24 @@
-import { pgTable, text, serial, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export const transcriptions = pgTable("transcriptions", {
   id: serial("id").primaryKey(),
+  // File metadata
   fileName: text("file_name").notNull(),
   fileSize: integer("file_size").notNull(),
   fileType: text("file_type").notNull(),
+  // Transcription status and content
   status: text("status").notNull().default("pending"),
   text: text("text"),
   error: text("error"),
+  // Meeting metadata
+  meetingTitle: text("meeting_title"),
+  meetingDate: timestamp("meeting_date").defaultNow(),
+  participants: text("participants"),
+  // Created/updated timestamps
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const insertTranscriptionSchema = createInsertSchema(transcriptions).pick({
@@ -17,6 +26,9 @@ export const insertTranscriptionSchema = createInsertSchema(transcriptions).pick
   fileSize: true,
   fileType: true,
   status: true,
+  meetingTitle: true,
+  meetingDate: true,
+  participants: true,
 });
 
 export type InsertTranscription = z.infer<typeof insertTranscriptionSchema>;

@@ -4,6 +4,7 @@ import ProcessingState from "./ProcessingState";
 import FileDetails from "./FileDetails";
 import TranscriptionResult from "./TranscriptionResult";
 import ErrorState from "./ErrorState";
+import MeetingMetadataForm, { MeetingMetadata } from "./MeetingMetadataForm";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -17,6 +18,11 @@ interface Transcription {
   status: string;
   text: string | null;
   error: string | null;
+  meetingTitle: string | null;
+  meetingDate: string | null;
+  participants: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
 }
 
 type FileInfo = {
@@ -30,8 +36,13 @@ type FileInfo = {
 export default function TranscriptionContainer() {
   const [currentFile, setCurrentFile] = useState<FileInfo | null>(null);
   const [transcriptionId, setTranscriptionId] = useState<number | null>(null);
-  const [view, setView] = useState<"upload" | "processing" | "result" | "error">("upload");
+  const [view, setView] = useState<"upload" | "metadata" | "processing" | "result" | "error">("upload");
   const [errorMessage, setErrorMessage] = useState<string>("");
+  const [meetingMetadata, setMeetingMetadata] = useState<MeetingMetadata>({
+    meetingTitle: "",
+    meetingDate: new Date(),
+    participants: ""
+  });
   const { toast } = useToast();
 
   // For progress simulation
@@ -76,11 +87,16 @@ export default function TranscriptionContainer() {
     return () => clearInterval(progressInterval);
   }, [view]);
 
-  // Mutation to upload and transcribe file
+  // Mutation to upload and transcribe file with metadata
   const { mutate: uploadFile, isPending } = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async ({ file, metadata }: { file: File, metadata: MeetingMetadata }) => {
       const formData = new FormData();
       formData.append("file", file);
+      
+      // Add meeting metadata
+      formData.append("meetingTitle", metadata.meetingTitle);
+      formData.append("meetingDate", metadata.meetingDate.toISOString());
+      formData.append("participants", metadata.participants);
 
       const response = await apiRequest("POST", "/api/transcribe", formData);
       return response.json();
@@ -115,16 +131,38 @@ export default function TranscriptionContainer() {
         return;
       }
 
-      // Set file info
+      // Set file info and proceed to metadata entry
       setCurrentFile({
         name: file.name,
         size: file.size,
-        type: fileExt, // Now fileExt is guaranteed to be a string
+        type: fileExt,
         file: file
       });
-
-      // Upload file
-      uploadFile(file);
+      
+      // Auto-generate a meeting title from filename
+      const suggestedTitle = file.name
+        .replace(/\.[^/.]+$/, "") // Remove extension
+        .replace(/_/g, " ")       // Replace underscores with spaces
+        .replace(/-/g, " ")       // Replace hyphens with spaces
+        .replace(/\b\w/g, l => l.toUpperCase()); // Capitalize first letter of each word
+      
+      setMeetingMetadata({
+        ...meetingMetadata,
+        meetingTitle: suggestedTitle
+      });
+      
+      // Move to metadata step
+      setView("metadata");
+    }
+  };
+  
+  // Handle meeting metadata submission
+  const handleMetadataSubmit = (metadata: MeetingMetadata) => {
+    setMeetingMetadata(metadata);
+    
+    // Now upload the file with metadata
+    if (currentFile?.file) {
+      uploadFile({ file: currentFile.file, metadata });
     }
   };
 
@@ -148,6 +186,35 @@ export default function TranscriptionContainer() {
       <div className="p-6">
         {view === "upload" && (
           <UploadArea onFileSelected={handleFileSelected} isUploading={isPending} />
+        )}
+        
+        {view === "metadata" && currentFile && (
+          <div className="space-y-6">
+            <div className="flex items-center space-x-4 pb-4 border-b">
+              <button 
+                onClick={() => setView("upload")} 
+                className="text-sm text-gray-500 hover:text-gray-700 flex items-center"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
+                  <path d="M19 12H5M12 19l-7-7 7-7"/>
+                </svg>
+                Back
+              </button>
+              <h3 className="text-lg font-medium flex-1">Meeting Details</h3>
+            </div>
+            
+            <FileDetails 
+              file={currentFile} 
+              onRemove={handleRemoveFile} 
+              disabled={false} 
+            />
+            
+            <MeetingMetadataForm 
+              onSubmit={handleMetadataSubmit} 
+              isUploading={isPending}
+              defaultValues={meetingMetadata}
+            />
+          </div>
         )}
 
         {currentFile && (view === "processing" || view === "result") && (
