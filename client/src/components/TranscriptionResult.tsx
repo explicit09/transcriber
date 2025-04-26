@@ -174,15 +174,10 @@ export default function TranscriptionResult({
           const parts = segment.split(pattern).filter(part => part.trim().length > 0);
           
           if (parts.length > 1) {
-            // Add the pattern back to the beginning of subsequent parts for context
+            // Simply add all parts to new segments
             for (let i = 0; i < parts.length; i++) {
-              const match = segment.match(pattern);
-              if (i > 0 && match && match[0]) {
-                // Get the actual matched text and add it to the beginning of this part
-                // We match it from the original text to preserve the pattern
-                parts[i] = parts[i].trim();
-              }
-              newSegments.push(parts[i]);
+              // Trim parts to remove any extra whitespace
+              newSegments.push(parts[i].trim());
             }
           } else {
             // Otherwise keep the original segment
