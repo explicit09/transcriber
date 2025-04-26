@@ -57,14 +57,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const validationError = fromZodError(error);
           return res.status(400).json({ message: validationError.message });
         }
-        return res.status(400).json({ message: error.message });
+        return res.status(400).json({ message: error instanceof Error ? error.message : String(error) });
       }
 
-      // Create transcription record
+      // Create transcription record (we already checked req.file exists above)
+      const file = req.file!;
       const transcription = await storage.createTranscription({
-        fileName: req.file.originalname,
-        fileSize: req.file.size,
-        fileType: path.extname(req.file.originalname).substring(1),
+        fileName: file.originalname,
+        fileSize: file.size,
+        fileType: path.extname(file.originalname).substring(1),
         status: "processing",
       });
 

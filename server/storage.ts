@@ -52,11 +52,13 @@ export class MemStorage implements IStorage {
 
   async createTranscription(insertTranscription: InsertTranscription): Promise<Transcription> {
     const id = this.currentId++;
+    // Ensure status is set to avoid TypeScript error
     const transcription: Transcription = { 
       ...insertTranscription, 
       id,
       text: null, 
-      error: null 
+      error: null,
+      status: insertTranscription.status || "pending"
     };
     this.transcriptions.set(id, transcription);
     return transcription;
