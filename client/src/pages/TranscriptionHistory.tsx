@@ -17,9 +17,20 @@ interface Transcription {
   status: string;
   text: string | null;
   error: string | null;
+  // Meeting metadata
   meetingTitle: string | null;
   meetingDate: string | null;
   participants: string | null;
+  // Advanced features
+  speakerLabels: boolean;
+  speakerCount: number | null;
+  hasTimestamps: boolean;
+  duration: number | null;
+  language: string | null;
+  summary: string | null;
+  keywords: string | null;
+  translatedText: string | null;
+  // Timestamps
   createdAt: string | null;
   updatedAt: string | null;
 }

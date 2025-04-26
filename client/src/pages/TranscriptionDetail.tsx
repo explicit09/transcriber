@@ -3,7 +3,18 @@ import { useRoute, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { Loader2, ArrowLeft, Trash2, Clock, Calendar, Users, AlertTriangle } from "lucide-react";
+import { 
+  Loader2, 
+  ArrowLeft, 
+  Trash2, 
+  Clock, 
+  Calendar, 
+  Users, 
+  AlertTriangle, 
+  Languages, 
+  FileAudio, 
+  MessageSquareText 
+} from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -30,9 +41,20 @@ interface Transcription {
   status: string;
   text: string | null;
   error: string | null;
+  // Meeting metadata
   meetingTitle: string | null;
   meetingDate: string | null;
   participants: string | null;
+  // Advanced features
+  speakerLabels: boolean;
+  speakerCount: number | null;
+  hasTimestamps: boolean;
+  duration: number | null;
+  language: string | null;
+  summary: string | null;
+  keywords: string | null;
+  translatedText: string | null;
+  // Timestamps
   createdAt: string | null;
   updatedAt: string | null;
 }
@@ -216,6 +238,9 @@ export default function TranscriptionDetail() {
           <TabsList className="mb-4">
             <TabsTrigger value="view">View</TabsTrigger>
             <TabsTrigger value="edit">Edit & Analyze</TabsTrigger>
+            {(transcription.summary || transcription.language || transcription.duration || transcription.speakerCount) && (
+              <TabsTrigger value="metadata">Metadata</TabsTrigger>
+            )}
           </TabsList>
           
           <TabsContent value="view" className="mt-0">
@@ -234,12 +259,114 @@ export default function TranscriptionDetail() {
                 transcriptionId={transcription.id}
                 originalText={transcription.text}
                 fileName={transcription.meetingTitle || transcription.fileName}
+                hasTimestamps={transcription.hasTimestamps}
+                speakerLabels={transcription.speakerLabels}
+                duration={transcription.duration ? transcription.duration : undefined}
+                // Try to parse the structured transcript from text if it's in JSON format
+                structuredTranscript={
+                  (transcription.hasTimestamps || transcription.speakerLabels) &&
+                  transcription.text.startsWith('{') ? 
+                  (() => {
+                    try {
+                      return JSON.parse(transcription.text);
+                    } catch (e) {
+                      return undefined;
+                    }
+                  })() : undefined
+                }
               />
             ) : (
               <div className="p-6 text-center text-gray-500">
                 No transcription text available to edit
               </div>
             )}
+          </TabsContent>
+          
+          <TabsContent value="metadata" className="mt-0">
+            <div className="space-y-6">
+              {/* Audio metadata section */}
+              {(transcription.duration || transcription.speakerCount || transcription.language) && (
+                <div className="border rounded-md p-4">
+                  <h3 className="text-lg font-medium mb-3 flex items-center">
+                    <FileAudio className="h-5 w-5 mr-2 text-gray-500" />
+                    Audio Information
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {transcription.duration && (
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-700">Duration</h4>
+                        <p className="text-sm text-gray-600">
+                          {Math.floor(transcription.duration / 60)}:{(transcription.duration % 60).toString().padStart(2, '0')} minutes
+                        </p>
+                      </div>
+                    )}
+                    
+                    {transcription.language && (
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-700">Language</h4>
+                        <div className="flex items-center">
+                          <Languages className="h-4 w-4 mr-1 text-gray-500" />
+                          <p className="text-sm text-gray-600">
+                            {(() => {
+                              // Convert language code to full name
+                              const languageMap: Record<string, string> = {
+                                'en': 'English',
+                                'es': 'Spanish',
+                                'fr': 'French',
+                                'de': 'German',
+                                'zh': 'Chinese',
+                                'ja': 'Japanese',
+                                'ko': 'Korean'
+                              };
+                              return languageMap[transcription.language] || transcription.language;
+                            })()}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {transcription.speakerCount && transcription.speakerLabels && (
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-700">Speakers</h4>
+                        <p className="text-sm text-gray-600">
+                          {transcription.speakerCount} {transcription.speakerCount === 1 ? 'person' : 'people'} speaking
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Summary section */}
+              {transcription.summary && (
+                <div className="border rounded-md p-4">
+                  <h3 className="text-lg font-medium mb-3 flex items-center">
+                    <MessageSquareText className="h-5 w-5 mr-2 text-gray-500" />
+                    Summary
+                  </h3>
+                  <div className="text-gray-700 whitespace-pre-wrap">
+                    {transcription.summary}
+                  </div>
+                </div>
+              )}
+              
+              {/* Keywords section */}
+              {transcription.keywords && (
+                <div className="border rounded-md p-4">
+                  <h3 className="text-lg font-medium mb-3">Key Topics</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {transcription.keywords.split(',').map((keyword, index) => (
+                      <span 
+                        key={index} 
+                        className="px-2 py-1 bg-gray-100 rounded-full text-sm text-gray-700"
+                      >
+                        {keyword.trim()}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </TabsContent>
         </Tabs>
       </div>
