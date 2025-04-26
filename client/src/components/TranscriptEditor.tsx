@@ -40,10 +40,14 @@ export default function TranscriptEditor({
   // Check for filler words
   const fillerWords = ["um", "uh", "like", "you know", "so", "actually", "basically"];
   const fillerWordCounts = fillerWords.reduce((acc, word) => {
-    const regex = new RegExp(`\\b${word}\\b`, "gi");
-    const matches = editedText.match(regex);
-    if (matches) {
-      acc[word] = matches.length;
+    try {
+      const regex = new RegExp(`\\b${word}\\b`, "gi");
+      const matches = editedText.match(regex);
+      if (matches) {
+        acc[word] = matches.length;
+      }
+    } catch (e) {
+      console.error(`Error matching pattern for word: ${word}`, e);
     }
     return acc;
   }, {} as Record<string, number>);
@@ -154,12 +158,38 @@ export default function TranscriptEditor({
         </div>
       </div>
       
-      <Textarea
-        value={editedText}
-        onChange={(e) => setEditedText(e.target.value)}
-        className="min-h-[400px] font-mono text-sm"
-        placeholder="The transcript will appear here. Edit as needed."
-      />
+      {showDiff ? (
+        <div className="min-h-[400px] border rounded-md p-3 font-mono text-sm overflow-auto whitespace-pre-wrap">
+          {originalText.split('').map((char, i) => {
+            // Simple character-by-character diff visualization
+            const editedChar = editedText[i];
+            
+            if (i >= editedText.length) {
+              // Character was deleted
+              return <span key={i} className="bg-red-100 line-through">{char}</span>;
+            } else if (char !== editedChar) {
+              // Character was changed
+              return <span key={i} className="bg-yellow-100">{editedChar}</span>;
+            }
+            
+            return <span key={i}>{char}</span>;
+          })}
+          
+          {editedText.length > originalText.length && (
+            // Added new characters
+            <span className="bg-green-100">
+              {editedText.slice(originalText.length)}
+            </span>
+          )}
+        </div>
+      ) : (
+        <Textarea
+          value={editedText}
+          onChange={(e) => setEditedText(e.target.value)}
+          className="min-h-[400px] font-mono text-sm"
+          placeholder="The transcript will appear here. Edit as needed."
+        />
+      )}
       
       <div className="flex flex-col sm:flex-row gap-3 pt-2">
         <div className="flex space-x-2">

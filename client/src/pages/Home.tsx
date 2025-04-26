@@ -6,17 +6,17 @@ export default function Home() {
   const features = [
     {
       title: "Easy Upload",
-      description: "Drag and drop or select your audio files",
+      description: "Drag and drop or select your audio files (MP3, WAV, M4A)",
       icon: <Upload className="h-5 w-5 text-primary" />,
     },
     {
-      title: "AI-Powered",
-      description: "Uses OpenAI's advanced transcription API",
+      title: "AI-Powered Transcription",
+      description: "Uses OpenAI's advanced API for accurate meeting transcripts",
       icon: <MessageSquareText className="h-5 w-5 text-primary" />,
     },
     {
-      title: "Export Options",
-      description: "Copy or download your transcribed text",
+      title: "Edit & Export",
+      description: "Edit, analyze and export your transcriptions easily",
       icon: <Download className="h-5 w-5 text-primary" />,
     },
   ];
@@ -48,7 +48,9 @@ export default function Home() {
       </main>
       
       <footer className="mt-12 border-t border-gray-200 pt-6 pb-8">
-        <p className="text-center text-sm text-gray-500">Internal tool for team use • Supports MP3, WAV, M4A formats</p>
+        <p className="text-center text-sm text-gray-500">
+          Internal tool for team use • Supports MP3, WAV, M4A formats (max 25MB) • Edit, analyze, and export transcriptions
+        </p>
       </footer>
     </div>
   );
