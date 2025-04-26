@@ -145,24 +145,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Generate a summary if requested
             let summary = null;
             let keywords = null;
+            let actionItems = null;
             
             if (generateSummary && result.text) {
               try {
+                // Apply threshold checks
                 const wordCount = result.text.split(/\s+/).filter(Boolean).length;
                 const lineCount = result.text.split('\n').filter(line => line.trim().length > 0).length;
-                const lowerText = result.text.toLowerCase();
                 
                 // Only generate summaries for substantial content
-                if (result.text.length >= 500 && wordCount >= 100 && lineCount >= 5 &&
-                    !lowerText.includes('test') && !lowerText.includes('hallucinate') && 
-                    !lowerText.includes('let\'s see') && lineCount > 1) {
-                  
+                if (result.text.length >= 200 && wordCount >= 30 && lineCount >= 3) {
                   const summaryResult = await generateTranscriptSummary(result.text);
-                  
-                  // Process the summary to ensure it doesn't contain any markdown formatting
-                  summary = summaryResult.summary.replace(/\*\*/g, '');
-                  
-                  // Format action items as a newline-separated string
+                  summary = summaryResult.summary;
+                  actionItems = summaryResult.actionItems?.length 
+                    ? summaryResult.actionItems.join('\n') 
+                    : null;
                   keywords = summaryResult.keywords.join(', ');
                 } else {
                   // For short content, use a standard message
@@ -183,6 +180,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               language: result.language || null,
               summary,
               keywords,
+              actionItems,
+              speakerLabels: enableSpeakerLabels && result.structuredTranscript.segments.some(s => s.speaker),
+              hasTimestamps: enableTimestamps
             });
           } else {
             // Use basic transcription for simple cases
@@ -195,6 +195,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               updatedAt: new Date(),
               duration: result.duration || null,
               language: result.language || null,
+              speakerLabels: false,
+              hasTimestamps: false
             });
           }
 
@@ -641,26 +643,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 
                 if (generateSummary && result.text) {
                   try {
-                    // Apply strict threshold checks to match the OpenAI service
+                    // Apply threshold checks
                     const wordCount = result.text.split(/\s+/).filter(Boolean).length;
                     const lineCount = result.text.split('\n').filter(line => line.trim().length > 0).length;
-                    const lowerText = result.text.toLowerCase();
                     
                     // Only generate summaries for substantial content
-                    if (result.text.length >= 500 && wordCount >= 100 && lineCount >= 5 &&
-                        !lowerText.includes('test') && !lowerText.includes('hallucinate') && 
-                        !lowerText.includes('let\'s see') && lineCount > 1) {
-                      
+                    if (result.text.length >= 200 && wordCount >= 30 && lineCount >= 3) {
                       const summaryResult = await generateTranscriptSummary(result.text);
-                      
-                      // Process the summary to ensure it doesn't contain any markdown formatting
-                      summary = summaryResult.summary.replace(/\*\*/g, '');
-                      
-                      // Format action items as a newline-separated string
+                      summary = summaryResult.summary;
                       actionItems = summaryResult.actionItems?.length 
                         ? summaryResult.actionItems.join('\n') 
                         : null;
-                        
                       keywords = summaryResult.keywords.join(', ');
                     } else {
                       // For short content, use a standard message
@@ -682,6 +675,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   summary,
                   keywords,
                   actionItems,
+                  speakerLabels: enableSpeakerLabels && result.structuredTranscript.segments.some(s => s.speaker),
+                  hasTimestamps: enableTimestamps
                 });
               } else {
                 // Use basic transcription for simple cases
@@ -694,6 +689,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   updatedAt: new Date(),
                   duration: result.duration || null,
                   language: result.language || null,
+                  speakerLabels: false,
+                  hasTimestamps: false
                 });
               }
               
