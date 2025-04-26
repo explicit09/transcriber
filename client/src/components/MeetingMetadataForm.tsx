@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
@@ -11,6 +12,19 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 
 export interface MeetingMetadata {
   meetingTitle: string;
@@ -119,10 +133,83 @@ export default function MeetingMetadataForm({
           className="min-h-[80px]"
         />
       </div>
+      
+      <Accordion type="single" collapsible className="w-full">
+        <AccordionItem value="advanced-options">
+          <AccordionTrigger className="text-sm">Advanced Transcription Options</AccordionTrigger>
+          <AccordionContent>
+            <div className="space-y-4 py-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="speaker-labels" className="block mb-1">Speaker Labels</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Identify different speakers in the audio
+                  </p>
+                </div>
+                <Switch 
+                  id="speaker-labels" 
+                  checked={enableSpeakerLabels}
+                  onCheckedChange={setEnableSpeakerLabels}
+                />
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="timestamps" className="block mb-1">Timestamps</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Add time markers to the transcript
+                  </p>
+                </div>
+                <Switch 
+                  id="timestamps" 
+                  checked={enableTimestamps}
+                  onCheckedChange={setEnableTimestamps}
+                />
+              </div>
+              
+              <div className="space-y-1">
+                <Label htmlFor="language" className="block">Language (optional)</Label>
+                <Select 
+                  value={language || ""} 
+                  onValueChange={(value) => setLanguage(value || null)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Auto-detect language" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Auto-detect</SelectItem>
+                    <SelectItem value="en">English</SelectItem>
+                    <SelectItem value="es">Spanish</SelectItem>
+                    <SelectItem value="fr">French</SelectItem>
+                    <SelectItem value="de">German</SelectItem>
+                    <SelectItem value="zh">Chinese</SelectItem>
+                    <SelectItem value="ja">Japanese</SelectItem>
+                    <SelectItem value="ko">Korean</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="generate-summary" className="block mb-1">Generate Summary</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Create an AI summary of the transcript
+                  </p>
+                </div>
+                <Switch 
+                  id="generate-summary" 
+                  checked={generateSummary}
+                  onCheckedChange={setGenerateSummary}
+                />
+              </div>
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
 
       <Button 
         type="submit" 
-        className="w-full" 
+        className="w-full mt-4" 
         disabled={isUploading || !meetingTitle}
       >
         {isUploading ? "Uploading..." : "Continue"}

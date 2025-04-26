@@ -41,7 +41,11 @@ export default function TranscriptionContainer() {
   const [meetingMetadata, setMeetingMetadata] = useState<MeetingMetadata>({
     meetingTitle: "",
     meetingDate: new Date(),
-    participants: ""
+    participants: "",
+    enableSpeakerLabels: false,
+    enableTimestamps: false,
+    language: null,
+    generateSummary: false
   });
   const { toast } = useToast();
 
@@ -97,6 +101,14 @@ export default function TranscriptionContainer() {
       formData.append("meetingTitle", metadata.meetingTitle);
       formData.append("meetingDate", metadata.meetingDate.toISOString());
       formData.append("participants", metadata.participants);
+      
+      // Add advanced options
+      formData.append("enableSpeakerLabels", metadata.enableSpeakerLabels.toString());
+      formData.append("enableTimestamps", metadata.enableTimestamps.toString());
+      if (metadata.language) {
+        formData.append("language", metadata.language);
+      }
+      formData.append("generateSummary", metadata.generateSummary.toString());
 
       const response = await apiRequest("POST", "/api/transcribe", formData);
       return response.json();
