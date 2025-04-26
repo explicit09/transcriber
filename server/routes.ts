@@ -17,6 +17,7 @@ import {
   generateTranscriptSummary, 
   translateTranscript 
 } from "./openai";
+import { generateTranscriptPDF } from "./pdf";
 import { z } from "zod";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
@@ -347,6 +348,88 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Download a transcription as PDF
+  app.get('/api/transcriptions/:id/pdf', async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid transcription ID" });
+      }
+      
+      const transcription = await storage.getTranscription(id);
+      if (!transcription) {
+        return res.status(404).json({ message: "Transcription not found" });
+      }
+      
+      if (!transcription.text) {
+        return res.status(400).json({ message: "Transcription has no text content" });
+      }
+      
+      // Try to parse structured transcript from text if speakerLabels is true
+      let structuredTranscript = undefined;
+      if (transcription.speakerLabels || transcription.hasTimestamps) {
+        try {
+          // Try to extract structured data if available
+          const segments = transcription.text.match(/\[([0-9:]+)\]\s*(?:([^:]+):\s*)?(.+?)(?=\n\[|$)/gs);
+          
+          if (segments && segments.length > 0) {
+            structuredTranscript = {
+              segments: segments.map(segment => {
+                const timeMatch = segment.match(/\[([0-9:]+)\]/);
+                const speakerMatch = segment.match(/\[[0-9:]+\]\s*([^:]+):/);
+                const textMatch = segment.match(/\[[0-9:]+\]\s*(?:[^:]+:\s*)?(.+)/s);
+                
+                const time = timeMatch ? timeMatch[1] : "00:00";
+                const speaker = speakerMatch ? speakerMatch[1].trim() : undefined;
+                const text = textMatch ? textMatch[1].trim() : segment;
+                
+                // Convert MM:SS to seconds
+                const [minutes, seconds] = time.split(':').map(Number);
+                const startTime = minutes * 60 + seconds;
+                
+                return {
+                  start: startTime,
+                  end: startTime + 10, // Approximate 10-second segments
+                  text,
+                  speaker
+                };
+              }),
+              metadata: {
+                speakerCount: transcription.speakerCount || undefined,
+                duration: transcription.duration || undefined,
+                language: transcription.language || undefined
+              }
+            };
+          }
+        } catch (parseError) {
+          console.error("Error parsing structured transcript:", parseError);
+          // Continue without structured format if parsing fails
+        }
+      }
+      
+      // Generate PDF
+      const { filePath, fileName } = await generateTranscriptPDF(transcription, structuredTranscript);
+      
+      // Send the PDF file
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      
+      const fileStream = fs.createReadStream(filePath);
+      fileStream.pipe(res);
+      
+      // Clean up the file after sending
+      fileStream.on('end', () => {
+        fs.unlink(filePath, (err) => {
+          if (err) console.error(`Error deleting temporary PDF file: ${err?.message || 'Unknown error'}`);
+        });
+      });
+      
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      return res.status(500).json({ message: "Error generating PDF" });
+    }
+  });
+
   // Batch process multiple files
   app.post('/api/batch-transcribe', upload.array('files', 10), async (req: Request, res: Response) => {
     try {
