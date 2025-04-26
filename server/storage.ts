@@ -137,6 +137,8 @@ export class MemStorage implements IStorage {
       meetingTitle: insertTranscription.meetingTitle || null,
       meetingDate: insertTranscription.meetingDate || now,
       participants: insertTranscription.participants || null,
+      // Initialize structured transcript
+      structuredTranscript: null, // Initialize as null
       createdAt: now,
       updatedAt: now
     };
@@ -152,10 +154,10 @@ export class MemStorage implements IStorage {
     const transcription = this.transcriptions.get(id);
     if (!transcription) return undefined;
     
-    // Always update the updatedAt timestamp
+    // Merge updates, ensuring structuredTranscript is handled
     const updatedTranscription = { 
       ...transcription, 
-      ...updates,
+      ...updates, // This will overwrite structuredTranscript if it's in updates
       updatedAt: new Date()
     };
     this.transcriptions.set(id, updatedTranscription);

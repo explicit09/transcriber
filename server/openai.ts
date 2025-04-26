@@ -112,9 +112,6 @@ async function processSpeakerDiarization(
     const segmentsText = timestampedSegments
       .map(s => `[${formatTime(s.start)} - ${formatTime(s.end)}]: ${s.text}`)
       .join('\n');
-      
-    // Pre-analyze the transcript to determine if it's likely a two-person conversation
-    const isLikelyTwoPerson = isProbablyTwoPersonConversation(fullText);
 
     // Ask GPT-4o to analyze and assign speakers
     const response = await openai.chat.completions.create({
@@ -125,8 +122,6 @@ async function processSpeakerDiarization(
           content: `You are an expert speech and conversation analyst specializing in precise speaker diarization. Your task is to analyze a transcript and accurately identify different speakers.
 
 IMPORTANT INSTRUCTION: DEFAULT TO TWO SPEAKERS UNLESS THERE IS OVERWHELMING EVIDENCE OTHERWISE.
-
-${isLikelyTwoPerson ? "⚠️ CRITICAL: This transcript appears to be a TWO-PERSON CONVERSATION. Unless there is explicit evidence of 3+ distinct speakers (such as self-introductions or explicit naming of a third person), you MUST use only 'Speaker 1' and 'Speaker 2'." : ""}
 
 IMPROVED SPEAKER ANALYSIS APPROACH:
 1. First, read the entire transcript to understand the overall flow, topics, and speaking styles
@@ -177,7 +172,7 @@ Otherwise, use "Speaker 1", "Speaker 2", etc.`
     const result = JSON.parse(content);
     
     // Post-process to ensure consistency and proper speaker labeling
-    const processed = enforceConsistentSpeakers(result, isLikelyTwoPerson);
+    const processed = enforceConsistentSpeakers(result);
     
     return processed;
   } catch (error) {
@@ -190,73 +185,54 @@ Otherwise, use "Speaker 1", "Speaker 2", etc.`
   }
 }
 
-// Helper function to check if a transcript is likely a two-person conversation
-function isProbablyTwoPersonConversation(text: string): boolean {
-  // Check for patterns that suggest a two-person conversation
-  const lines = text.split('\n').filter(line => line.trim().length > 0);
-  
-  // Check for alternating question-answer patterns (very common in two-person exchanges)
-  let questionCount = 0;
-  for (const line of lines) {
-    if (line.includes('?')) {
-      questionCount++;
-    }
-  }
-  
-  // If there are questions and it's a back-and-forth conversation, it's likely two people
-  if (questionCount > 0 && lines.length < 20) {
-    return true;
-  }
-  
-  // Check for "interview-like" patterns
-  const shortResponses = lines.filter(line => line.split(' ').length < 15).length;
-  const longResponses = lines.filter(line => line.split(' ').length >= 15).length;
-  
-  // If there's a mix of short and long responses, it's likely an interview (two people)
-  if (shortResponses > 0 && longResponses > 0) {
-    return true;
-  }
-  
-  return false;
-}
-
 // Helper function to enforce consistent speaker labeling
 function enforceConsistentSpeakers(
-  result: { segments: TranscriptSegment[], speakerCount: number },
-  isLikelyTwoPerson: boolean
+  result: { segments: TranscriptSegment[], speakerCount: number }
 ): { segments: TranscriptSegment[], speakerCount: number } {
-  // If we think it's a two-person conversation, limit to Speaker 1 and Speaker 2
-  if (isLikelyTwoPerson) {
+  // Only enforce 2 speakers if the initial result had MORE than 2
+  if (result.speakerCount > 2) {
+    console.log(`Consolidating speakers: Initial count ${result.speakerCount}, enforcing 2.`);
     // Map any Speaker 3+ to either Speaker 1 or Speaker 2 based on context
     const speakerMap = new Map<string, string>();
+    let speaker1Usage = 0;
+    let speaker2Usage = 0;
+
     const normalizedSegments = result.segments.map(segment => {
       const speaker = segment.speaker || '';
-      
-      // If it's Speaker 1 or 2, keep it
-      if (speaker === 'Speaker 1' || speaker === 'Speaker 2') {
+
+      // If it's Speaker 1 or 2, keep it and track usage
+      if (speaker === 'Speaker 1') {
+        speaker1Usage++;
         return segment;
       }
-      
-      // For any other speaker, map to either Speaker 1 or 2
-      if (!speakerMap.has(speaker)) {
-        // Assign to whichever speaker has spoken less so far
-        const speaker1Count = result.segments.filter(s => s.speaker === 'Speaker 1').length;
-        const speaker2Count = result.segments.filter(s => s.speaker === 'Speaker 2').length;
-        speakerMap.set(speaker, speaker1Count <= speaker2Count ? 'Speaker 1' : 'Speaker 2');
+      if (speaker === 'Speaker 2') {
+        speaker2Usage++;
+        return segment;
       }
-      
+
+      // For any other speaker (Speaker 3, 4, etc.), map to either Speaker 1 or 2
+      if (!speakerMap.has(speaker)) {
+        // Assign to whichever speaker (1 or 2) has been used less so far
+        const targetSpeaker = speaker1Usage <= speaker2Usage ? 'Speaker 1' : 'Speaker 2';
+        speakerMap.set(speaker, targetSpeaker);
+        console.log(`Mapping ${speaker} to ${targetSpeaker}`);
+        if (targetSpeaker === 'Speaker 1') speaker1Usage++;
+        else speaker2Usage++;
+      }
+
       return {
         ...segment,
         speaker: speakerMap.get(speaker)
       };
     });
-    
+
     return {
       segments: normalizedSegments,
-      speakerCount: 2
+      speakerCount: 2 // Force count to 2
     };
   }
-  
+
+  // If initial result had 0, 1, or 2 speakers, return it as is
   return result;
 }
 
@@ -274,7 +250,7 @@ export async function generateTranscriptSummary(text: string): Promise<{
     
     // MINIMAL LENGTH CHECK: Only reject extremely short messages
     // For very short transcripts, simply return a standard message without calling the API
-    if (text.length < 200 || wordCount < 30 || lineCount < 3) {
+    if (text.length < 100 || wordCount < 15) {
       return {
         summary: "The transcript is too brief for a meaningful summary. It contains only a short exchange.",
         actionItems: [],
@@ -285,7 +261,7 @@ export async function generateTranscriptSummary(text: string): Promise<{
     // Check for test messages but only if they're short
     // This prevents false positives on longer legitimate transcripts that might mention "test"
     if ((lowerText.includes('test') || lowerText.includes('hallucinate')) && 
-        (text.length < 300 || lineCount < 5)) {
+        (text.length < 150 || lineCount < 4)) {
       return {
         summary: "This appears to be a test message. No summary is needed.",
         actionItems: [],
@@ -349,7 +325,7 @@ export async function generateTranscriptSummary(text: string): Promise<{
     
     // ADDITIONAL VALIDATION: Only for shorter transcripts (not for long legitimate transcripts)
     // Only check for hallucination if the transcript is relatively short
-    if (wordCount < 150 && result.summary.length > wordCount) {
+    if (wordCount < 100 && result.summary.length > wordCount * 1.5) {
       // Summary is suspiciously long compared to the original text - likely hallucinated
       return {
         summary: "The transcript is too brief for a meaningful summary. It contains only a short exchange.",
@@ -360,7 +336,7 @@ export async function generateTranscriptSummary(text: string): Promise<{
     
     // CONTENT VERIFICATION: Only for shorter transcripts
     // Don't run verification on longer transcripts that are likely legitimate 
-    if (wordCount < 200) {
+    if (wordCount < 150) {
       const commonHallucinatedTerms = ["marketing strategy", "budget", "client presentation", 
         "resource allocation", "development team", "performance review", "project", "initiatives"];
         

@@ -153,8 +153,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 const wordCount = result.text.split(/\s+/).filter(Boolean).length;
                 const lineCount = result.text.split('\n').filter(line => line.trim().length > 0).length;
                 
-                // Only generate summaries for substantial content
-                if (result.text.length >= 200 && wordCount >= 30 && lineCount >= 3) {
+                // Only generate summaries for substantial content (relaxed thresholds)
+                if (result.text.length >= 100 && wordCount >= 15) { // Reduced thresholds
                   const summaryResult = await generateTranscriptSummary(result.text);
                   summary = summaryResult.summary;
                   actionItems = summaryResult.actionItems?.length 
@@ -182,7 +182,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               keywords,
               actionItems,
               speakerLabels: enableSpeakerLabels && result.structuredTranscript.segments.some(s => s.speaker),
-              hasTimestamps: enableTimestamps
+              hasTimestamps: enableTimestamps,
+              // Store structured transcript as JSON string
+              structuredTranscript: JSON.stringify(result.structuredTranscript) 
             });
           } else {
             // Use basic transcription for simple cases
@@ -196,7 +198,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               duration: result.duration || null,
               language: result.language || null,
               speakerLabels: false,
-              hasTimestamps: false
+              hasTimestamps: false,
+              // Store null for structured transcript when using basic transcription
+              structuredTranscript: null 
             });
           }
 
@@ -205,17 +209,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (err) console.error(`Error deleting file: ${err?.message || 'Unknown error'}`);
           });
         } catch (error) {
-          // Handle errors and update the record
+          // Handle errors and update the record (Original simpler error handling)
           const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error("Error during transcription processing:", errorMessage);
           await storage.updateTranscription(transcription.id, {
             error: errorMessage,
             status: "error",
             updatedAt: new Date(),
+            // Ensure structuredTranscript is null on error
+            structuredTranscript: null
           });
 
-          // Clean up the file even on error
-          fs.unlink(file.path, (err) => {
-            if (err) console.error(`Error deleting file: ${err?.message || 'Unknown error'}`);
+          // Clean up the file even on error (Original path)
+          fs.unlink(file.path, (err) => { 
+            if (err) console.error(`Error deleting file after error: ${err?.message || 'Unknown error'}`);
           });
         }
       })();
@@ -243,8 +250,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!transcription) {
         return res.status(404).json({ message: "Transcription not found" });
       }
+      
+      // Parse structured transcript from JSON string if it exists
+      let structuredTranscript = null;
+      if (transcription.structuredTranscript) {
+        try {
+          structuredTranscript = JSON.parse(transcription.structuredTranscript);
+        } catch (e) {
+          console.error("Failed to parse structuredTranscript JSON:", e);
+          // Optionally return an error or just leave it null
+        }
+      }
 
-      return res.status(200).json(transcription);
+      // Return the transcription object with the parsed structured data
+      return res.status(200).json({ 
+        ...transcription,
+        structuredTranscript: structuredTranscript // Send parsed object
+      });
     } catch (error) {
       console.error("Error retrieving transcription:", error);
       return res.status(500).json({ message: "Internal server error" });
@@ -255,7 +277,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/transcriptions', async (req: Request, res: Response) => {
     try {
       const transcriptions = await storage.listTranscriptions();
-      return res.status(200).json(transcriptions);
+      
+      // Parse structured transcript for each item
+      const processedTranscriptions = transcriptions.map(t => {
+        let structuredTranscript = null;
+        if (t.structuredTranscript) {
+          try {
+            structuredTranscript = JSON.parse(t.structuredTranscript);
+          } catch (e) {
+            console.error(`Failed to parse structuredTranscript for ID ${t.id}:`, e);
+          }
+        }
+        return { ...t, structuredTranscript };
+      });
+      
+      return res.status(200).json(processedTranscriptions);
     } catch (error) {
       console.error("Error retrieving transcriptions:", error);
       return res.status(500).json({ message: "Internal server error" });
@@ -647,8 +683,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     const wordCount = result.text.split(/\s+/).filter(Boolean).length;
                     const lineCount = result.text.split('\n').filter(line => line.trim().length > 0).length;
                     
-                    // Only generate summaries for substantial content
-                    if (result.text.length >= 200 && wordCount >= 30 && lineCount >= 3) {
+                    // Only generate summaries for substantial content (relaxed thresholds)
+                    if (result.text.length >= 100 && wordCount >= 15) { // Reduced thresholds
                       const summaryResult = await generateTranscriptSummary(result.text);
                       summary = summaryResult.summary;
                       actionItems = summaryResult.actionItems?.length 
@@ -676,7 +712,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   keywords,
                   actionItems,
                   speakerLabels: enableSpeakerLabels && result.structuredTranscript.segments.some(s => s.speaker),
-                  hasTimestamps: enableTimestamps
+                  hasTimestamps: enableTimestamps,
+                  // Store structured transcript as JSON string
+                  structuredTranscript: JSON.stringify(result.structuredTranscript) 
                 });
               } else {
                 // Use basic transcription for simple cases
@@ -690,7 +728,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   duration: result.duration || null,
                   language: result.language || null,
                   speakerLabels: false,
-                  hasTimestamps: false
+                  hasTimestamps: false,
+                  // Store null for structured transcript when using basic transcription
+                  structuredTranscript: null 
                 });
               }
               
@@ -699,27 +739,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 if (err) console.error(`Error deleting file: ${err?.message || 'Unknown error'}`);
               });
               
-            } catch (error) {
-              // Handle errors for this file
-              const errorMessage = error instanceof Error ? error.message : String(error);
+            } catch (processError) {
+              // Handle errors for this file (Original simpler error handling)
+              const errorMessage = processError instanceof Error ? processError.message : String(processError);
+              console.error(`Error processing transcription ${id}:`, errorMessage);
               await storage.updateTranscription(id, {
                 error: errorMessage,
                 status: "error",
                 updatedAt: new Date(),
+                 // Ensure structuredTranscript is null on error
+                structuredTranscript: null
               });
               
-              // Get the file again to delete it
-              const transcription = await storage.getTranscription(id);
-              if (!transcription) continue;
-              
-              const file = files.find(f => f.originalname === transcription.fileName);
-              if (file) {
-                fs.unlink(file.path, (err) => {
-                  if (err) console.error(`Error deleting file: ${err?.message || 'Unknown error'}`);
+              // Clean up the file (Original path)
+              // Need to find the correct file path for cleanup in case of error
+              const failedTranscription = await storage.getTranscription(id);
+              const fileToClean = files.find(f => f.originalname === failedTranscription?.fileName);
+              if (fileToClean) {
+                fs.unlink(fileToClean.path, (err) => { 
+                  if (err) console.error(`Error deleting batch file ${fileToClean.originalname} after error: ${err?.message || 'Unknown error'}`);
                 });
+              } else {
+                 console.warn(`Could not find file path to clean for failed transcription ID ${id}`);
               }
             }
-          }
+          } // End loop for batch IDs
         })();
       }
       

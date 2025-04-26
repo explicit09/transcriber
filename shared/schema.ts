@@ -31,6 +31,8 @@ export const transcriptions = pgTable("transcriptions", {
   // Created/updated timestamps
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  // Add structured transcript data
+  structuredTranscript: text("structured_transcript"), // Store as JSON string for now
 });
 
 export const insertTranscriptionSchema = createInsertSchema(transcriptions).pick({
@@ -44,9 +46,16 @@ export const insertTranscriptionSchema = createInsertSchema(transcriptions).pick
   speakerLabels: true,
   hasTimestamps: true,
   language: true,
+  // Add structured transcript to schema
+  structuredTranscript: true,
 });
 
-export type InsertTranscription = z.infer<typeof insertTranscriptionSchema>;
+// Explicitly add optional/nullable for zod type inference
+export const insertTranscriptionSchemaTyped = insertTranscriptionSchema.extend({
+  structuredTranscript: z.string().optional().nullable(),
+});
+
+export type InsertTranscription = z.infer<typeof insertTranscriptionSchemaTyped>;
 export type Transcription = typeof transcriptions.$inferSelect;
 
 // Schema for file upload

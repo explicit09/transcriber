@@ -63,6 +63,8 @@ interface Transcription {
   // Timestamps
   createdAt: string | null;
   updatedAt: string | null;
+  // Add structured transcript object
+  structuredTranscript: StructuredTranscript | null; 
 }
 
 export default function TranscriptionDetail() {
@@ -153,21 +155,6 @@ export default function TranscriptionDetail() {
     else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     else return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
-
-  // Parse structured transcript if available
-  const parseStructuredTranscript = (): StructuredTranscript | null => {
-    if (!transcription?.text) return null;
-    
-    // Try to parse JSON
-    try {
-      return JSON.parse(transcription.text) as StructuredTranscript;
-    } catch (e) {
-      return null; // Not a JSON structure, which is fine
-    }
-  };
-
-  // Get structured transcript if available
-  const structuredTranscript = parseStructuredTranscript();
 
   // Calculate duration display
   const formatDuration = (seconds: number | null) => {
@@ -486,7 +473,7 @@ export default function TranscriptionDetail() {
               fileName={transcription.fileName}
               hasTimestamps={transcription.hasTimestamps}
               speakerLabels={transcription.speakerLabels}
-              structuredTranscript={structuredTranscript}
+              structuredTranscript={transcription.structuredTranscript || undefined}
               duration={transcription.duration}
             />
           </TabsContent>

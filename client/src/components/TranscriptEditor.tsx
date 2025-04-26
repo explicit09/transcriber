@@ -45,94 +45,15 @@ export default function TranscriptEditor({
   const [viewMode, setViewMode] = useState<'plain' | 'structured'>('plain');
   const { toast } = useToast();
   
-  // Parse structured transcript if available
+  // Simplify parsedTranscript logic: just use the prop if available
   const parsedTranscript = useMemo(() => {
-    // If structuredTranscript is provided directly, use it
+    // Directly use the structuredTranscript prop if provided
     if (structuredTranscript) {
       return structuredTranscript;
     }
-    
-    // If hasTimestamps or speakerLabels is true, try to parse from text
-    if ((hasTimestamps || speakerLabels) && originalText) {
-      // First try direct JSON parsing in case it's already a JSON structure
-      try {
-        return JSON.parse(originalText) as StructuredTranscript;
-      } catch (e) {
-        // If JSON parsing fails, try to extract structured data from text format
-        try {
-          // Check if the text has timestamp patterns
-          const hasStructuredContent = originalText && (
-            originalText.includes('[') && 
-            (originalText.includes(']: ') || originalText.includes('Speaker') || 
-            originalText.match(/\[\d+:\d+\]/))
-          );
-          
-          if (hasStructuredContent) {
-            // Try to extract segments using regex patterns
-            // Format: [00:00] Speaker 1: This is what they said
-            let segments: TranscriptSegment[] = [];
-            let timeMatches = originalText.match(/\[([0-9:]+)\](?:\s*([^:]+))?:\s*(.+?)(?=\n\[|$)/gs);
-            
-            // If no matches found, try another common format
-            // Format: Speaker 1 [00:00]: This is what they said
-            if (!timeMatches || timeMatches.length === 0) {
-              timeMatches = originalText.match(/([^[]+)\s*\[([0-9:]+)\]:\s*(.+?)(?=\n[^[]+\s*\[|$)/gs);
-            }
-            
-            if (timeMatches && timeMatches.length > 0) {
-              segments = timeMatches.map(match => {
-                let timeMatch, speakerMatch, textMatch, startTime;
-                
-                // Try first format: [00:00] Speaker: Text
-                if (match.match(/^\[([0-9:]+)\]/)) {
-                  timeMatch = match.match(/\[([0-9:]+)\]/);
-                  speakerMatch = match.match(/\[[0-9:]+\]\s*([^:]+):/);
-                  textMatch = match.match(/\[[0-9:]+\](?:\s*[^:]+)?:\s*(.+)/s);
-                } 
-                // Try second format: Speaker [00:00]: Text
-                else if (match.match(/[^[]+\s*\[([0-9:]+)\]:/)) {
-                  timeMatch = match.match(/\[([0-9:]+)\]/);
-                  speakerMatch = match.match(/^([^[]+)\s*\[[0-9:]+\]:/);
-                  textMatch = match.match(/[^[]+\s*\[[0-9:]+\]:\s*(.+)/s);
-                }
-                
-                // Extract time components
-                const time = timeMatch ? timeMatch[1] : "00:00";
-                const [minutes, seconds] = time.split(':').map(Number);
-                startTime = minutes * 60 + (seconds || 0);
-                
-                const speaker = speakerMatch ? speakerMatch[1].trim() : undefined;
-                const text = textMatch ? textMatch[1].trim() : match;
-                
-                return {
-                  start: startTime || 0,
-                  end: (startTime || 0) + 10, // Approximate 10-second segments
-                  text,
-                  speaker
-                };
-              });
-              
-              return {
-                segments,
-                metadata: {
-                  speakerCount: speakerLabels ? (new Set(segments.map(s => s.speaker).filter(Boolean))).size : undefined,
-                  duration,
-                  language: undefined
-                }
-              };
-            }
-          }
-        } catch (parseError) {
-          console.error("Error parsing structured format from text:", parseError);
-        }
-        
-        // If all parsing attempts fail, return null
-        return null;
-      }
-    }
-    
+    // No need for complex fallback parsing logic anymore
     return null;
-  }, [structuredTranscript, originalText, hasTimestamps, speakerLabels, duration]);
+  }, [structuredTranscript]);
   
   // Text analytics
   const wordCount = editedText.trim().split(/\s+/).filter(Boolean).length;
@@ -316,7 +237,8 @@ export default function TranscriptEditor({
         </div>
         
         <div className="flex items-center space-x-4">
-          {(parsedTranscript || hasTimestamps) && (
+          {/* Enable structured view only if parsedTranscript is valid */}
+          {parsedTranscript && (
             <div className="flex items-center space-x-2">
               <Switch
                 id="view-mode"
@@ -455,7 +377,8 @@ export default function TranscriptEditor({
             Export TXT
           </Button>
           
-          {(parsedTranscript || hasTimestamps) && (
+          {/* Enable structured export only if parsedTranscript is valid */}
+          {parsedTranscript && (
             <Button 
               variant="secondary" 
               onClick={downloadStructuredText}
