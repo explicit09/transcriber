@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import TranscriptEditor from "@/components/TranscriptEditor";
+import InteractiveTranscript from "@/components/InteractiveTranscript";
+import { StructuredTranscript } from "@shared/schema";
 
 // Type definition for transcription data from the API
 interface Transcription {
@@ -123,6 +125,90 @@ export default function TranscriptionDetail() {
     else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     else return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
+
+  // Parse structured transcript if available
+  const parseStructuredTranscript = (): StructuredTranscript | null => {
+    if (!transcription?.text) return null;
+    
+    // Try to parse JSON
+    try {
+      return JSON.parse(transcription.text) as StructuredTranscript;
+    } catch (e) {
+      // If not valid JSON, check if it has timestamps or speaker labels
+      if (transcription.hasTimestamps || transcription.speakerLabels) {
+        // Try to extract structured data from text format
+        try {
+          // Check if the text has timestamp patterns
+          const hasStructuredContent = transcription.text && (
+            transcription.text.includes('[') && 
+            (transcription.text.includes(']: ') || transcription.text.includes('Speaker') || 
+            transcription.text.match(/\[\d+:\d+\]/))
+          );
+          
+          if (hasStructuredContent) {
+            // Try to extract segments using regex patterns
+            // Format: [00:00] Speaker 1: This is what they said
+            let segments = [];
+            let timeMatches = transcription.text.match(/\[([0-9:]+)\](?:\s*([^:]+))?:\s*(.+?)(?=\n\[|$)/gs);
+            
+            // If no matches found, try another common format
+            // Format: Speaker 1 [00:00]: This is what they said
+            if (!timeMatches || timeMatches.length === 0) {
+              timeMatches = transcription.text.match(/([^[]+)\s*\[([0-9:]+)\]:\s*(.+?)(?=\n[^[]+\s*\[|$)/gs);
+            }
+            
+            if (timeMatches && timeMatches.length > 0) {
+              segments = timeMatches.map(match => {
+                let timeMatch, speakerMatch, textMatch, startTime;
+                
+                // Try first format: [00:00] Speaker: Text
+                if (match.match(/^\[([0-9:]+)\]/)) {
+                  timeMatch = match.match(/\[([0-9:]+)\]/);
+                  speakerMatch = match.match(/\[[0-9:]+\]\s*([^:]+):/);
+                  textMatch = match.match(/\[[0-9:]+\](?:\s*[^:]+)?:\s*(.+)/s);
+                } 
+                // Try second format: Speaker [00:00]: Text
+                else if (match.match(/[^[]+\s*\[([0-9:]+)\]:/)) {
+                  timeMatch = match.match(/\[([0-9:]+)\]/);
+                  speakerMatch = match.match(/^([^[]+)\s*\[[0-9:]+\]:/);
+                  textMatch = match.match(/[^[]+\s*\[[0-9:]+\]:\s*(.+)/s);
+                }
+                
+                // Extract time components
+                const time = timeMatch ? timeMatch[1] : "00:00";
+                const [minutes, seconds] = time.split(':').map(Number);
+                startTime = minutes * 60 + (seconds || 0);
+                
+                const speaker = speakerMatch ? speakerMatch[1].trim() : undefined;
+                const text = textMatch ? textMatch[1].trim() : match;
+                
+                return {
+                  start: startTime || 0,
+                  end: (startTime || 0) + 10, // Approximate 10-second segments
+                  text,
+                  speaker
+                };
+              });
+              
+              return {
+                segments,
+                metadata: {
+                  speakerCount: transcription.speakerLabels ? transcription.speakerCount : undefined,
+                  duration: transcription.duration,
+                  language: transcription.language || undefined
+                }
+              };
+            }
+          }
+        } catch (parseError) {
+          console.error("Error parsing structured format from text:", parseError);
+        }
+      }
+      
+      // If all parsing attempts fail, return null
+      return null;
+    }
+  };
   
   if (isLoading) {
     return (
@@ -153,6 +239,9 @@ export default function TranscriptionDetail() {
       </div>
     );
   }
+  
+  // Parse structured transcript
+  const structuredTranscript = parseStructuredTranscript();
   
   return (
     <div className="container mx-auto max-w-4xl px-4 py-8">
@@ -199,33 +288,39 @@ export default function TranscriptionDetail() {
           >
             <Button variant="outline" size="sm">
               <FileDown className="h-4 w-4 mr-2" />
-              Download PDF
+              PDF
             </Button>
           </a>
           
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="sm" disabled={isDeleting}>
+              <Button variant="outline" size="sm" className="text-red-500 border-red-200 hover:bg-red-50">
                 <Trash2 className="h-4 w-4 mr-2" />
                 Delete
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This action cannot be undone. This will permanently delete the
-                  transcription and all of its data.
+                  This will permanently delete the transcription and cannot be undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                 <AlertDialogAction 
                   onClick={() => deleteTranscription()}
+                  className="bg-red-500 hover:bg-red-600"
                   disabled={isDeleting}
-                  className="bg-red-600 hover:bg-red-700"
                 >
-                  {isDeleting ? "Deleting..." : "Delete"}
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    "Delete"
+                  )}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -233,214 +328,141 @@ export default function TranscriptionDetail() {
         </div>
       </div>
       
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-        <div className="border-b p-4 bg-gray-50">
-          <div className="flex justify-between items-center flex-wrap gap-2">
-            <div className="text-sm text-gray-500">
-              <span className="font-medium">{transcription.fileName}</span> • 
-              <span className="ml-1">{formatFileSize(transcription.fileSize)}</span> • 
-              <span className="ml-1 uppercase">{transcription.fileType} file</span>
+      {/* File Info */}
+      <div className="mb-6 bg-gray-50 p-4 rounded-md text-sm">
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
+          <div>
+            <span className="text-gray-500">File:</span>{" "}
+            <span className="font-medium">{transcription.fileName}</span>
+          </div>
+          <div>
+            <span className="text-gray-500">Size:</span>{" "}
+            <span className="font-medium">{formatFileSize(transcription.fileSize)}</span>
+          </div>
+          <div>
+            <span className="text-gray-500">Type:</span>{" "}
+            <span className="font-medium">.{transcription.fileType}</span>
+          </div>
+          {transcription.language && (
+            <div>
+              <span className="text-gray-500">Language:</span>{" "}
+              <span className="font-medium">{transcription.language}</span>
             </div>
-            
-            {transcription.status === "error" && (
-              <div className="text-sm text-red-600 flex items-center">
-                <AlertTriangle className="h-4 w-4 mr-1" />
-                <span>{transcription.error || "An error occurred during transcription"}</span>
-              </div>
-            )}
+          )}
+          {transcription.duration && (
+            <div>
+              <span className="text-gray-500">Duration:</span>{" "}
+              <span className="font-medium">
+                {Math.floor(transcription.duration / 60)}m {Math.floor(transcription.duration % 60)}s
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+      
+      {transcription.error ? (
+        <div className="bg-red-50 p-6 rounded-lg mb-6">
+          <div className="flex items-start">
+            <AlertTriangle className="h-6 w-6 text-red-500 mr-3 mt-0.5" />
+            <div>
+              <h3 className="text-lg font-medium text-red-800">Transcription Failed</h3>
+              <p className="mt-2 text-red-700">{transcription.error}</p>
+            </div>
           </div>
         </div>
-        
-        <Tabs defaultValue="view" value={activeTab} onValueChange={setActiveTab} className="p-6">
+      ) : (
+        <Tabs defaultValue="view" value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-4">
             <TabsTrigger value="view">View</TabsTrigger>
-            <TabsTrigger value="edit">Edit & Analyze</TabsTrigger>
-            {(transcription.summary || transcription.language || transcription.duration || transcription.speakerCount || transcription.actionItems) && (
-              <TabsTrigger value="metadata">Metadata</TabsTrigger>
+            <TabsTrigger value="edit">Edit</TabsTrigger>
+            {transcription.hasTimestamps && structuredTranscript && (
+              <TabsTrigger value="interactive">Interactive</TabsTrigger>
+            )}
+            {transcription.summary && (
+              <TabsTrigger value="summary">Summary</TabsTrigger>
             )}
           </TabsList>
           
-          <TabsContent value="view" className="mt-0">
+          <TabsContent value="view" className="prose max-w-none">
             {transcription.text ? (
-              <div className="whitespace-pre-wrap">{transcription.text}</div>
+              <div className="bg-white border rounded-md p-5 whitespace-pre-line">
+                {transcription.text}
+              </div>
             ) : (
-              <div className="p-6 text-center text-gray-500">
-                No transcription text available
+              <div className="text-center py-12 bg-gray-50 rounded-md">
+                <MessageSquareText className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-gray-500">No transcript content available</p>
               </div>
             )}
           </TabsContent>
           
-          <TabsContent value="edit" className="mt-0">
-            {transcription.text ? (
-              <TranscriptEditor 
+          <TabsContent value="edit">
+            {transcription.text && (
+              <TranscriptEditor
                 transcriptionId={transcription.id}
                 originalText={transcription.text}
-                fileName={transcription.meetingTitle || transcription.fileName}
+                fileName={transcription.fileName}
                 hasTimestamps={transcription.hasTimestamps}
                 speakerLabels={transcription.speakerLabels}
-                duration={transcription.duration ? transcription.duration : undefined}
-                // Try to parse the structured transcript from text if it's in JSON format
-                structuredTranscript={
-                  (transcription.hasTimestamps || transcription.speakerLabels) &&
-                  transcription.text.startsWith('{') ? 
-                  (() => {
-                    try {
-                      return JSON.parse(transcription.text);
-                    } catch (e) {
-                      return undefined;
-                    }
-                  })() : undefined
-                }
+                structuredTranscript={structuredTranscript || undefined}
+                duration={transcription.duration || undefined}
               />
-            ) : (
-              <div className="p-6 text-center text-gray-500">
-                No transcription text available to edit
-              </div>
             )}
           </TabsContent>
           
-          <TabsContent value="metadata" className="mt-0">
-            <div className="space-y-6">
-              {/* Audio metadata section */}
-              {(transcription.duration || transcription.speakerCount || transcription.language) && (
-                <div className="border rounded-md p-4">
-                  <h3 className="text-lg font-medium mb-3 flex items-center">
-                    <FileAudio className="h-5 w-5 mr-2 text-gray-500" />
-                    Audio Information
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {transcription.duration && (
-                      <div>
-                        <h4 className="text-sm font-medium text-gray-700">Duration</h4>
-                        <p className="text-sm text-gray-600">
-                          {Math.floor(transcription.duration / 60)}:{(transcription.duration % 60).toString().padStart(2, '0')} minutes
-                        </p>
-                      </div>
-                    )}
-                    
-                    {transcription.language && (
-                      <div>
-                        <h4 className="text-sm font-medium text-gray-700">Language</h4>
-                        <div className="flex items-center">
-                          <Languages className="h-4 w-4 mr-1 text-gray-500" />
-                          <p className="text-sm text-gray-600">
-                            {(() => {
-                              // Convert language code to full name
-                              const languageMap: Record<string, string> = {
-                                'en': 'English',
-                                'es': 'Spanish',
-                                'fr': 'French',
-                                'de': 'German',
-                                'zh': 'Chinese',
-                                'ja': 'Japanese',
-                                'ko': 'Korean'
-                              };
-                              return languageMap[transcription.language] || transcription.language;
-                            })()}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {transcription.speakerCount && transcription.speakerLabels && (
-                      <div>
-                        <h4 className="text-sm font-medium text-gray-700">Speakers</h4>
-                        <p className="text-sm text-gray-600">{transcription.speakerCount} detected speakers</p>
-                      </div>
-                    )}
-                  </div>
+          {transcription.hasTimestamps && structuredTranscript && (
+            <TabsContent value="interactive">
+              <InteractiveTranscript
+                transcriptionId={transcription.id}
+                structuredTranscript={structuredTranscript}
+                originalText={transcription.text || ""}
+                fileName={transcription.fileName}
+              />
+            </TabsContent>
+          )}
+          
+          {transcription.summary && (
+            <TabsContent value="summary">
+              <div className="space-y-6">
+                <div className="bg-white border rounded-md p-5">
+                  <h3 className="text-lg font-medium mb-3">Summary</h3>
+                  <p className="whitespace-pre-line">{transcription.summary}</p>
                 </div>
-              )}
-              
-              {/* Summary section */}
-              {transcription.summary && (
-                <div className="border rounded-md p-4">
-                  <h3 className="text-lg font-medium mb-3 flex items-center">
-                    <MessageSquareText className="h-5 w-5 mr-2 text-gray-500" />
-                    Summary
-                  </h3>
-                  <div className="text-gray-700 whitespace-pre-wrap">
-                    {transcription.summary}
+                
+                {transcription.keywords && (
+                  <div className="bg-white border rounded-md p-5">
+                    <h3 className="text-lg font-medium mb-3">Keywords</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {transcription.keywords.split(',').map((keyword, index) => (
+                        <span 
+                          key={index}
+                          className="bg-blue-50 text-blue-700 px-2 py-1 rounded-md text-sm"
+                        >
+                          {keyword.trim()}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-              
-              {/* Action Items section */}
-              {transcription.actionItems && (
-                <div className="border rounded-md p-4 mt-4 bg-amber-50 border-amber-200">
-                  <h3 className="text-lg font-medium mb-3 flex items-center text-amber-800">
-                    <CheckSquare className="h-5 w-5 mr-2 text-amber-600" />
-                    Action Items
-                  </h3>
-                  <div className="space-y-2">
-                    {(() => {
-                      try {
-                        // Try to parse as JSON array first
-                        const actionItems = JSON.parse(transcription.actionItems);
-                        if (Array.isArray(actionItems) && actionItems.length === 0) {
-                          return <p className="text-amber-600 italic">No action items identified in this transcript.</p>;
-                        }
-                        if (Array.isArray(actionItems)) {
-                          return (
-                            <div className="space-y-2">
-                              {actionItems.map((item: string, index: number) => (
-                                <div key={index} className="flex items-start bg-white p-2 rounded border border-amber-200">
-                                  <CheckSquare className="h-4 w-4 mr-2 flex-shrink-0 text-amber-600 mt-0.5" />
-                                  <span className="text-gray-800">{item}</span>
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        }
-                      } catch (e) {
-                        // Not JSON, continue to next approach
-                      }
-                      
-                      // Try to parse as string with line breaks if JSON parsing fails
-                      if (typeof transcription.actionItems === 'string') {
-                        const items = transcription.actionItems.split('\n').filter(item => item.trim().length > 0);
-                        if (items.length === 0) {
-                          return <p className="text-amber-600 italic">No action items identified in this transcript.</p>;
-                        }
-                        return (
-                          <div className="space-y-2">
-                            {items.map((item: string, index: number) => (
-                              <div key={index} className="flex items-start bg-white p-2 rounded border border-amber-200">
-                                <CheckSquare className="h-4 w-4 mr-2 flex-shrink-0 text-amber-600 mt-0.5" />
-                                <span className="text-gray-800">{item}</span>
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      }
-                      
-                      // If we get here, there's something in actionItems but we can't parse it
-                      return <p className="text-amber-600 italic">Action items are present but in an unknown format.</p>;
-                    })()}
+                )}
+                
+                {transcription.actionItems && (
+                  <div className="bg-white border rounded-md p-5">
+                    <h3 className="text-lg font-medium mb-3">Action Items</h3>
+                    <ul className="space-y-2">
+                      {transcription.actionItems.split('\n').filter(Boolean).map((item, index) => (
+                        <li key={index} className="flex items-start">
+                          <CheckSquare className="h-5 w-5 text-green-500 mr-2 mt-0.5" />
+                          <span>{item.trim()}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                </div>
-              )}
-              
-              {/* Keywords section */}
-              {transcription.keywords && (
-                <div className="border rounded-md p-4">
-                  <h3 className="text-lg font-medium mb-3">Key Topics</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {transcription.keywords.split(',').map((keyword, index) => (
-                      <span 
-                        key={index} 
-                        className="px-2 py-1 bg-gray-100 rounded-full text-sm text-gray-700"
-                      >
-                        {keyword.trim()}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </TabsContent>
+                )}
+              </div>
+            </TabsContent>
+          )}
         </Tabs>
-      </div>
+      )}
     </div>
   );
 }

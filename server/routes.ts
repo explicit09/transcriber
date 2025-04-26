@@ -98,6 +98,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         language,
       });
 
+      // Store the audio file for later use with the interactive transcript
+      try {
+        const fileBuffer = fs.readFileSync(file.path);
+        await storage.storeAudioFile(
+          transcription.id,
+          fileBuffer,
+          path.extname(file.originalname)
+        );
+      } catch (audioStoreError) {
+        console.error("Error storing audio file:", audioStoreError);
+        // Continue with transcription even if audio storage fails
+      }
+
       // Process transcription in the background
       (async () => {
         try {
@@ -461,6 +474,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error generating PDF:", error);
       return res.status(500).json({ message: "Error generating PDF" });
+    }
+  });
+
+  // Get transcription audio file
+  app.get('/api/transcriptions/:id/audio', async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid transcription ID" });
+      }
+
+      // Check if transcription exists
+      const transcription = await storage.getTranscription(id);
+      if (!transcription) {
+        return res.status(404).json({ message: "Transcription not found" });
+      }
+
+      // Get the audio file path
+      const audioFilePath = await storage.getAudioFilePath(id);
+      if (!audioFilePath) {
+        return res.status(404).json({ message: "Audio file not found" });
+      }
+
+      // Set content type based on file extension
+      const ext = path.extname(audioFilePath).toLowerCase();
+      let contentType = 'audio/mpeg';
+      if (ext === '.wav') {
+        contentType = 'audio/wav';
+      } else if (ext === '.m4a') {
+        contentType = 'audio/mp4';
+      }
+
+      // Stream the audio file
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `inline; filename="${transcription.fileName}"`);
+      const fileStream = fs.createReadStream(audioFilePath);
+      fileStream.pipe(res);
+    } catch (error) {
+      console.error("Error serving audio file:", error);
+      return res.status(500).json({ message: "Internal server error" });
     }
   });
 
