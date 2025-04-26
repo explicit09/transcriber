@@ -5,6 +5,8 @@ import FileDetails from "./FileDetails";
 import TranscriptionResult from "./TranscriptionResult";
 import ErrorState from "./ErrorState";
 import MeetingMetadataForm, { MeetingMetadata } from "./MeetingMetadataForm";
+import AudioRecorder from "./AudioRecorder";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -197,7 +199,25 @@ export default function TranscriptionContainer() {
     <div className="bg-white rounded-lg shadow-sm overflow-hidden">
       <div className="p-6">
         {view === "upload" && (
-          <UploadArea onFileSelected={handleFileSelected} isUploading={isPending} />
+          <div className="space-y-6">
+            <Tabs defaultValue="file" className="w-full">
+              <TabsList className="mb-4 grid grid-cols-2 w-full">
+                <TabsTrigger value="file">Upload File</TabsTrigger>
+                <TabsTrigger value="record">Record Audio</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="file">
+                <UploadArea onFileSelected={handleFileSelected} isUploading={isPending} />
+              </TabsContent>
+              
+              <TabsContent value="record">
+                <AudioRecorder 
+                  onRecordingComplete={handleFileSelected}
+                  maxDuration={300} // 5 minutes
+                />
+              </TabsContent>
+            </Tabs>
+          </div>
         )}
         
         {view === "metadata" && currentFile && (
