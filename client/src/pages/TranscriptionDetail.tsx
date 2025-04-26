@@ -385,8 +385,76 @@ export default function TranscriptionDetail() {
           
           <TabsContent value="view" className="prose max-w-none">
             {transcription.text ? (
+<<<<<<< HEAD
               <div className="bg-white border rounded-md p-5 whitespace-pre-line">
                 {transcription.text}
+=======
+              <div>
+                {transcription.hasTimestamps || transcription.speakerLabels ? (
+                  // Show with enhanced formatting for timestamped/speaker content
+                  <div className="space-y-3">
+                    {transcription.text.split('\n').map((line, index) => {
+                      // Check if line contains timestamp pattern [00:00]
+                      const hasTimestamp = line.match(/\[\d+:\d+\]/);
+                      // Check if line contains speaker pattern
+                      const hasSpeaker = line.match(/(?:\[\d+:\d+\]\s*([^:]+):|([^[]+)\s*\[\d+:\d+\]:)/);
+                      
+                      if (hasTimestamp) {
+                        // Extract the timestamp and speaker
+                        const timestampMatch = line.match(/\[\d+:\d+\]/);
+                        const timestamp = timestampMatch ? timestampMatch[0] : '';
+                        
+                        if (hasSpeaker) {
+                          // If we have a speaker format like "[00:00] Speaker 1: Text"
+                          const speakerEndIndex = line.indexOf(':', timestamp ? line.indexOf(timestamp) + timestamp.length : 0);
+                          
+                          if (speakerEndIndex > 0) {
+                            const speaker = line.substring(
+                              timestamp.length, 
+                              speakerEndIndex
+                            ).trim();
+                            const text = line.substring(speakerEndIndex + 1).trim();
+                            
+                            return (
+                              <div key={index} className="pb-3 border-b last:border-b-0">
+                                <div className="flex flex-wrap items-baseline gap-2 mb-1">
+                                  <span className="text-xs font-semibold text-gray-500">{timestamp}</span>
+                                  <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
+                                    {speaker}
+                                  </span>
+                                </div>
+                                <div className="ml-1">{text}</div>
+                              </div>
+                            );
+                          }
+                        }
+                        
+                        // Just has timestamp without clear speaker format
+                        return (
+                          <div key={index} className="pb-3 border-b last:border-b-0">
+                            <div className="flex items-baseline gap-2 mb-1">
+                              <span className="text-xs font-semibold text-gray-500">{timestamp}</span>
+                            </div>
+                            <div className="ml-1">{line.replace(timestamp, '').trim()}</div>
+                          </div>
+                        );
+                      }
+                      
+                      // Regular line without timestamp
+                      return (
+                        <div key={index} className={line.trim() === '' ? 'h-4' : 'mb-2'}>
+                          {line}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  // Regular text with proper line breaks
+                  <div className="whitespace-pre-wrap">
+                    {transcription.text}
+                  </div>
+                )}
+>>>>>>> aa5f53d99eaf3558d057fcd15e5eb9ed663500f7
               </div>
             ) : (
               <div className="text-center py-12 bg-gray-50 rounded-md">
