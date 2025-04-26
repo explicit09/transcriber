@@ -188,12 +188,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Generate a summary if requested
             let summary = null;
             let keywords = null;
+            let actionItems = null;
             
             if (generateSummary && result.text) {
               try {
                 const summaryResult = await generateTranscriptSummary(result.text);
                 summary = summaryResult.summary;
                 keywords = summaryResult.keywords.join(', ');
+                actionItems = summaryResult.actionItems?.length ? JSON.stringify(summaryResult.actionItems) : null;
               } catch (summaryError) {
                 console.error("Error generating summary:", summaryError);
                 // Continue without summary - it's not critical
@@ -210,6 +212,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               language: result.language || null,
               summary,
               keywords,
+              actionItems,
             });
           } else {
             // Use basic transcription for simple cases
@@ -698,19 +701,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 // Generate a summary if requested
                 let summary = null;
                 let keywords = null;
+                let actionItems = null;
                 
                 if (generateSummary && result.text) {
                   try {
                     const summaryResult = await generateTranscriptSummary(result.text);
                     summary = summaryResult.summary;
                     keywords = summaryResult.keywords.join(', ');
-                    const actionItems = summaryResult.actionItems?.length ? 
-                      JSON.stringify(summaryResult.actionItems) : null;
-                    
-                    // Include actionItems in the update below
-                    await storage.updateTranscription(id, {
-                      actionItems,
-                    });
+                    actionItems = summaryResult.actionItems?.length ? JSON.stringify(summaryResult.actionItems) : null;
                   } catch (summaryError) {
                     console.error("Error generating summary:", summaryError);
                   }
@@ -726,6 +724,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   language: result.language || null,
                   summary,
                   keywords,
+                  actionItems,
                 });
               } else {
                 // Use basic transcription
