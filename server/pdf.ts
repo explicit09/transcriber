@@ -409,38 +409,18 @@ export async function generateTranscriptPDF(
     console.error("Error in PDF transcript rendering:", e);
   }
   
-  // ==================== ADD PAGE NUMBERS AND FOOTERS ====================
-  // Get the actual range of pages we've created - this should match the real content
+  // ==================== ADD MINIMAL FOOTER (NO PAGE NUMBERS) ====================
+  // Get the actual range of pages we've created
   const range = doc.bufferedPageRange();
-  const totalPages = range.count;
   
-  // Add footers only to pages we've actually added content to
-  for (let i = 0; i < totalPages; i++) {
-    doc.switchToPage(i);
-    
-    // Footer with page number and logo text - styled differently for different page types
-    if (i === 0) {
-      // Cover page - just the company name, no page numbers
-      doc.fontSize(styles.sizes.small)
-         .fillColor(styles.colors.text)
-         .font(styles.fonts.normal)
-         .text('LEARN-X Transcription', 
-           margins.left, doc.page.height - 30,
-           { width: doc.page.width - margins.left - margins.right, align: 'center' });
-    } else {
-      // Content pages - add footer line and page numbers
-      doc.moveTo(margins.left, doc.page.height - 40)
-         .lineTo(doc.page.width - margins.right, doc.page.height - 40)
-         .stroke(styles.colors.lightGray);
-      
-      doc.fontSize(styles.sizes.small)
-         .fillColor(styles.colors.text)
-         .font(styles.fonts.normal)
-         .text(`Page ${i + 1} of ${totalPages}`,
-           margins.left, doc.page.height - 30,
-           { width: doc.page.width - margins.left - margins.right, align: 'center' });
-    }
-  }
+  // Add only a minimal footer to the cover page
+  doc.switchToPage(0);
+  doc.fontSize(styles.sizes.small)
+     .fillColor(styles.colors.text)
+     .font(styles.fonts.normal)
+     .text('LEARN-X Transcription', 
+       margins.left, doc.page.height - 30,
+       { width: doc.page.width - margins.left - margins.right, align: 'center' });
   
   // Finalize
   doc.end();
