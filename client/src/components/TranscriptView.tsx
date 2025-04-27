@@ -87,43 +87,45 @@ export default function TranscriptView({ transcription }: TranscriptViewProps) {
       <Separator />
       
       {/* Transcript Content */}
-      <ScrollArea className="max-h-[600px] rounded-md border">
-        {hasStructuredTranscript ? (
-          <div className="space-y-4 p-4">
-            {segments.map((segment, index) => (
-              <div 
-                key={`${segment.start}-${index}`} 
-                className="pb-3 border-b border-gray-100 last:border-0"
-              >
-                <div className="flex items-start">
-                  <span className="text-xs font-mono bg-gray-100 rounded px-1 py-0.5 text-gray-600 mr-2 mt-1">
-                    {formatTime(segment.start)}
-                  </span>
-                  <div className="flex-1">
-                    {segment.speaker && (
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium mb-1 ${
-                        segment.speaker.includes("1") ? "bg-blue-100 text-blue-800" :
-                        segment.speaker.includes("2") ? "bg-green-100 text-green-800" :
-                        segment.speaker.includes("3") ? "bg-purple-100 text-purple-800" :
-                        segment.speaker.includes("4") ? "bg-amber-100 text-amber-800" :
-                        segment.speaker.includes("5") ? "bg-red-100 text-red-800" :
-                        "bg-indigo-100 text-indigo-800"
-                      }`}>
-                        {segment.speaker}
-                      </span>
-                    )}
-                    <p className="text-gray-800">{segment.text}</p>
+      <div className="border rounded-md">
+        <ScrollArea className="h-[600px] w-full">
+          {hasStructuredTranscript ? (
+            <div className="space-y-4 p-4">
+              {segments.map((segment, index) => (
+                <div 
+                  key={`${segment.start}-${index}`} 
+                  className="pb-3 border-b border-gray-100 last:border-0"
+                >
+                  <div className="flex items-start">
+                    <span className="text-xs font-mono bg-gray-100 rounded px-1 py-0.5 text-gray-600 mr-2 mt-1 whitespace-nowrap">
+                      {formatTime(segment.start)}
+                    </span>
+                    <div className="flex-1">
+                      {segment.speaker && (
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium mb-1 ${
+                          segment.speaker.includes("1") ? "bg-blue-100 text-blue-800" :
+                          segment.speaker.includes("2") ? "bg-green-100 text-green-800" :
+                          segment.speaker.includes("3") ? "bg-purple-100 text-purple-800" :
+                          segment.speaker.includes("4") ? "bg-amber-100 text-amber-800" :
+                          segment.speaker.includes("5") ? "bg-red-100 text-red-800" :
+                          "bg-indigo-100 text-indigo-800"
+                        }`}>
+                          {segment.speaker}
+                        </span>
+                      )}
+                      <p className="text-gray-800 break-words">{segment.text}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="p-4">
-            <pre className="whitespace-pre-wrap text-gray-800 text-sm">{transcription.text}</pre>
-          </div>
-        )}
-      </ScrollArea>
+              ))}
+            </div>
+          ) : (
+            <div className="p-4">
+              <pre className="whitespace-pre-line text-gray-800 text-sm break-words">{transcription.text}</pre>
+            </div>
+          )}
+        </ScrollArea>
+      </div>
     </div>
   );
 }
