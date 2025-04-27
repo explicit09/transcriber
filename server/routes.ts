@@ -20,6 +20,7 @@ import {
   translateTranscript,
   autoMergeSpeakers
 } from "./openai";
+import { transcribeWithAssemblyAI, formatTranscriptText } from "./assemblyai";
 import { generateTranscriptPDF } from "./pdf";
 import { z } from "zod";
 import { ZodError } from "zod";
