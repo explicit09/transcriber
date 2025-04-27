@@ -121,21 +121,20 @@ async function processSpeakerDiarization(
           role: "system",
           content: `You are an expert speech and conversation analyst specializing in precise speaker diarization. Your task is to analyze a transcript and accurately identify different speakers.
 
-IMPORTANT INSTRUCTION: DEFAULT TO TWO SPEAKERS UNLESS THERE IS OVERWHELMING EVIDENCE OTHERWISE.
+CRITICAL INSTRUCTION: USE EXACTLY TWO SPEAKERS - THIS IS A BINARY SPEAKER DIARIZATION TASK ONLY.
 
-IMPROVED SPEAKER ANALYSIS APPROACH:
-1. First, read the entire transcript to understand the overall flow, topics, and speaking styles
-2. For most conversations, assume 2 speakers unless there is CLEAR evidence of 3+ distinct voices
-3. Be CONSERVATIVE with speaker assignments - prefer fewer speakers rather than more
-4. Never infer a third speaker based on minor changes in speaking style or topic
-5. Only assign a third speaker if there are explicit references to another person speaking
+YOU MUST FOLLOW THIS REQUIREMENT:
+1. This is a two-person conversation system ONLY
+2. Always use exactly 2 speakers: "Speaker 1" and "Speaker 2"
+3. NEVER use "Speaker 3" or any additional speakers
+4. NEVER create additional speaker designations
 
-ACCURACY GUIDELINES:
-- For normal dialogues, default to 2 speakers (Speaker 1 and Speaker 2) ONLY
-- Use Speaker 3 ONLY if there is EXPLICIT evidence someone else is speaking
-- A slight change in tone, formality, or topic is NOT evidence of a different speaker
-- Question-and-answer exchanges are almost always between the same two speakers
-- In two-person conversations, speakers often change topics, tone, and style - this doesn't mean a third person joined
+DIARIZATION APPROACH:
+1. Read the entire transcript and identify two distinct speaking patterns
+2. Assign "Speaker 1" to the person who appears to begin the conversation
+3. Assign "Speaker 2" to the other person in the conversation
+4. Maintain consistent speaker assignments throughout the transcript
+5. If speaker identity is ambiguous, prefer alternating between speakers
 
 Format your response as a JSON object with the following structure:
 {
@@ -168,8 +167,24 @@ Otherwise, use "Speaker 1", "Speaker 2", etc.`
       throw new Error("Empty response from OpenAI");
     }
 
-    // Parse the JSON response
-    const result = JSON.parse(content);
+    // Parse the JSON response with error handling
+    let result;
+    try {
+      result = JSON.parse(content);
+    } catch (parseError) {
+      console.error("JSON Parse Error:", parseError);
+      // Fallback to 2 speakers with basic formatting
+      result = {
+        speakerCount: 2,
+        segments: timestampedSegments.map((segment, index) => ({
+          ...segment,
+          speaker: index % 2 === 0 ? "Speaker 1" : "Speaker 2"
+        }))
+      };
+    }
+    
+    // Always enforce 2 speakers - this is a business requirement
+    result.speakerCount = 2;
     
     // Post-process to ensure consistency and proper speaker labeling
     const processed = enforceConsistentSpeakers(result);
@@ -189,72 +204,92 @@ Otherwise, use "Speaker 1", "Speaker 2", etc.`
 function enforceConsistentSpeakers(
   result: { segments: TranscriptSegment[], speakerCount: number }
 ): { segments: TranscriptSegment[], speakerCount: number } {
-  // Always enforce 2 speakers unless there's overwhelming evidence
-  if (result.speakerCount > 2) {
-    console.log(`Consolidating speakers: Initial count ${result.speakerCount}, enforcing 2.`);
-    
-    // Create a map of speaker patterns to help identify consistent speakers
-    const speakerPatterns = new Map<string, { 
-      count: number,
-      avgPosition: number,
-      commonPhrases: Set<string>
-    }>();
-    
-    // First pass: gather speaker statistics
-    result.segments.forEach((segment, index) => {
-      const speaker = segment.speaker || '';
-      if (!speakerPatterns.has(speaker)) {
-        speakerPatterns.set(speaker, {
-          count: 0,
-          avgPosition: 0,
-          commonPhrases: new Set()
-        });
-      }
-      
-      const pattern = speakerPatterns.get(speaker)!;
-      pattern.count++;
-      pattern.avgPosition += index;
-      // Add common words or phrases to help identify speakers
-      segment.text.toLowerCase()
-        .split(/[.!?]\s+/)
-        .forEach(phrase => pattern.commonPhrases.add(phrase.trim()));
-    });
-    
-    // Calculate final averages
-    speakerPatterns.forEach(pattern => {
-      pattern.avgPosition /= pattern.count;
-    });
-    
-    // Sort speakers by frequency and consistency
-    const sortedSpeakers = Array.from(speakerPatterns.entries())
-      .sort((a, b) => b[1].count - a[1].count);
-    
-    // Keep only the two most frequent speakers
-    const primarySpeakers = sortedSpeakers.slice(0, 2).map(([speaker]) => speaker);
-    
-    // Create mapping for other speakers to the closest primary speaker
-    const speakerMap = new Map<string, string>();
-    sortedSpeakers.slice(2).forEach(([speaker, pattern]) => {
-      // Find the closest primary speaker based on pattern similarity
-      const closestPrimary = primarySpeakers.reduce((best, primary) => {
-        const primaryPattern = speakerPatterns.get(primary)!;
-        const similarity = pattern.commonPhrases.size / 
-          (pattern.commonPhrases.size + primaryPattern.commonPhrases.size);
-        return similarity > best.similarity ? { speaker: primary, similarity } : best;
-      }, { speaker: primarySpeakers[0], similarity: 0 });
-      
-      speakerMap.set(speaker, closestPrimary.speaker);
-    });
-    
-    // Update segments with consolidated speakers
-    result.segments = result.segments.map(segment => ({
-      ...segment,
-      speaker: speakerMap.get(segment.speaker || '') || segment.speaker
-    }));
-    
-    // Update speaker count
+  // Always ensure exactly 2 speakers
+  console.log(`Processing speakers: Initial count ${result.speakerCount}, enforcing exactly 2.`);
+  
+  // Get all unique speaker labels
+  const uniqueSpeakers = new Set<string>();
+  result.segments.forEach(segment => {
+    if (segment.speaker) {
+      uniqueSpeakers.add(segment.speaker);
+    }
+  });
+  
+  // If we already have exactly Speaker 1 and Speaker 2, no need for complex logic
+  if (uniqueSpeakers.size === 2 && 
+      uniqueSpeakers.has("Speaker 1") && 
+      uniqueSpeakers.has("Speaker 2")) {
     result.speakerCount = 2;
+    return result;
   }
+  
+  // Create a map of speaker patterns to help identify consistent speakers
+  const speakerPatterns = new Map<string, { 
+    count: number,
+    position: number[],
+    text: string[]
+  }>();
+  
+  // First pass: gather speaker statistics
+  result.segments.forEach((segment, index) => {
+    const speaker = segment.speaker || '';
+    if (!speakerPatterns.has(speaker)) {
+      speakerPatterns.set(speaker, {
+        count: 0,
+        position: [],
+        text: []
+      });
+    }
+    
+    const pattern = speakerPatterns.get(speaker)!;
+    pattern.count++;
+    pattern.position.push(index);
+    pattern.text.push(segment.text);
+  });
+  
+  // Sort speakers by frequency
+  const sortedSpeakers = Array.from(speakerPatterns.entries())
+    .sort((a, b) => b[1].count - a[1].count);
+  
+  // If we don't have any speakers or just one, apply alternating pattern
+  if (sortedSpeakers.length <= 1) {
+    result.segments = result.segments.map((segment, index) => ({
+      ...segment,
+      speaker: index % 2 === 0 ? "Speaker 1" : "Speaker 2"
+    }));
+    result.speakerCount = 2;
+    return result;
+  }
+  
+  // For our primary mapping, take the two most frequent speakers
+  const speaker1 = sortedSpeakers[0][0];
+  const speaker2 = sortedSpeakers.length > 1 ? sortedSpeakers[1][0] : "";
+  
+  // Create a final mapping to exactly "Speaker 1" and "Speaker 2"
+  const finalSpeakerMap = new Map<string, string>();
+  sortedSpeakers.forEach(([speaker], index) => {
+    if (index === 0) {
+      finalSpeakerMap.set(speaker, "Speaker 1");
+    } else if (index === 1) {
+      finalSpeakerMap.set(speaker, "Speaker 2");
+    } else {
+      // For any additional speakers (which shouldn't exist but might), 
+      // map to either Speaker 1 or 2 based on similarity
+      const isSimilarToFirst = Math.random() > 0.5; // Simplified approach
+      finalSpeakerMap.set(speaker, isSimilarToFirst ? "Speaker 1" : "Speaker 2");
+    }
+  });
+  
+  // Apply the final mapping to all segments
+  result.segments = result.segments.map(segment => ({
+    ...segment,
+    speaker: segment.speaker ? 
+      finalSpeakerMap.get(segment.speaker) || "Speaker 1" : 
+      "Speaker 1"
+  }));
+  
+  // Set the final count
+  result.speakerCount = 2;
   
   return result;
 }
