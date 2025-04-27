@@ -34,7 +34,14 @@ export default function SpeakerLabels({ segments }: SpeakerLabelsProps) {
       {speakers.map((speaker, index) => (
         <span 
           key={speaker} 
-          className={`px-3 py-1 rounded-full text-sm font-medium ${speakerColors[index % speakerColors.length]}`}
+          className={`px-3 py-1 rounded-full text-sm font-medium ${
+            speaker.includes("1") ? "bg-blue-100 text-blue-800" :
+            speaker.includes("2") ? "bg-green-100 text-green-800" :
+            speaker.includes("3") ? "bg-purple-100 text-purple-800" :
+            speaker.includes("4") ? "bg-amber-100 text-amber-800" :
+            speaker.includes("5") ? "bg-red-100 text-red-800" :
+            "bg-indigo-100 text-indigo-800"
+          }`}
         >
           {speaker}
         </span>

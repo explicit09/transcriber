@@ -423,18 +423,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await generateTranscriptSummary(transcription.text);
       
       // Process the summary to ensure it doesn't contain any markdown formatting
-      const cleanSummary = result.summary.replace(/\*\*/g, '');
+      const cleanSummary = result.summary ? result.summary.replace(/\*\*/g, '') : "No summary could be generated.";
       
       // Format action items as a newline-separated string instead of JSON
-      const actionItemsText = result.actionItems?.length 
+      const actionItemsText = Array.isArray(result.actionItems) && result.actionItems.length > 0
         ? result.actionItems.join('\n') 
+        : null;
+        
+      // Format keywords
+      const keywordsText = Array.isArray(result.keywords) && result.keywords.length > 0
+        ? result.keywords.join(', ')
         : null;
       
       // Update the transcription with the summary and action items
       const updatedTranscription = await storage.updateTranscription(id, {
         summary: cleanSummary,
         actionItems: actionItemsText,
-        keywords: result.keywords.join(', '),
+        keywords: keywordsText,
         updatedAt: new Date(),
       });
       

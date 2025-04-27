@@ -97,7 +97,14 @@ export default function TranscriptView({ transcription }: TranscriptViewProps) {
                   </span>
                   <div className="flex-1">
                     {segment.speaker && (
-                      <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 mb-1">
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium mb-1 ${
+                        segment.speaker.includes("1") ? "bg-blue-100 text-blue-800" :
+                        segment.speaker.includes("2") ? "bg-green-100 text-green-800" :
+                        segment.speaker.includes("3") ? "bg-purple-100 text-purple-800" :
+                        segment.speaker.includes("4") ? "bg-amber-100 text-amber-800" :
+                        segment.speaker.includes("5") ? "bg-red-100 text-red-800" :
+                        "bg-indigo-100 text-indigo-800"
+                      }`}>
                         {segment.speaker}
                       </span>
                     )}

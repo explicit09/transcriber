@@ -407,9 +407,18 @@ export async function generateTranscriptSummary(text: string | null) {
           {
             role: "system",
             content:
-              "You are an expert at analyzing conversations and producing concise structured summaries in JSON.",
+              "You are an expert at analyzing conversations and producing concise structured summaries in JSON. Always respond with a JSON object containing the following fields exactly: 'summary' (a concise paragraph), 'actionItems' (an array of strings), and 'keywords' (an array of strings).",
           },
-          { role: "user", content: text },
+          { 
+            role: "user", 
+            content: `Please analyze the following transcript and create a summary, extract action items, and identify key topics/keywords. Return as a JSON object with these fields:
+- summary: A concise paragraph summarizing the main points
+- actionItems: An array of specific tasks or follow-ups mentioned
+- keywords: An array of important topics/terms discussed
+
+Transcript:
+${text}`
+          },
         ],
         response_format: { type: "json_object" },
         temperature: 0.3,
