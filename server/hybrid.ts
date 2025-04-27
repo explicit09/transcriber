@@ -203,7 +203,7 @@ function normalizeHybridSpeakers(
 function alignAndCombineSegments(
   openaiSegments: TranscriptSegment[],
   assemblySegments: TranscriptSegment[],
-  targetSpeakerCount?: number
+  userProvidedSpeakerCount?: number
 ): TranscriptSegment[] {
   if (!openaiSegments.length) return assemblySegments;
   if (!assemblySegments.length) return openaiSegments;
@@ -277,6 +277,31 @@ function alignAndCombineSegments(
     }
   });
   
-  // Normalize to target speaker count if provided, default to 3 which is typical
-  return normalizeHybridSpeakers(hybridSegments, targetSpeakerCount || 3);
+  // Count detected speakers in the hybrid segments
+  const speakerSet = new Set<string>();
+  hybridSegments.forEach(segment => {
+    if (segment.speaker) {
+      speakerSet.add(segment.speaker);
+    }
+  });
+  
+  const detectedSpeakerCount = speakerSet.size;
+  const assemblyAISpeakerCount = Object.keys(speakerMap).length;
+  
+  console.log(`Detected ${detectedSpeakerCount} speakers in hybrid segments`);
+  console.log(`AssemblyAI detected ${assemblyAISpeakerCount} speakers`);
+  
+  // Determine the target speaker count using the following priorities:
+  // 1. User provided count (from UI)
+  // 2. AssemblyAI detection (they have good speaker detection)
+  // 3. Our own detection from the hybrid segments
+  // 4. Default to a reasonable number (2) for safety
+  const targetSpeakerCount = userProvidedSpeakerCount || 
+                             assemblyAISpeakerCount || 
+                             detectedSpeakerCount || 
+                             2;
+  
+  console.log(`Using target speaker count: ${targetSpeakerCount}`);
+  
+  return normalizeHybridSpeakers(hybridSegments, targetSpeakerCount);
 }
