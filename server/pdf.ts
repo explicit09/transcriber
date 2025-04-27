@@ -21,106 +21,283 @@ export async function generateTranscriptPDF(
   const fileName = `transcript_${transcription.id}_${Date.now()}.pdf`;
   const filePath = path.join(tempDir, fileName);
 
-  // TOC entries collector
-  const tocEntries: Array<{ title: string; page: number }> = [];
-
   // Default margins & layout
-  const margins = options.margins ?? { top: 72, bottom: 72, left: 72, right: 72 };
+  const margins = options.margins ?? { top: 50, bottom: 50, left: 50, right: 50 };
   const layout = options.layout ?? 'portrait';
-
+  
   // Create PDF document
   const doc = new PDFDocument({
     margins,
     layout,
     info: {
       Title: transcription.meetingTitle || `Transcription ${transcription.id}`,
-      Author: 'Transcription App',
+      Author: 'LEARN-X Transcription',
       Subject: 'Meeting Transcription',
     },
     bufferPages: true,
   });
 
-  // Page numbering will be done at the end before finalizing
-  // We won't use on('pageAdded') to avoid infinite recursion
-  // We'll add headers and footers after all content is done
-
   // Pipe stream
   const stream = fs.createWriteStream(filePath);
   doc.pipe(stream);
 
-  // Logo
-  if (options.logoPath && fs.existsSync(options.logoPath)) {
-    doc.image(options.logoPath, margins.left, 20, { width: 100 });
-  }
+  // ==================== DOCUMENT STYLES ====================
+  const styles = {
+    colors: {
+      primary: '#1a365d',       // Dark blue
+      secondary: '#2b6cb0',     // Medium blue
+      accent: '#3182ce',        // Light blue
+      text: '#2d3748',          // Dark gray
+      lightGray: '#e2e8f0',     // Light gray for borders
+      success: '#38a169',       // Green for positive elements
+    },
+    fonts: {
+      title: 'Helvetica-Bold',
+      heading: 'Helvetica-Bold',
+      subheading: 'Helvetica-Bold',
+      normal: 'Helvetica',
+      mono: 'Courier'
+    },
+    sizes: {
+      title: 24,
+      heading: 18,
+      subheading: 14,
+      normal: 10,
+      small: 8
+    }
+  };
 
-  // Title
-  doc.moveDown( options.logoPath ? 5 : 2 )
-    .fontSize(20)
-    .font('Helvetica-Bold')
-    .text(transcription.meetingTitle || transcription.fileName, { align: 'center' });
-
-  // Record TOC: Meeting Details
-  if (options.includeTOC) tocEntries.push({ title: 'Meeting Details', page: doc.bufferedPageRange().start + 1 });
-
-  // Meeting Details
-  doc.moveDown();
-  doc.fontSize(12).font('Helvetica-Bold').text('Meeting Details');
-  doc.fontSize(10).font('Helvetica');
+  // ==================== COVER PAGE ====================
+  // Header border and background
+  doc.rect(0, 0, doc.page.width, 120)
+     .fill(styles.colors.primary);
+  
+  // Logo or header text
+  doc.fontSize(styles.sizes.title)
+     .fillColor('white')
+     .font(styles.fonts.title)
+     .text('LEARN-X', 50, 40)
+     .fontSize(styles.sizes.subheading)
+     .text('Meeting Transcription System', 50, 70);
+  
+  // Title section
+  doc.fontSize(styles.sizes.heading)
+     .fillColor(styles.colors.text)
+     .font(styles.fonts.heading)
+     .text(transcription.meetingTitle || transcription.fileName, margins.left, 150, {
+       width: doc.page.width - margins.left - margins.right,
+       align: 'center'
+     });
+  
+  // Meeting details box
+  const boxTop = 200;
+  const boxHeight = 120;
+  doc.roundedRect(margins.left, boxTop, doc.page.width - margins.left - margins.right, boxHeight, 5)
+     .fillAndStroke('#f7fafc', styles.colors.lightGray);
+     
+  // Meeting details content
+  doc.fontSize(styles.sizes.normal)
+     .fillColor(styles.colors.text)
+     .font(styles.fonts.normal);
+  
   const meetDate = transcription.meetingDate || transcription.createdAt;
-  doc.text(`Date: ${new Date(meetDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`);
-  if (transcription.participants) doc.text(`Participants: ${transcription.participants}`);
+  const formattedDate = new Date(meetDate).toLocaleDateString('en-US', { 
+    year: 'numeric', month: 'long', day: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
+  
+  doc.font(styles.fonts.subheading)
+     .text('Meeting Details', margins.left + 20, boxTop + 20)
+     .font(styles.fonts.normal)
+     .text(`Date: ${formattedDate}`, margins.left + 20, boxTop + 45);
+  
+  if (transcription.participants) {
+    doc.text(`Participants: ${transcription.participants}`, margins.left + 20, boxTop + 65);
+  }
+  
   if (transcription.duration) {
     const m = Math.floor(transcription.duration / 60);
     const s = Math.round(transcription.duration % 60);
-    doc.text(`Duration: ${m}m ${s}s`);
+    doc.text(`Duration: ${m}m ${s}s`, margins.left + 20, boxTop + 85);
   }
-
-  // Summary Section
+  
+  // Document generation info
+  doc.fontSize(styles.sizes.small)
+     .text(`Generated on ${new Date().toLocaleString()}`, margins.left, doc.page.height - 80, {
+       width: doc.page.width - margins.left - margins.right,
+       align: 'center'
+     });
+  
+  // ==================== SUMMARY PAGE ====================
   if (transcription.summary) {
-    if (options.includeTOC) tocEntries.push({ title: 'Summary', page: doc.bufferedPageRange().start + 1 });
     doc.addPage();
-    doc.fontSize(12).font('Helvetica-Bold').text('Summary');
-    doc.moveDown(0.5);
-    doc.fontSize(10).font('Helvetica').text(transcription.summary, { width: 450, align: 'justify' });
+    
+    // Section header
+    doc.rect(margins.left, 40, doc.page.width - margins.left - margins.right, 40)
+       .fill(styles.colors.secondary);
+    
+    doc.fontSize(styles.sizes.heading)
+       .fillColor('white')
+       .font(styles.fonts.heading)
+       .text('Meeting Summary', margins.left + 20, 55);
+    
+    // Summary content
+    doc.fontSize(styles.sizes.normal)
+       .fillColor(styles.colors.text)
+       .font(styles.fonts.normal)
+       .text(transcription.summary, margins.left, 100, { 
+         width: doc.page.width - margins.left - margins.right, 
+         align: 'justify' 
+       });
+    
+    // Keywords section if available
+    if (transcription.keywords) {
+      const keywordsY = Math.min(doc.y + 30, doc.page.height - 150);
+      
+      // Ensure we have enough space, otherwise go to next page
+      if (keywordsY > doc.page.height - 150) {
+        doc.addPage();
+        
+        doc.rect(margins.left, 40, doc.page.width - margins.left - margins.right, 40)
+           .fill(styles.colors.secondary);
+        
+        doc.fontSize(styles.sizes.heading)
+           .fillColor('white')
+           .font(styles.fonts.heading)
+           .text('Keywords', margins.left + 20, 55);
+           
+        doc.y = 100;
+      } else {
+        // Keywords header
+        doc.rect(margins.left, keywordsY, doc.page.width - margins.left - margins.right, 30)
+           .fill(styles.colors.accent);
+        
+        doc.fontSize(styles.sizes.subheading)
+           .fillColor('white')
+           .font(styles.fonts.subheading)
+           .text('Keywords', margins.left + 20, keywordsY + 8);
+        
+        doc.y = keywordsY + 50;
+      }
+      
+      // Display keywords as tags
+      const keywords = transcription.keywords.split(',').map(k => k.trim());
+      let tagX = margins.left;
+      let tagY = doc.y;
+      const tagHeight = 25;
+      const tagPadding = 10;
+      
+      keywords.forEach(keyword => {
+        if (keyword) {
+          // Calculate text width to determine tag width
+          const textWidth = doc.widthOfString(keyword);
+          const tagWidth = textWidth + (tagPadding * 2);
+          
+          // Check if we need to move to next line
+          if (tagX + tagWidth > doc.page.width - margins.right) {
+            tagX = margins.left;
+            tagY += tagHeight + 5;
+          }
+          
+          // Draw tag background
+          doc.roundedRect(tagX, tagY, tagWidth, tagHeight, 12)
+             .fillAndStroke('#ebf8ff', styles.colors.accent);
+          
+          // Draw tag text
+          doc.fontSize(styles.sizes.small)
+             .fillColor(styles.colors.secondary)
+             .font(styles.fonts.normal)
+             .text(keyword, tagX + tagPadding, tagY + 6);
+          
+          // Move to next tag position
+          tagX += tagWidth + 10;
+        }
+      });
+      
+      // Update y position for next section
+      doc.y = tagY + tagHeight + 20;
+    }
   }
-
-  // Action Items
+  
+  // ==================== ACTION ITEMS PAGE ====================
   const items = parseActionItems(transcription);
   if (items.length) {
-    if (options.includeTOC) tocEntries.push({ title: 'Action Items', page: doc.bufferedPageRange().start + 1 });
-    doc.addPage();
-    doc.fontSize(12).font('Helvetica-Bold').text('Action Items');
-    items.forEach((it, i) => doc.fontSize(10).font('Helvetica').text(`${i + 1}. ${it}`, { indent: 20, width: 450 }));
-  }
-
-  // Table of Contents - simplified to avoid pdfkit TypeScript issues
-  if (options.includeTOC && tocEntries.length) {
-    const toc = tocEntries.slice().sort((a, b) => a.page - b.page);
+    // If we don't have enough space on current page, add a new one
+    if (doc.y > doc.page.height - 150) {
+      doc.addPage();
+      doc.y = 40;
+    } else if (doc.page.pageNumber > 1) {
+      // Add some spacing if we're continuing on the same page
+      doc.y += 30;
+    } else {
+      // First page after cover
+      doc.addPage();
+      doc.y = 40;
+    }
     
-    // Add TOC at the beginning - add a page after the intro
-    doc.addPage();
-    doc.fontSize(16).font('Helvetica-Bold').text('Table of Contents', { align: 'center' });
-    doc.moveDown();
+    // Section header
+    doc.rect(margins.left, doc.y, doc.page.width - margins.left - margins.right, 40)
+       .fill(styles.colors.success);
     
-    // Add each TOC entry
-    toc.forEach(e => {
-      doc.fontSize(10)
-         .font('Helvetica')
-         .text(`${e.title} ...... ${e.page}`, { width: 450 });
+    doc.fontSize(styles.sizes.heading)
+       .fillColor('white')
+       .font(styles.fonts.heading)
+       .text('Action Items', margins.left + 20, doc.y + 15);
+    
+    doc.y += 60;
+    
+    // Action items list with more visual style
+    items.forEach((item, i) => {
+      if (doc.y > doc.page.height - 100) {
+        doc.addPage();
+        doc.y = 60;
+      }
+      
+      // Item box
+      const boxHeight = Math.max(50, doc.heightOfString(item, { width: doc.page.width - margins.left - margins.right - 60 }) + 30);
+      doc.roundedRect(margins.left, doc.y, doc.page.width - margins.left - margins.right, boxHeight, 5)
+         .fillAndStroke('white', styles.colors.lightGray);
+      
+      // Item number circle
+      const circleSize = 24;
+      doc.circle(margins.left + 20, doc.y + (boxHeight/2), circleSize/2)
+         .fillAndStroke(styles.colors.success, styles.colors.success);
+      
+      doc.fontSize(styles.sizes.normal)
+         .fillColor('white')
+         .font(styles.fonts.heading)
+         .text((i + 1).toString(), margins.left + 20 - (doc.widthOfString((i + 1).toString())/2), doc.y + (boxHeight/2) - 6);
+      
+      // Item text
+      doc.fontSize(styles.sizes.normal)
+         .fillColor(styles.colors.text)
+         .font(styles.fonts.normal)
+         .text(item, margins.left + 50, doc.y + 15, { 
+           width: doc.page.width - margins.left - margins.right - 60
+         });
+      
+      doc.y += boxHeight + 10;
     });
   }
-
-  // Transcript Section
-  if (options.includeTOC) tocEntries.push({ title: 'Transcript', page: doc.bufferedPageRange().start + 1 });
+  
+  // ==================== TRANSCRIPT PAGE ====================
   doc.addPage();
-  doc.fontSize(12).font('Helvetica-Bold').text('Transcript');
-  doc.moveDown(0.5);
-  doc.fontSize(9).font('Courier');
-
+  
+  // Section header
+  doc.rect(margins.left, 40, doc.page.width - margins.left - margins.right, 40)
+     .fill(styles.colors.primary);
+  
+  doc.fontSize(styles.sizes.heading)
+     .fillColor('white')
+     .font(styles.fonts.heading)
+     .text('Full Transcript', margins.left + 20, 55);
+  
+  doc.y = 100;
+  
   try {
     // Try to use structured transcript if available
     if (structuredTranscript?.segments?.length) {
-      // Create a safer way to handle segments - group by speaker to avoid too many segments
+      // Group segments by speaker
       const speakerGroups: { 
         speaker: string; 
         segments: { time: string; text: string; }[];
@@ -148,33 +325,71 @@ export async function generateTranscriptPDF(
             currentGroup.segments.push({ time, text });
           }
         } catch (e) {
-          // Skip problematic segments
           console.error("Error processing segment in PDF generation:", e);
         }
       });
       
-      // Now render each group
+      // Now render each group with improved styling
       speakerGroups.forEach(group => {
         try {
-          // Speaker heading
-          doc.fontSize(10).font('Helvetica-Bold').text(group.speaker);
+          if (doc.y > doc.page.height - 100) {
+            doc.addPage();
+            doc.y = 60;
+          }
           
-          // Speaker segments
-          doc.fontSize(9).font('Courier');
-          group.segments.forEach(seg => {
+          // Speaker bubble header
+          const speakerWidth = doc.widthOfString(group.speaker) + 40;
+          doc.roundedRect(margins.left, doc.y, speakerWidth, 24, 12)
+             .fill(styles.colors.secondary);
+          
+          doc.fontSize(styles.sizes.normal)
+             .fillColor('white')
+             .font(styles.fonts.subheading)
+             .text(group.speaker, margins.left + 20, doc.y + 7);
+          
+          doc.y += 30;
+          
+          // Speaker segments in a speech bubble style
+          const allSegmentText = group.segments.map(seg => `[${seg.time}] ${seg.text}`).join('\n\n');
+          const textHeight = doc.heightOfString(allSegmentText, { 
+            width: doc.page.width - margins.left - margins.right - 20,
+            paragraphGap: 5
+          });
+          
+          // Bubble background
+          doc.roundedRect(
+            margins.left + 10, 
+            doc.y, 
+            doc.page.width - margins.left - margins.right - 20, 
+            textHeight + 20, 
+            8
+          ).fillAndStroke('#f7fafc', styles.colors.lightGray);
+          
+          // Text content
+          doc.fontSize(styles.sizes.normal)
+             .fillColor(styles.colors.text)
+             .font(styles.fonts.normal);
+          
+          group.segments.forEach((seg, i) => {
             try {
-              doc.text(`[${seg.time}] ${seg.text}`, { 
-                width: 450, 
-                align: 'left',
-                indent: 10
-              });
-              doc.moveDown(0.2);
+              doc.text(`[${seg.time}] ${seg.text}`, 
+                margins.left + 20, 
+                i === 0 ? doc.y + 10 : doc.y, 
+                { 
+                  width: doc.page.width - margins.left - margins.right - 40,
+                  paragraphGap: 5
+                }
+              );
+              
+              if (i < group.segments.length - 1) {
+                doc.moveDown(0.5);
+              }
             } catch (e) {
-              // Skip problematic text rendering
+              // Skip problematic segments
             }
           });
           
-          // Space between speakers
+          doc.y += 20; // Add space after the bubble
           doc.moveDown(0.8);
         } catch (e) {
           // Skip problematic groups
@@ -182,45 +397,51 @@ export async function generateTranscriptPDF(
       });
     } else if (transcription.text) {
       // Fallback to raw text
-      doc.text(transcription.text, { width: 450, align: 'justify' });
+      doc.fontSize(styles.sizes.normal)
+         .fillColor(styles.colors.text)
+         .font(styles.fonts.normal)
+         .text(transcription.text, margins.left, doc.y, { 
+           width: doc.page.width - margins.left - margins.right,
+           align: 'justify' 
+         });
     }
   } catch (e) {
     // Last resort fallback
-    doc.fontSize(10).font('Helvetica');
-    doc.text("Error rendering transcript. Please try again or contact support.", { 
-      width: 450, 
-      align: 'center' 
-    });
+    doc.fontSize(styles.sizes.normal)
+       .fillColor(styles.colors.text)
+       .font(styles.fonts.normal)
+       .text("Error rendering transcript. Please try again or contact support.", { 
+         width: doc.page.width - margins.left - margins.right,
+         align: 'center' 
+       });
     console.error("Error in PDF transcript rendering:", e);
   }
-
-  // Add page numbers
+  
+  // ==================== ADD PAGE NUMBERS AND FOOTERS ====================
   const range = doc.bufferedPageRange();
   const totalPages = range.count;
   
-  // Iterate through each page to add headers and footers
   for (let i = 0; i < totalPages; i++) {
     doc.switchToPage(i);
     
-    // Simplified header and footer (no recursive calls)
-    // Header
-    doc.fontSize(8)
-      .font('Helvetica')
-      .text(
-        transcription.meetingTitle || '',
-        doc.page.margins.left,
-        20,
-        { width: doc.page.width - doc.page.margins.left - doc.page.margins.right, align: 'center' }
-      );
+    // Skip the cover page for the footer line
+    if (i > 0) {
+      // Footer line
+      doc.moveTo(margins.left, doc.page.height - 40)
+         .lineTo(doc.page.width - margins.right, doc.page.height - 40)
+         .stroke(styles.colors.lightGray);
+    }
     
-    // Footer
-    doc.fontSize(8)
-      .text(
-        `Page ${i + 1} of ${totalPages}`,
-        doc.page.margins.left,
-        doc.page.height - 30,
-        { width: doc.page.width - doc.page.margins.left - doc.page.margins.right, align: 'center' }
-      );
+    // Footer with page number and logo text
+    doc.fontSize(styles.sizes.small)
+       .fillColor(styles.colors.text)
+       .font(styles.fonts.normal)
+       .text(
+         `LEARN-X Transcription | Page ${i + 1} of ${totalPages}`,
+         margins.left,
+         doc.page.height - 30,
+         { width: doc.page.width - margins.left - margins.right, align: 'center' }
+       );
   }
   
   // Finalize
@@ -238,15 +459,16 @@ export async function generateTranscriptPDF(
   });
 }
 
-// Function removed to fix infinite recursion issues
-
+// Action Items parsing function
 function parseActionItems(trans: Transcription): string[] {
   try {
     const arr = JSON.parse(trans.actionItems || '[]');
     if (Array.isArray(arr) && arr.length) return arr;
   } catch {}
+  
   const lines = (trans.actionItems || '').split(/\r?\n/).filter(l => l.trim());
   if (lines.length) return lines;
+  
   // Regex-based extraction
   const kw = ['need to', 'should', 'must', 'deadline', 'follow up', 'plan'];
   return (trans.summary || '').split(/\r?\n/)
@@ -254,6 +476,7 @@ function parseActionItems(trans: Transcription): string[] {
     .map(l => l.replace(/^[\-•]\s*/, '').trim());
 }
 
+// Time formatting helper
 function formatTime(sec: number): string {
   const m = Math.floor(sec / 60).toString().padStart(2, '0');
   const s = Math.floor(sec % 60).toString().padStart(2, '0');
