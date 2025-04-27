@@ -200,12 +200,11 @@ Otherwise, use "Speaker 1", "Speaker 2", etc.`
   }
 }
 
-// Helper function to enforce consistent speaker labeling
+// Helper function to ensure consistent speaker labeling
 function enforceConsistentSpeakers(
   result: { segments: TranscriptSegment[], speakerCount: number }
 ): { segments: TranscriptSegment[], speakerCount: number } {
-  // Always ensure exactly 2 speakers
-  console.log(`Processing speakers: Initial count ${result.speakerCount}, enforcing exactly 2.`);
+  console.log(`Processing speakers: Initial count ${result.speakerCount}`);
   
   // Get all unique speaker labels
   const uniqueSpeakers = new Set<string>();
@@ -215,81 +214,87 @@ function enforceConsistentSpeakers(
     }
   });
   
-  // If we already have exactly Speaker 1 and Speaker 2, no need for complex logic
-  if (uniqueSpeakers.size === 2 && 
-      uniqueSpeakers.has("Speaker 1") && 
-      uniqueSpeakers.has("Speaker 2")) {
-    result.speakerCount = 2;
+  // If no speakers were detected or if speaker labels are inconsistent/missing
+  if (uniqueSpeakers.size === 0) {
+    // Default to a monologue (single speaker)
+    result.segments = result.segments.map(segment => ({
+      ...segment,
+      speaker: "Speaker 1"
+    }));
+    result.speakerCount = 1;
     return result;
   }
   
-  // Create a map of speaker patterns to help identify consistent speakers
+  // Make sure every segment has a speaker assigned
+  let allLabelsAreValid = true;
+  let maxSpeakerNum = 0;
+  
+  // Check for valid format (Speaker X) and find highest speaker number
+  uniqueSpeakers.forEach(speaker => {
+    const match = speaker.match(/^Speaker (\d+)$/);
+    if (!match) {
+      allLabelsAreValid = false;
+    } else {
+      maxSpeakerNum = Math.max(maxSpeakerNum, parseInt(match[1]));
+    }
+  });
+  
+  // If all labels follow the expected pattern and are sequential, we're good
+  if (allLabelsAreValid && maxSpeakerNum === uniqueSpeakers.size) {
+    // Double-check that every segment has a valid speaker
+    result.segments = result.segments.map(segment => ({
+      ...segment,
+      speaker: segment.speaker || "Speaker 1" // Default to Speaker 1 if missing
+    }));
+    
+    result.speakerCount = uniqueSpeakers.size;
+    return result;
+  }
+  
+  // Otherwise, we need to normalize the speaker labels
+  console.log("Normalizing inconsistent speaker labels");
+  
+  // Create a map of speaker occurrences
   const speakerPatterns = new Map<string, { 
     count: number,
-    position: number[],
-    text: string[]
+    positions: number[],
   }>();
   
   // First pass: gather speaker statistics
   result.segments.forEach((segment, index) => {
-    const speaker = segment.speaker || '';
+    const speaker = segment.speaker || 'unknown';
     if (!speakerPatterns.has(speaker)) {
       speakerPatterns.set(speaker, {
         count: 0,
-        position: [],
-        text: []
+        positions: [],
       });
     }
     
     const pattern = speakerPatterns.get(speaker)!;
     pattern.count++;
-    pattern.position.push(index);
-    pattern.text.push(segment.text);
+    pattern.positions.push(index);
   });
   
   // Sort speakers by frequency
   const sortedSpeakers = Array.from(speakerPatterns.entries())
     .sort((a, b) => b[1].count - a[1].count);
   
-  // If we don't have any speakers or just one, apply alternating pattern
-  if (sortedSpeakers.length <= 1) {
-    result.segments = result.segments.map((segment, index) => ({
-      ...segment,
-      speaker: index % 2 === 0 ? "Speaker 1" : "Speaker 2"
-    }));
-    result.speakerCount = 2;
-    return result;
-  }
-  
-  // For our primary mapping, take the two most frequent speakers
-  const speaker1 = sortedSpeakers[0][0];
-  const speaker2 = sortedSpeakers.length > 1 ? sortedSpeakers[1][0] : "";
-  
-  // Create a final mapping to exactly "Speaker 1" and "Speaker 2"
-  const finalSpeakerMap = new Map<string, string>();
+  // Map each speaker to a normalized "Speaker X" format
+  const normalizedSpeakerMap = new Map<string, string>();
   sortedSpeakers.forEach(([speaker], index) => {
-    if (index === 0) {
-      finalSpeakerMap.set(speaker, "Speaker 1");
-    } else if (index === 1) {
-      finalSpeakerMap.set(speaker, "Speaker 2");
-    } else {
-      // For any additional speakers (which shouldn't exist but might), 
-      // map to either Speaker 1 or 2 based on similarity
-      const isSimilarToFirst = Math.random() > 0.5; // Simplified approach
-      finalSpeakerMap.set(speaker, isSimilarToFirst ? "Speaker 1" : "Speaker 2");
-    }
+    normalizedSpeakerMap.set(speaker, `Speaker ${index + 1}`);
   });
   
-  // Apply the final mapping to all segments
+  // Apply the normalized mapping
   result.segments = result.segments.map(segment => ({
     ...segment,
     speaker: segment.speaker ? 
-      finalSpeakerMap.get(segment.speaker) || "Speaker 1" : 
+      normalizedSpeakerMap.get(segment.speaker) || "Speaker 1" : 
       "Speaker 1"
   }));
   
-  // Set the final count
-  result.speakerCount = 2;
+  // Set the accurate speaker count
+  result.speakerCount = normalizedSpeakerMap.size;
   
   return result;
 }
