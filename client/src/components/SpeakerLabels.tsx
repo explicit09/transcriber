@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Edit, Save, User, UserCheck } from 'lucide-react';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { getSpeakerColorClass } from '@/lib/utils';
 
 interface SpeakerLabelsProps {
   segments: TranscriptSegment[];
@@ -35,29 +36,12 @@ export default function SpeakerLabels({
   const [speakerNames, setSpeakerNames] = useState<Record<string, string>>(() => {
     const names: Record<string, string> = {};
     speakers.forEach(speaker => {
-      names[speaker as string] = speaker as string;
+      if (speaker) {
+        names[speaker] = speaker;
+      }
     });
     return names;
   });
-
-  // Define speaker colors based on speaker identifier (usually a number within the name)
-  const getSpeakerColorClass = (speaker: string | undefined) => {
-    if (!speaker) return "bg-gray-100 text-gray-800";
-    
-    if (speaker.includes("1") || speaker.toLowerCase().includes("speaker 1")) {
-      return "bg-blue-100 text-blue-800";
-    } else if (speaker.includes("2") || speaker.toLowerCase().includes("speaker 2")) {
-      return "bg-green-100 text-green-800";
-    } else if (speaker.includes("3") || speaker.toLowerCase().includes("speaker 3")) {
-      return "bg-purple-100 text-purple-800";
-    } else if (speaker.includes("4") || speaker.toLowerCase().includes("speaker 4")) {
-      return "bg-amber-100 text-amber-800";
-    } else if (speaker.includes("5") || speaker.toLowerCase().includes("speaker 5")) {
-      return "bg-red-100 text-red-800";
-    } else {
-      return "bg-indigo-100 text-indigo-800";
-    }
-  };
 
   // If no speakers, don't render anything
   if (speakers.length === 0) {
