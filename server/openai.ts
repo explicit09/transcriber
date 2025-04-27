@@ -120,7 +120,7 @@ async function processSpeakerDiarization(
     withRetry(() => openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
-        { role: 'system', content: `You are an expert at speaker diarization. Identify the exact number of speakers and label segments as "Speaker X".` },
+        { role: 'system', content: `You are an expert at speaker diarization. Identify the exact number of speakers and label segments as "Speaker X". Return the response as a JSON object with the following structure: { "speakerCount": number, "segments": [{ "start": number, "end": number, "text": "string", "speaker": "Speaker X" }] }` },
         { role: 'user', content: `Transcript:\n${segmentsText}\nFull text:\n${fullText}` }
       ],
       response_format: { type: 'json_object' },
@@ -164,7 +164,7 @@ export async function generateTranscriptSummary(text: string) {
     withRetry(() => openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
-        { role: 'system', content: `Summarize clearly and only what's stated.` },
+        { role: 'system', content: `Summarize clearly and only what's stated. Return the response as a JSON object with the following structure: { "summary": "concise summary", "actionItems": ["action 1", "action 2"], "keywords": ["key1", "key2"] }` },
         { role: 'user', content: text }
       ],
       response_format: { type: 'json_object' },
@@ -174,6 +174,28 @@ export async function generateTranscriptSummary(text: string) {
   );
 
   return JSON.parse(response.choices[0].message.content);
+}
+
+// Translation function
+export async function translateTranscript(text: string, targetLanguage: string) {
+  const response = await limiter.schedule(() => 
+    withRetry(() => openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { 
+          role: 'system', 
+          content: `You are a professional translator. Translate the following text to ${targetLanguage}, preserving all formatting and speaker information. Return your response as a JSON object with the following structure: { "translatedText": "text translated to ${targetLanguage}" }` 
+        },
+        { role: 'user', content: text }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.1,
+      max_tokens: 4000
+    }))
+  );
+
+  const result = JSON.parse(response.choices[0].message.content);
+  return { translatedText: result.translatedText };
 }
 
 // Helper: format seconds to MM:SS
