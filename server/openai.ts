@@ -189,50 +189,73 @@ Otherwise, use "Speaker 1", "Speaker 2", etc.`
 function enforceConsistentSpeakers(
   result: { segments: TranscriptSegment[], speakerCount: number }
 ): { segments: TranscriptSegment[], speakerCount: number } {
-  // Only enforce 2 speakers if the initial result had MORE than 2
+  // Always enforce 2 speakers unless there's overwhelming evidence
   if (result.speakerCount > 2) {
     console.log(`Consolidating speakers: Initial count ${result.speakerCount}, enforcing 2.`);
-    // Map any Speaker 3+ to either Speaker 1 or Speaker 2 based on context
-    const speakerMap = new Map<string, string>();
-    let speaker1Usage = 0;
-    let speaker2Usage = 0;
-
-    const normalizedSegments = result.segments.map(segment => {
+    
+    // Create a map of speaker patterns to help identify consistent speakers
+    const speakerPatterns = new Map<string, { 
+      count: number,
+      avgPosition: number,
+      commonPhrases: Set<string>
+    }>();
+    
+    // First pass: gather speaker statistics
+    result.segments.forEach((segment, index) => {
       const speaker = segment.speaker || '';
-
-      // If it's Speaker 1 or 2, keep it and track usage
-      if (speaker === 'Speaker 1') {
-        speaker1Usage++;
-        return segment;
+      if (!speakerPatterns.has(speaker)) {
+        speakerPatterns.set(speaker, {
+          count: 0,
+          avgPosition: 0,
+          commonPhrases: new Set()
+        });
       }
-      if (speaker === 'Speaker 2') {
-        speaker2Usage++;
-        return segment;
-      }
-
-      // For any other speaker (Speaker 3, 4, etc.), map to either Speaker 1 or 2
-      if (!speakerMap.has(speaker)) {
-        // Assign to whichever speaker (1 or 2) has been used less so far
-        const targetSpeaker = speaker1Usage <= speaker2Usage ? 'Speaker 1' : 'Speaker 2';
-        speakerMap.set(speaker, targetSpeaker);
-        console.log(`Mapping ${speaker} to ${targetSpeaker}`);
-        if (targetSpeaker === 'Speaker 1') speaker1Usage++;
-        else speaker2Usage++;
-      }
-
-      return {
-        ...segment,
-        speaker: speakerMap.get(speaker)
-      };
+      
+      const pattern = speakerPatterns.get(speaker)!;
+      pattern.count++;
+      pattern.avgPosition += index;
+      // Add common words or phrases to help identify speakers
+      segment.text.toLowerCase()
+        .split(/[.!?]\s+/)
+        .forEach(phrase => pattern.commonPhrases.add(phrase.trim()));
     });
-
-    return {
-      segments: normalizedSegments,
-      speakerCount: 2 // Force count to 2
-    };
+    
+    // Calculate final averages
+    speakerPatterns.forEach(pattern => {
+      pattern.avgPosition /= pattern.count;
+    });
+    
+    // Sort speakers by frequency and consistency
+    const sortedSpeakers = Array.from(speakerPatterns.entries())
+      .sort((a, b) => b[1].count - a[1].count);
+    
+    // Keep only the two most frequent speakers
+    const primarySpeakers = sortedSpeakers.slice(0, 2).map(([speaker]) => speaker);
+    
+    // Create mapping for other speakers to the closest primary speaker
+    const speakerMap = new Map<string, string>();
+    sortedSpeakers.slice(2).forEach(([speaker, pattern]) => {
+      // Find the closest primary speaker based on pattern similarity
+      const closestPrimary = primarySpeakers.reduce((best, primary) => {
+        const primaryPattern = speakerPatterns.get(primary)!;
+        const similarity = pattern.commonPhrases.size / 
+          (pattern.commonPhrases.size + primaryPattern.commonPhrases.size);
+        return similarity > best.similarity ? { speaker: primary, similarity } : best;
+      }, { speaker: primarySpeakers[0], similarity: 0 });
+      
+      speakerMap.set(speaker, closestPrimary.speaker);
+    });
+    
+    // Update segments with consolidated speakers
+    result.segments = result.segments.map(segment => ({
+      ...segment,
+      speaker: speakerMap.get(segment.speaker || '') || segment.speaker
+    }));
+    
+    // Update speaker count
+    result.speakerCount = 2;
   }
-
-  // If initial result had 0, 1, or 2 speakers, return it as is
+  
   return result;
 }
 
@@ -245,25 +268,11 @@ export async function generateTranscriptSummary(text: string): Promise<{
   try {
     // Get transcript metrics
     const wordCount = text.split(/\s+/).filter(Boolean).length;
-    const lineCount = text.split('\n').filter(line => line.trim().length > 0).length;
-    const lowerText = text.toLowerCase();
     
-    // MINIMAL LENGTH CHECK: Only reject extremely short messages
-    // For very short transcripts, simply return a standard message without calling the API
-    if (text.length < 100 || wordCount < 15) {
+    // Only reject extremely short messages
+    if (text.length < 50 || wordCount < 10) {
       return {
-        summary: "The transcript is too brief for a meaningful summary. It contains only a short exchange.",
-        actionItems: [],
-        keywords: []
-      };
-    }
-    
-    // Check for test messages but only if they're short
-    // This prevents false positives on longer legitimate transcripts that might mention "test"
-    if ((lowerText.includes('test') || lowerText.includes('hallucinate')) && 
-        (text.length < 150 || lineCount < 4)) {
-      return {
-        summary: "This appears to be a test message. No summary is needed.",
+        summary: "The transcript is too brief for a meaningful summary.",
         actionItems: [],
         keywords: []
       };
@@ -280,7 +289,7 @@ export async function generateTranscriptSummary(text: string): Promise<{
           IMPORTANT GUIDELINES:
           1. ONLY summarize what is EXPLICITLY stated in the transcript
           2. NEVER add information that is not directly present in the transcript
-          3. If the transcript is very short or just contains greetings, state that it's too brief for a meaningful summary
+          3. For longer transcripts (>1000 words), provide a more detailed summary with sections
           4. Be EXTREMELY conservative in your summary - when in doubt, exclude information
           5. Do NOT infer topics, decisions, or discussions that aren't clearly stated
           6. Confirm the existence of real actionable items before listing any
@@ -293,7 +302,7 @@ export async function generateTranscriptSummary(text: string): Promise<{
           
           Format your response as a JSON object with the following structure:
           {
-            "summary": "A concise summary of the meeting reflecting ONLY content that is actually in the transcript. Important sections like 'Decisions Made' and 'Challenges' should be included directly in the summary without any markdown formatting symbols. Use proper paragraph breaks but avoid using markdown formatting.",
+            "summary": "A concise summary of the meeting reflecting ONLY content that is actually in the transcript. For longer transcripts, break into clear sections. Use proper paragraph breaks but avoid using markdown formatting.",
             "actionItems": [
               "Person X needs to complete task Y by deadline Z",
               "Team needs to follow up on...",
@@ -303,8 +312,7 @@ export async function generateTranscriptSummary(text: string): Promise<{
           }
           
           If there are no clear action items in the transcript, return an empty array for actionItems.
-          For the action items, only include items that are SPECIFICALLY mentioned as tasks to be done with clear ownership.
-          Structure the summary with clear paragraphs but DO NOT use markdown formatting symbols like asterisks or hashtags.`
+          For the action items, only include items that are SPECIFICALLY mentioned as tasks to be done with clear ownership.`
         },
         {
           role: "user",
@@ -312,7 +320,8 @@ export async function generateTranscriptSummary(text: string): Promise<{
         }
       ],
       response_format: { type: "json_object" },
-      temperature: 0.1 // Use very low temperature for factual responses
+      temperature: 0.1, // Use very low temperature for factual responses
+      max_tokens: 2000  // Increased token limit for longer summaries
     });
 
     const content = response.choices[0].message.content;
@@ -322,40 +331,6 @@ export async function generateTranscriptSummary(text: string): Promise<{
 
     // Parse the JSON response
     const result = JSON.parse(content);
-    
-    // ADDITIONAL VALIDATION: Only for shorter transcripts (not for long legitimate transcripts)
-    // Only check for hallucination if the transcript is relatively short
-    if (wordCount < 100 && result.summary.length > wordCount * 1.5) {
-      // Summary is suspiciously long compared to the original text - likely hallucinated
-      return {
-        summary: "The transcript is too brief for a meaningful summary. It contains only a short exchange.",
-        actionItems: [],
-        keywords: []
-      };
-    }
-    
-    // CONTENT VERIFICATION: Only for shorter transcripts
-    // Don't run verification on longer transcripts that are likely legitimate 
-    if (wordCount < 150) {
-      const commonHallucinatedTerms = ["marketing strategy", "budget", "client presentation", 
-        "resource allocation", "development team", "performance review", "project", "initiatives"];
-        
-      let potentialHallucination = false;
-      for (const term of commonHallucinatedTerms) {
-        if (result.summary.toLowerCase().includes(term) && !lowerText.includes(term)) {
-          potentialHallucination = true;
-          break;
-        }
-      }
-      
-      if (potentialHallucination) {
-        return {
-          summary: "Unable to generate a reliable summary. The content is too limited or ambiguous for accurate summarization.",
-          actionItems: [],
-          keywords: []
-        };
-      }
-    }
     
     return {
       summary: result.summary,

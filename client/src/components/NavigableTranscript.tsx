@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Clock, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -61,33 +61,32 @@ export default function NavigableTranscript({
     }
   }, [currentTime, transcript, highlightCurrentSegment]);
 
-  // Group segments by speaker for better visualization
-  const groupedSegments = transcript?.segments?.reduce<{
-    [key: string]: TranscriptSegment[];
-  }>((groups, segment) => {
-    const speaker = segment.speaker || "Unknown Speaker";
-    if (!groups[speaker]) {
-      groups[speaker] = [];
-    }
-    groups[speaker].push(segment);
-    return groups;
-  }, {});
+  // Calculate speaker colors using useMemo to avoid recalculation
+  const { speakerColors, speakers } = useMemo(() => {
+    const speakerSet = new Set<string>();
+    transcript?.segments?.forEach(segment => {
+      if (segment.speaker) {
+        speakerSet.add(segment.speaker);
+      }
+    });
+    
+    const speakers = Array.from(speakerSet);
+    const colorClasses = [
+      "bg-blue-100 text-blue-800 border-blue-200",
+      "bg-green-100 text-green-800 border-green-200",
+      "bg-purple-100 text-purple-800 border-purple-200",
+      "bg-amber-100 text-amber-800 border-amber-200",
+      "bg-red-100 text-red-800 border-red-200",
+      "bg-indigo-100 text-indigo-800 border-indigo-200",
+    ];
 
-  // Get unique speakers and assign colors
-  const speakers = Object.keys(groupedSegments || {});
-  const speakerColors: Record<string, string> = {};
-  const colorClasses = [
-    "bg-blue-100 text-blue-800 border-blue-200",
-    "bg-green-100 text-green-800 border-green-200",
-    "bg-purple-100 text-purple-800 border-purple-200",
-    "bg-amber-100 text-amber-800 border-amber-200",
-    "bg-red-100 text-red-800 border-red-200",
-    "bg-indigo-100 text-indigo-800 border-indigo-200",
-  ];
+    const colors = speakers.reduce((acc, speaker, index) => {
+      acc[speaker] = colorClasses[index % colorClasses.length];
+      return acc;
+    }, {} as Record<string, string>);
 
-  speakers.forEach((speaker, index) => {
-    speakerColors[speaker] = colorClasses[index % colorClasses.length];
-  });
+    return { speakerColors: colors, speakers };
+  }, [transcript?.segments]);
 
   if (!transcript || !transcript.segments || transcript.segments.length === 0) {
     return (
@@ -99,6 +98,22 @@ export default function NavigableTranscript({
 
   return (
     <div className="space-y-6 overflow-y-auto">
+      {/* Speaker legend */}
+      {speakers.length > 0 && (
+        <div className="flex flex-wrap gap-2 p-2 bg-gray-50 rounded-md mb-4">
+          {speakers.map((speaker) => (
+            <Badge
+              key={speaker}
+              variant="outline"
+              className={`${speakerColors[speaker]}`}
+            >
+              <User className="h-3 w-3 mr-1" />
+              {speaker}
+            </Badge>
+          ))}
+        </div>
+      )}
+
       {/* Display segments chronologically */}
       {transcript.segments.map((segment, index) => {
         const isActive = index === activeSegmentId;
@@ -109,7 +124,9 @@ export default function NavigableTranscript({
           <div
             key={`segment-${index}`}
             ref={(el) => (segmentRefs.current[index] = el)}
-            className={`p-3 rounded-md transition-all ${isActive ? "bg-blue-50 border border-blue-200" : ""}`}
+            className={`p-3 rounded-md transition-all ${
+              isActive ? "bg-blue-50 border border-blue-200" : ""
+            }`}
           >
             <div className="flex items-start justify-between mb-2">
               <Badge
