@@ -6,13 +6,13 @@ import { Button } from "@/components/ui/button";
 export default function Navbar() {
   return (
     <header className="bg-gradient-to-r from-slate-900 to-slate-800 shadow-lg">
-      <div className="container mx-auto px-4 flex items-center justify-between h-20 md:h-24 lg:h-28 overflow-hidden">
+      <div className="container mx-auto px-4 flex items-center justify-between h-24 md:h-32 lg:h-40 overflow-hidden">
         <Link href="/">
           <div className="flex items-center group cursor-pointer max-w-[70%] flex-shrink-0">
             <img 
               src={learnXLogo} 
               alt="LEARN-X Logo" 
-              className="h-12 sm:h-14 md:h-16 w-auto transition-transform duration-300 group-hover:scale-105 mr-3" 
+              className="h-20 sm:h-24 md:h-28 lg:h-32 xl:h-36 w-auto transition-transform duration-300 group-hover:scale-105 mr-3" 
             />
             <div>
               <h1 className="text-lg sm:text-xl md:text-2xl text-white font-bold tracking-wide whitespace-nowrap">
