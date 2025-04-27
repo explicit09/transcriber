@@ -1,426 +1,184 @@
 import OpenAI from "openai";
 import fs from "fs";
+import Bottleneck from "bottleneck";
 import { TranscriptSegment, StructuredTranscript } from "@shared/schema";
 
-// the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-const openai = new OpenAI({ 
-  apiKey: process.env.OPENAI_API_KEY || 'default_key' 
+// Use the latest model unless explicitly overridden
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY || 'default_key'
 });
 
-// Basic audio transcription function
-export async function transcribeAudio(audioFilePath: string): Promise<{ 
-  text: string, 
-  duration?: number,
-  language?: string 
-}> {
+// Concurrency limiter for API calls
+const limiter = new Bottleneck({
+  maxConcurrent: 5,
+  minTime: 200 // at most 5 requests per second
+});
+
+// Exponential-backoff retry helper
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  retries = 3,
+  delay = 500
+): Promise<T> {
   try {
-    const audioReadStream = fs.createReadStream(audioFilePath);
-
-    const transcription = await openai.audio.transcriptions.create({
-      file: audioReadStream,
-      model: "whisper-1",
-      response_format: "verbose_json",
-      timestamp_granularities: ["segment"],
-    });
-
-    // Extract any duration information if available
-    const duration = transcription.duration;
-    
-    return {
-      text: transcription.text,
-      duration,
-      language: transcription.language,
-    };
-  } catch (error: unknown) {
-    console.error("OpenAI Transcription Error:", error);
-    throw new Error(`Failed to transcribe audio: ${error instanceof Error ? error.message : String(error)}`);
+    return await fn();
+  } catch (err) {
+    if (retries <= 0) throw err;
+    await new Promise(res => setTimeout(res, delay));
+    return withRetry(fn, retries - 1, delay * 2);
   }
 }
 
-// Enhanced transcription with speaker diarization and timestamps
+// Basic audio transcription
+export async function transcribeAudio(
+  audioFilePath: string
+): Promise<{ text: string; duration?: number; language?: string }> {
+  const streamFactory = () => fs.createReadStream(audioFilePath);
+
+  const transcription = await limiter.schedule(() => 
+    withRetry(() => openai.audio.transcriptions.create({
+      file: streamFactory(),
+      model: 'whisper-1',
+      response_format: 'verbose_json',
+      timestamp_granularities: ['segment'],
+    }))
+  );
+
+  return {
+    text: transcription.text,
+    duration: transcription.duration,
+    language: transcription.language,
+  };
+}
+
+// Enhanced transcription with features
 export async function transcribeAudioWithFeatures(
-  audioFilePath: string, 
-  options: { 
-    enableSpeakerDiarization?: boolean,
-    enableTimestamps?: boolean,
-    language?: string
+  audioFilePath: string,
+  options: {
+    enableSpeakerDiarization?: boolean;
+    enableTranslation?: boolean;
+    targetLanguage?: string;
   } = {}
 ): Promise<{
-  text: string,
-  structuredTranscript: StructuredTranscript,
-  duration?: number,
-  language?: string
+  text: string;
+  structuredTranscript: StructuredTranscript;
+  duration?: number;
+  language?: string;
+  translatedText?: string;
 }> {
-  try {
-    // First get the basic transcription with timestamps
-    const audioReadStream = fs.createReadStream(audioFilePath);
-    
-    const transcription = await openai.audio.transcriptions.create({
-      file: audioReadStream,
-      model: "whisper-1",
-      response_format: "verbose_json",
-      timestamp_granularities: ["segment"],
-      language: options.language,
-    });
-
-    // Extract segments with timestamps
-    const segments: TranscriptSegment[] = (transcription.segments || []).map(segment => ({
-      start: segment.start,
-      end: segment.end,
-      text: segment.text,
-      speaker: undefined // Will be filled in if speaker diarization is enabled
-    }));
-
-    // If speaker diarization is requested, process with GPT-4o
-    let speakerCount = 0;
-    if (options.enableSpeakerDiarization && segments.length > 0) {
-      const processedSegments = await processSpeakerDiarization(segments, transcription.text);
-      segments.length = 0; // Clear the array
-      segments.push(...processedSegments.segments);
-      speakerCount = processedSegments.speakerCount;
-    }
-
-    // Create the structured transcript
-    const structuredTranscript: StructuredTranscript = {
-      segments,
-      metadata: {
-        speakerCount: speakerCount || undefined,
-        duration: transcription.duration,
-        language: transcription.language,
-      }
-    };
-
-    return {
-      text: transcription.text,
-      structuredTranscript,
-      duration: transcription.duration,
-      language: transcription.language,
-    };
-  } catch (error: unknown) {
-    console.error("Enhanced Transcription Error:", error);
-    throw new Error(`Failed to transcribe audio with features: ${error instanceof Error ? error.message : String(error)}`);
+  // Transcribe or translate directly with Whisper if requested
+  if (options.enableTranslation && options.targetLanguage) {
+    // Whisper audio-to-text translation
+    const translation = await limiter.schedule(() => 
+      withRetry(() => openai.audio.translations.create({
+        file: fs.createReadStream(audioFilePath),
+        model: 'whisper-1',
+        response_format: 'verbose_json',
+        language: options.targetLanguage,
+      }))
+    );
+    return { text: translation.text, translatedText: translation.text, language: translation.language };
   }
+
+  // Standard transcription
+  const { text, duration, language } = await transcribeAudio(audioFilePath);
+
+  // Build segments
+  const segments: TranscriptSegment[] = text && Array.isArray((text as any).segments)
+    ? (text as any).segments.map((s: any) => ({ start: s.start, end: s.end, text: s.text, speaker: undefined }))
+    : [];
+
+  let speakerCount: number | undefined;
+
+  if (options.enableSpeakerDiarization && segments.length) {
+    const { segments: diaSegments, speakerCount: count } =
+      await processSpeakerDiarization(segments, text);
+    speakerCount = count;
+    // Replace segments
+    segments.length = 0;
+    segments.push(...diaSegments);
+  }
+
+  const structuredTranscript: StructuredTranscript = {
+    segments,
+    metadata: { speakerCount, duration, language },
+  };
+
+  return { text, structuredTranscript, duration, language };
 }
 
-// Process speaker diarization using GPT-4o
+// Speaker diarization via GPT
 async function processSpeakerDiarization(
   timestampedSegments: TranscriptSegment[],
   fullText: string
-): Promise<{ segments: TranscriptSegment[], speakerCount: number }> {
-  try {
-    // Format the segments for GPT
-    const segmentsText = timestampedSegments
-      .map(s => `[${formatTime(s.start)} - ${formatTime(s.end)}]: ${s.text}`)
-      .join('\n');
+): Promise<{ segments: TranscriptSegment[]; speakerCount: number }> {
+  const segmentsText = timestampedSegments
+    .map(s => `[${formatTime(s.start)} - ${formatTime(s.end)}]: ${s.text}`)
+    .join('\n');
 
-    // Ask GPT-4o to analyze and assign speakers
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+  const response = await limiter.schedule(() => 
+    withRetry(() => openai.chat.completions.create({
+      model: 'gpt-4o',
       messages: [
-        {
-          role: "system",
-          content: `You are an expert speech and conversation analyst specializing in precise speaker diarization. Your task is to analyze a transcript and accurately identify different speakers.
-
-CRITICAL INSTRUCTIONS:
-1. First, determine the ACTUAL number of distinct speakers in the conversation
-2. Use clear evidence like speaking patterns, conversation flow, and explicit references 
-3. Label speakers consistently as "Speaker 1", "Speaker 2", "Speaker 3", etc.
-4. Do NOT create more speakers than are actually present
-5. Assign "Speaker 1" to the person who begins the conversation
-6. Be conservative - only identify a new speaker when there's clear evidence
-
-DIARIZATION APPROACH:
-1. Read the entire transcript to understand overall conversational patterns
-2. Identify distinct speech patterns, terminology, and topics for each speaker
-3. Look for explicit turn-taking, introductions, or other clear speaker changes
-4. Maintain absolute consistency in speaker assignments throughout the transcript
-5. If a segment is ambiguous, assign it to the most likely speaker based on context
-
-Format your response as a JSON object with the following structure:
-{
-  "speakerCount": number,
-  "segments": [
-    {
-      "start": number,
-      "end": number,
-      "text": "string",
-      "speaker": "Speaker 1"
-    },
-    ...
-  ]
-}
-
-For academic contexts, use role-based labels like "Student" and "Professor" only if extremely clear from context.
-Otherwise, use "Speaker 1", "Speaker 2", etc.`
-        },
-        {
-          role: "user",
-          content: `Here is the transcript with timestamps:\n\n${segmentsText}\n\nFull transcript for context:\n${fullText}`
-        }
+        { role: 'system', content: `You are an expert at speaker diarization. Identify the exact number of speakers and label segments as "Speaker X".` },
+        { role: 'user', content: `Transcript:\n${segmentsText}\nFull text:\n${fullText}` }
       ],
-      response_format: { type: "json_object" },
-      temperature: 0.1 // Very low temperature for more consistent results
-    });
+      response_format: { type: 'json_object' },
+      temperature: 0.1,
+    }))
+  );
 
-    const content = response.choices[0].message.content;
-    if (!content) {
-      throw new Error("Empty response from OpenAI");
-    }
-
-    // Parse the JSON response with error handling
-    let result;
-    try {
-      result = JSON.parse(content);
-    } catch (parseError) {
-      console.error("JSON Parse Error:", parseError);
-      // Fallback to 2 speakers with basic formatting
-      result = {
-        speakerCount: 2,
-        segments: timestampedSegments.map((segment, index) => ({
-          ...segment,
-          speaker: index % 2 === 0 ? "Speaker 1" : "Speaker 2"
-        }))
-      };
-    }
-    
-    // Ensure we have at least 1 speaker, but respect the actual count detected
-    result.speakerCount = Math.max(1, result.speakerCount || 0);
-    
-    // Post-process to ensure consistency and proper speaker labeling
-    const processed = enforceConsistentSpeakers(result);
-    
-    return processed;
-  } catch (error) {
-    console.error("Speaker Diarization Error:", error);
-    // Return the original segments if diarization fails
-    return { 
-      segments: timestampedSegments,
-      speakerCount: 0
-    };
+  let result;
+  try {
+    result = JSON.parse(response.choices[0].message.content);
+  } catch {
+    // Fallback: majority-based assignment
+    const primary = timestampedSegments[0];
+    result = { speakerCount: 1, segments: timestampedSegments.map(s => ({ ...s, speaker: 'Speaker 1' })) };
   }
+
+  // Normalize and enforce labeling
+  return enforceConsistentSpeakers(result);
 }
 
-// Helper function to ensure consistent speaker labeling
+// Ensure speakers are labeled "Speaker X" and count correct
 function enforceConsistentSpeakers(
-  result: { segments: TranscriptSegment[], speakerCount: number }
-): { segments: TranscriptSegment[], speakerCount: number } {
-  console.log(`Processing speakers: Initial count ${result.speakerCount}`);
-  
-  // Get all unique speaker labels
-  const uniqueSpeakers = new Set<string>();
-  result.segments.forEach(segment => {
-    if (segment.speaker) {
-      uniqueSpeakers.add(segment.speaker);
-    }
-  });
-  
-  // If no speakers were detected or if speaker labels are inconsistent/missing
-  if (uniqueSpeakers.size === 0) {
-    // Default to a monologue (single speaker)
-    result.segments = result.segments.map(segment => ({
-      ...segment,
-      speaker: "Speaker 1"
-    }));
-    result.speakerCount = 1;
-    return result;
-  }
-  
-  // Make sure every segment has a speaker assigned
-  let allLabelsAreValid = true;
-  let maxSpeakerNum = 0;
-  
-  // Check for valid format (Speaker X) and find highest speaker number
-  uniqueSpeakers.forEach(speaker => {
-    const match = speaker.match(/^Speaker (\d+)$/);
-    if (!match) {
-      allLabelsAreValid = false;
-    } else {
-      maxSpeakerNum = Math.max(maxSpeakerNum, parseInt(match[1]));
-    }
-  });
-  
-  // If all labels follow the expected pattern and are sequential, we're good
-  if (allLabelsAreValid && maxSpeakerNum === uniqueSpeakers.size) {
-    // Double-check that every segment has a valid speaker
-    result.segments = result.segments.map(segment => ({
-      ...segment,
-      speaker: segment.speaker || "Speaker 1" // Default to Speaker 1 if missing
-    }));
-    
-    result.speakerCount = uniqueSpeakers.size;
-    return result;
-  }
-  
-  // Otherwise, we need to normalize the speaker labels
-  console.log("Normalizing inconsistent speaker labels");
-  
-  // Create a map of speaker occurrences
-  const speakerPatterns = new Map<string, { 
-    count: number,
-    positions: number[],
-  }>();
-  
-  // First pass: gather speaker statistics
-  result.segments.forEach((segment, index) => {
-    const speaker = segment.speaker || 'unknown';
-    if (!speakerPatterns.has(speaker)) {
-      speakerPatterns.set(speaker, {
-        count: 0,
-        positions: [],
-      });
-    }
-    
-    const pattern = speakerPatterns.get(speaker)!;
-    pattern.count++;
-    pattern.positions.push(index);
-  });
-  
-  // Sort speakers by frequency
-  const sortedSpeakers = Array.from(speakerPatterns.entries())
-    .sort((a, b) => b[1].count - a[1].count);
-  
-  // Map each speaker to a normalized "Speaker X" format
-  const normalizedSpeakerMap = new Map<string, string>();
-  sortedSpeakers.forEach(([speaker], index) => {
-    normalizedSpeakerMap.set(speaker, `Speaker ${index + 1}`);
-  });
-  
-  // Apply the normalized mapping
-  result.segments = result.segments.map(segment => ({
-    ...segment,
-    speaker: segment.speaker ? 
-      normalizedSpeakerMap.get(segment.speaker) || "Speaker 1" : 
-      "Speaker 1"
+  result: { segments: TranscriptSegment[]; speakerCount: number }
+): { segments: TranscriptSegment[]; speakerCount: number } {
+  const labels = [...new Set(result.segments.map(s => s.speaker || 'Speaker 1'))];
+  const map = new Map<string, string>();
+  labels.forEach((lbl, i) => map.set(lbl, `Speaker ${i + 1}`));
+  const segments = result.segments.map(s => ({
+    ...s,
+    speaker: map.get(s.speaker || 'Speaker 1')!
   }));
-  
-  // Set the accurate speaker count
-  result.speakerCount = normalizedSpeakerMap.size;
-  
-  return result;
+  return { segments, speakerCount: map.size };
 }
 
-// Generate transcript summary using GPT-4o
-export async function generateTranscriptSummary(text: string): Promise<{ 
-  summary: string;
-  actionItems: string[];
-  keywords: string[];
-}> {
-  try {
-    // Get transcript metrics
-    const wordCount = text.split(/\s+/).filter(Boolean).length;
-    
-    // Only reject extremely short messages
-    if (text.length < 50 || wordCount < 10) {
-      return {
-        summary: "The transcript is too brief for a meaningful summary.",
-        actionItems: [],
-        keywords: []
-      };
-    }
-    
-    // Proceed with AI summary generation
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+// Summary generation using GPT
+export async function generateTranscriptSummary(text: string) {
+  const wordCount = text.split(/\s+/).length;
+  if (wordCount < 10) return { summary: 'Too short.', actionItems: [], keywords: [] };
+
+  const response = await limiter.schedule(() => 
+    withRetry(() => openai.chat.completions.create({
+      model: 'gpt-4o',
       messages: [
-        {
-          role: "system",
-          content: `Summarize the following meeting transcript concisely and ACCURATELY. 
-          
-          IMPORTANT GUIDELINES:
-          1. ONLY summarize what is EXPLICITLY stated in the transcript
-          2. NEVER add information that is not directly present in the transcript
-          3. For longer transcripts (>1000 words), provide a more detailed summary with sections
-          4. Be EXTREMELY conservative in your summary - when in doubt, exclude information
-          5. Do NOT infer topics, decisions, or discussions that aren't clearly stated
-          6. Confirm the existence of real actionable items before listing any
-          
-          Extract these components ONLY if they are EXPLICITLY in the transcript:
-          1. Key points and decisions actually made in the meeting (not assumptions)
-          2. Action items with clear owners and deadlines (only if explicitly mentioned)
-          3. Important discussion topics (only topics actually discussed, not inferred)
-          4. Up to 10 important keywords or phrases (that actually appear in the text)
-          
-          Format your response as a JSON object with the following structure:
-          {
-            "summary": "A concise summary of the meeting reflecting ONLY content that is actually in the transcript. For longer transcripts, break into clear sections. Use proper paragraph breaks but avoid using markdown formatting.",
-            "actionItems": [
-              "Person X needs to complete task Y by deadline Z",
-              "Team needs to follow up on...",
-              "etc."
-            ],
-            "keywords": ["keyword1", "keyword2", "etc"]
-          }
-          
-          If there are no clear action items in the transcript, return an empty array for actionItems.
-          For the action items, only include items that are SPECIFICALLY mentioned as tasks to be done with clear ownership.`
-        },
-        {
-          role: "user",
-          content: text
-        }
+        { role: 'system', content: `Summarize clearly and only what's stated.` },
+        { role: 'user', content: text }
       ],
-      response_format: { type: "json_object" },
-      temperature: 0.1, // Use very low temperature for factual responses
-      max_tokens: 2000  // Increased token limit for longer summaries
-    });
+      response_format: { type: 'json_object' },
+      temperature: 0.1,
+      max_tokens: 1500
+    }))
+  );
 
-    const content = response.choices[0].message.content;
-    if (!content) {
-      throw new Error("Empty response from OpenAI");
-    }
-
-    // Parse the JSON response
-    const result = JSON.parse(content);
-    
-    return {
-      summary: result.summary,
-      actionItems: result.actionItems || [],
-      keywords: result.keywords || []
-    };
-  } catch (error: unknown) {
-    console.error("Summary Generation Error:", error);
-    throw new Error(`Failed to generate summary: ${error instanceof Error ? error.message : String(error)}`);
-  }
+  return JSON.parse(response.choices[0].message.content);
 }
 
-// Translate transcript to another language
-export async function translateTranscript(
-  text: string, 
-  targetLanguage: string
-): Promise<{ translatedText: string }> {
-  try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content: `Translate the following text accurately into ${targetLanguage}. 
-          Maintain the meaning, tone, and context of the original text.`
-        },
-        {
-          role: "user",
-          content: text
-        }
-      ]
-    });
-
-    const content = response.choices[0].message.content;
-    if (!content) {
-      throw new Error("Empty response from OpenAI");
-    }
-
-    return {
-      translatedText: content
-    };
-  } catch (error: unknown) {
-    console.error("Translation Error:", error);
-    throw new Error(`Failed to translate text: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
-// Helper function to format time in MM:SS format
+// Helper: format seconds to MM:SS
 function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+  const s = Math.floor(seconds % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
 }
