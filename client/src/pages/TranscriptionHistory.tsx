@@ -18,6 +18,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
@@ -342,6 +343,24 @@ function TranscriptionCard({
         <p className="text-sm text-gray-600 mt-2 line-clamp-2">
           {t.summary}
         </p>
+      )}
+      
+      {/* Transcript text preview with scrollable container */}
+      {t.text && (
+        <div className="mt-2">
+          <details className="text-sm">
+            <summary className="cursor-pointer text-primary hover:text-primary/80 font-medium">
+              View Transcript
+            </summary>
+            <div className="mt-2 border rounded p-2">
+              <ScrollArea className="h-32">
+                <p className="text-sm text-gray-700 whitespace-pre-line">
+                  {t.text}
+                </p>
+              </ScrollArea>
+            </div>
+          </details>
+        </div>
       )}
     </Card>
   );
