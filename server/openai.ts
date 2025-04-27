@@ -175,3 +175,30 @@ function formatTime(seconds: number): string {
   const s = Math.floor(seconds % 60).toString().padStart(2, '0');
   return `${m}:${s}`;
 }
+
+// Text translation function
+export async function translateTranscript(text: string, targetLanguage: string) {
+  const response = await limiter.schedule(() => 
+    withRetry(() => openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { 
+          role: 'system', 
+          content: `You are a professional translator. Translate the following text to ${targetLanguage}, preserving all formatting and speaker information. Return your response as a JSON object with the following structure: { "translatedText": "text translated to ${targetLanguage}" }` 
+        },
+        { role: 'user', content: text }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.1,
+      max_tokens: 4000
+    }))
+  );
+
+  try {
+    const result = JSON.parse(response.choices[0].message.content);
+    return { translatedText: result.translatedText || "" };
+  } catch (error) {
+    console.error("Error parsing translation result:", error);
+    return { translatedText: "Translation error occurred." };
+  }
+}
