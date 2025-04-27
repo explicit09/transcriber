@@ -35,6 +35,7 @@ export interface MeetingMetadata {
   enableTimestamps: boolean;
   language: string | null;
   generateSummary: boolean;
+  numSpeakers: number | null;
 }
 
 interface MeetingMetadataFormProps {
@@ -72,6 +73,9 @@ export default function MeetingMetadataForm({
   const [generateSummary, setGenerateSummary] = useState<boolean>(
     defaultValues.generateSummary || false
   );
+  const [numSpeakers, setNumSpeakers] = useState<number | null>(
+    defaultValues.numSpeakers || null
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,7 +86,8 @@ export default function MeetingMetadataForm({
       enableSpeakerLabels,
       enableTimestamps,
       language,
-      generateSummary
+      generateSummary,
+      numSpeakers
     });
   };
 
@@ -154,6 +159,34 @@ export default function MeetingMetadataForm({
                   onCheckedChange={setEnableSpeakerLabels}
                 />
               </div>
+              
+              {enableSpeakerLabels && (
+                <div className="pl-4 border-l-2 border-gray-200">
+                  <Label htmlFor="num-speakers" className="block mb-1">
+                    Number of Speakers <span className="text-amber-600 text-xs font-medium ml-1">Improves accuracy</span>
+                  </Label>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Specify exactly how many speakers are in the audio
+                  </p>
+                  <Select 
+                    value={numSpeakers?.toString() || "auto"} 
+                    onValueChange={(value) => setNumSpeakers(value === "auto" ? null : parseInt(value))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Auto-detect speakers" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Auto-detect</SelectItem>
+                      <SelectItem value="1">1 speaker</SelectItem>
+                      <SelectItem value="2">2 speakers</SelectItem>
+                      <SelectItem value="3">3 speakers</SelectItem>
+                      <SelectItem value="4">4 speakers</SelectItem>
+                      <SelectItem value="5">5 speakers</SelectItem>
+                      <SelectItem value="6">6 speakers</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               
               <div className="flex items-center justify-between">
                 <div>

@@ -118,6 +118,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const enableTimestamps = req.body.enableTimestamps === 'true' || req.body.enableTimestamps === true;
       const language = req.body.language || null;
       const generateSummary = req.body.generateSummary === 'true' || req.body.generateSummary === true;
+      const numSpeakers = req.body.numSpeakers ? parseInt(req.body.numSpeakers) : null;
       
       const transcription = await storage.createTranscription({
         fileName: file.originalname,
@@ -160,8 +161,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             result = await transcribeWithPyannote(filePath, {
               enableTimestamps: enableTimestamps,
               language: language || undefined,
-              // Optionally provide number of speakers if known
-              numSpeakers: participants ? participants.split(',').length : undefined
+              // Prioritize explicit numSpeakers input, fall back to participants count if available
+              numSpeakers: numSpeakers || (participants ? participants.split(',').length : undefined)
             });
           } else {
             console.log("Using standard transcription" + (enableSpeakerLabels ? " with text-based speaker detection" : ""));
@@ -681,6 +682,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const enableTimestamps = req.body.enableTimestamps === 'true' || req.body.enableTimestamps === true;
       const language = req.body.language || null;
       const generateSummary = req.body.generateSummary === 'true' || req.body.generateSummary === true;
+      const numSpeakers = req.body.numSpeakers ? parseInt(req.body.numSpeakers) : null;
       
       // Process each file
       const transcriptionIds: number[] = [];
@@ -728,11 +730,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 updatedAt: new Date(),
               });
               
-              // Use the enhanced transcription if advanced features are enabled
+              // Determine if we should use advanced diarization
+              const usePyannote = isPyannoteDiarizationAvailable && enableSpeakerLabels;
+              
               if (enableSpeakerLabels || enableTimestamps) {
-                const result = await transcribeAudioWithFeatures(file.path, {
+                console.log("Using enhanced transcription" + (usePyannote ? " with pyannote diarization" : ""));
+                
+                // Determine which transcription method to use
+                const transcriptionMethod = usePyannote ? transcribeWithPyannote : transcribeAudioWithFeatures;
+                
+                // Call the appropriate method
+                const result = await transcriptionMethod(file.path, {
                   enableTimestamps: enableTimestamps,
                   language: language || undefined,
+                  numSpeakers: numSpeakers || (transcription.participants ? transcription.participants.split(',').length : undefined)
                 });
                 
                 // Format the transcript text with speaker labels if speaker diarization is enabled
@@ -837,12 +848,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   structuredTranscript: null 
                 });
               }
-              
+
               // Clean up the file
               fs.unlink(file.path, (err) => {
                 if (err) console.error(`Error deleting file: ${err?.message || 'Unknown error'}`);
               });
-              
             } catch (processError) {
               // Handle errors for this file (Original simpler error handling)
               const errorMessage = processError instanceof Error ? processError.message : String(processError);

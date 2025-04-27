@@ -41,11 +41,25 @@ def diarize_audio(audio_path, num_speakers=None, hf_token=None):
         print(f"Error loading pipeline: {e}", file=sys.stderr)
         raise
     
-    # Set num_speakers if provided
+    # Configure clustering parameters to prevent over-segmentation
+    clustering_params = {
+        "clustering": {
+            # Increase min_cluster_size to prevent small spurious clusters
+            "min_cluster_size": 15,
+            # Increase threshold to make it harder to create new clusters
+            "threshold": 0.75  
+        }
+    }
+    
+    # Set num_speakers if provided (overrides automatic estimation)
     if num_speakers is not None:
-        pipeline.instantiate({
-            "clustering": {"min_cluster_size": 10, "num_clusters": num_speakers}
-        })
+        clustering_params["clustering"]["num_clusters"] = num_speakers
+        print(f"Using fixed number of speakers: {num_speakers}", file=sys.stderr)
+    else:
+        print("Using automatic speaker counting with conservative parameters", file=sys.stderr)
+    
+    # Apply parameters
+    pipeline.instantiate(clustering_params)
     
     # Run diarization with progress hook
     try:
@@ -57,12 +71,17 @@ def diarize_audio(audio_path, num_speakers=None, hf_token=None):
     
     # Extract speaker segments
     segments = []
+    speakers = set()
+    
     for turn, _, speaker in diarization.itertracks(yield_label=True):
         segments.append({
             "start": round(turn.start, 2),
             "end": round(turn.end, 2),
             "speaker": speaker
         })
+        speakers.add(speaker)
+    
+    print(f"Detected {len(speakers)} speakers", file=sys.stderr)
     
     return segments
 

@@ -29,6 +29,7 @@ interface Transcription {
   duration: number | null;
   createdAt: string | null;
   updatedAt: string | null;
+  structuredTranscript?: any;
 }
 
 type FileInfo = {
@@ -51,7 +52,8 @@ export default function TranscriptionContainer() {
     enableSpeakerLabels: true,
     enableTimestamps: false,
     language: null,
-    generateSummary: false
+    generateSummary: false,
+    numSpeakers: null
   });
   const { toast } = useToast();
 
@@ -115,6 +117,11 @@ export default function TranscriptionContainer() {
         formData.append("language", metadata.language);
       }
       formData.append("generateSummary", metadata.generateSummary.toString());
+      
+      // Add number of speakers if specified
+      if (metadata.numSpeakers !== null) {
+        formData.append("numSpeakers", metadata.numSpeakers.toString());
+      }
 
       const response = await apiRequest("POST", "/api/transcribe", formData);
       return response.json();

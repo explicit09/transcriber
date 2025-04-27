@@ -558,12 +558,19 @@ export async function transcribeWithPyannote(
     whisperSegments
   );
   
+  // Step 5: Post-process to enforce desired number of speakers if specified
+  let finalSegments = alignedSegments;
+  if (options.numSpeakers && options.numSpeakers > 0) {
+    console.log(`Enforcing desired speaker count: ${options.numSpeakers}`);
+    finalSegments = enforceNumberOfSpeakers(alignedSegments, options.numSpeakers);
+  }
+  
   // Create final structured transcript
-  const speakerSet = new Set(alignedSegments.map(s => s.speaker));
+  const speakerSet = new Set(finalSegments.map(s => s.speaker));
   const speakerCount = speakerSet.size;
   
   const structuredTranscript: StructuredTranscript = {
-    segments: alignedSegments,
+    segments: finalSegments,
     metadata: { 
       speakerCount, 
       duration: duration || 0, 
@@ -680,4 +687,74 @@ function alignDiarizationWithTranscript(
   }
   
   return alignedSegments;
+}
+
+/**
+ * Enforce the maximum number of speakers in the result
+ * This helps when pyannote.audio over-segments speakers despite specifying num_speakers
+ */
+function enforceNumberOfSpeakers(
+  segments: TranscriptSegment[],
+  desiredNumSpeakers: number
+): TranscriptSegment[] {
+  if (!segments.length || desiredNumSpeakers <= 0) {
+    return segments;
+  }
+  
+  // Get the current speaker IDs
+  const speakerSet = new Set<string>();
+  segments.forEach(segment => {
+    if (segment.speaker) {
+      speakerSet.add(segment.speaker);
+    }
+  });
+  
+  const speakers = Array.from(speakerSet);
+  
+  // If we already have the correct number, no changes needed
+  if (speakers.length <= desiredNumSpeakers) {
+    return segments;
+  }
+  
+  console.log(`Too many speakers detected (${speakers.length} vs desired ${desiredNumSpeakers}) - merging similar speakers`);
+  
+  // We need to reduce the number of speakers
+  // Strategy: Map less frequent speakers to more frequent ones
+  
+  // 1. Count speaker frequencies
+  const speakerCounts = new Map<string, number>();
+  segments.forEach(segment => {
+    if (segment.speaker) {
+      speakerCounts.set(segment.speaker, (speakerCounts.get(segment.speaker) || 0) + 1);
+    }
+  });
+  
+  // 2. Sort speakers by frequency (most frequent first)
+  const sortedSpeakers = Array.from(speakerCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(entry => entry[0]);
+  
+  // 3. Keep the top N speakers, map the rest to these
+  const speakersToKeep = sortedSpeakers.slice(0, desiredNumSpeakers);
+  const speakerMap = new Map<string, string>();
+  
+  // Map each speaker to one we're keeping
+  sortedSpeakers.forEach((speaker, index) => {
+    if (index < desiredNumSpeakers) {
+      // Keep this speaker as-is
+      speakerMap.set(speaker, speaker);
+    } else {
+      // Map to the most frequent speaker
+      // (we could be more sophisticated here with timing analysis)
+      speakerMap.set(speaker, speakersToKeep[index % desiredNumSpeakers]);
+    }
+  });
+  
+  // 4. Apply the mapping to all segments
+  const updatedSegments = segments.map(segment => ({
+    ...segment,
+    speaker: segment.speaker ? speakerMap.get(segment.speaker) || segment.speaker : segment.speaker
+  }));
+  
+  return updatedSegments;
 }
