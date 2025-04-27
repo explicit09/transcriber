@@ -1,0 +1,283 @@
+Speaker 1: I don't know who he is in the group chat, but he's always like DMing me.
+
+Speaker 1: He said... I don't see the chat anymore. Maybe he tweeted it or something. Maybe it was in the group chat.
+
+Speaker 1: But, yeah, he's been working. It seems like he understands everything. And he's the back-end person. Carter seems like he understood.
+
+Speaker 1: When he texted in the group chat, it felt like he understood what we were doing as well.
+
+Speaker 1: Okay. Those two other ones are really giving feedback.
+
+Speaker 1: Morgan still hasn't said anything yet about the front-end, but... Yeah. I'm assuming she's okay.
+
+Speaker 2: So, today is the 26th?
+
+Speaker 1: Yeah. Yeah, he said 5 a.m. that... Sorry, I was busy yesterday. I'm pushing changes to the database. I'm back in today. You can review them. So, pretty good.
+
+Speaker 2: If that's the case.
+
+Speaker 1: The features are pretty... I think doable.
+
+Speaker 1: I don't know if we'll be able to demo all of it, but... I think they were pretty fair.
+
+Speaker 1: It just depends on what they're able to... I don't understand the PG vector stuff, so... But Carter looks like he knows what he's doing with that stuff. But the rest of the stuff... Hopefully, they can build off of what you guys said. And the Canvas stuff, the way you explained it was pretty good. Hopefully, she can just do it this way as well. We can always... That's a good start. Start as. I think that's pretty good. We just gotta wait and see what they do.
+
+Speaker 2: That's okay. All right.
+
+Speaker 1: We'll just see on Monday what they come with.
+
+Speaker 1: One of the other things that was major important things was looking at the KPIs. Because when we release the beta... Not the beta, the MVP. At least we must have some things that we need to check. For us to see where the progress is. Are things actually doing what we want? Are our expectations being met? So that we have measurable endpoints that we can definitely use.
+
+Speaker 1: So probably... Things like retention. How people are returning to the platform. Usage. Things like that. Some of the things might... Because outside feedback, some of the things might require some development on the platform. So that was one of the things that we need to look into.
+
+Speaker 1: We need to look into the... The KPIs that we actually need.
+
+Speaker 1: For us to know if the users are engaged.
+
+Speaker 1: How the user experience is. Things like those.
+
+Speaker 1: I don't know if anyone had any thoughts on the KPIs.
+
+Speaker 2: I think that probably comes at a later stage maybe.
+
+Speaker 2: Once we have the platform.
+
+Speaker 2: Then we build that off of what we have.
+
+Speaker 1: So... From the way I was seeing it. It's like... If we're going to put the MVP out there. In May. As we plan. We must still be able to just see the engagement as well.
+
+Speaker 2: Of the MVP?
+
+Speaker 1: Yeah. So who's going to be testing it? Isn't it just going to be a few beta testers? Yeah, a few beta testers. But still, you know. It's usually different between what someone might tell you. Oh, I use this platform very much. It's lovely. Versus actually using the platform. It's just okay to be able to see maybe.
+
+Speaker 1: Things such as...
+
+Speaker 1: How is the... The amount of time that people are spending on the application. I'm not saying that we should focus on that right now. But at least kind of defining those. So that if we can know the steps to implementation.
+
+Speaker 1: Because right now we're working on the core functionality of the platform. Maybe once some of the core functionality is done. We start leaping into one or two of the KPIs that we need to know.
+
+Speaker 1: Or even just so that people start thinking about how to put this into structuring. As we go. Another couple.
+
+Speaker 1: Daily usage.
+
+Speaker 1: I think it can also be volume of prompts.
+
+Speaker 1: Yeah, but some of them also will help us. Because the MVP is going to help us make projections. Like the financial projections. So I think things such as volume of prompts will be very useful in making those. As also we need those.
+
+Speaker 1: Once... Assuming we do the Canvas integration next semester. It should be very daily because it will be part of... The assumption is like if it's... You have homework, you have to study. At least then you can have a consistent usage.
+
+Speaker 1: There might be peaks depending on when the homework is due. Or something like that. But I think for now, yeah. Volume of prompts, ask them. Just daily users. And then see from there.
+
+Speaker 1: Of course, it can always be many.
+
+Speaker 1: Add a list. As long as I can think of it. Are we just going to use SEO to quantify this? So just Google Analytics and stuff like that pretty much?
+
+Speaker 1: Or... What specifically? How are we going to quantify this data? Because the only way to see if someone is on your website is just through Google Analytics. And see how much time they spend on there. And then also... Maybe what they're clicking on. I can ask Ryan. If he knows. I can look into it as well.
+
+Speaker 1: On Firebase. We are using Firebase for the authentication. And Firebase too has an analytics part here. Okay. Personally... Maybe I can learn how to do it. Because it would be helpful for my case as well. And stuff that I'm working on. I know Peter. They're building like an AI fashion app. They're hosting it on... They're using Firebase as well. But... He showed me his analytics dashboard through Firebase. He set it up. And it was beautiful. It shows everything. It's just like...
+
+Speaker 1: Pages and pages of graphs and stuff. It's just something you have to set up once you watch a YouTube video. I just haven't done that yet. Or integrated that part.
+
+Speaker 2: Is that something you would do after the program is working? Or do you do it before? Or while you're making the program? When do you launch that?
+
+Speaker 1: That's a thing I don't do yet.
+
+Speaker 1: Yeah.
+
+Speaker 1: Maybe stuff like daily usage and stuff. He just knows. But I think... Some things might just have to add it manually. I think it's... I think it's both.
+
+Speaker 1: I can watch a YouTube video. And then set it up to integrate it. I don't think Ryan knows how to do it. Because he mentioned that he wasn't familiar with Firebase. But maybe he knows something from the stuff he knows. From like Postgres or something. Maybe he knows something. I can just ask him later if he knows. But then I'll do it. I'll start looking into it.
+
+Speaker 1: Yeah.
+
+Speaker 1: Not too much on that one. There's nothing much to discuss on that one. It's just something that we just have to keep on the lookout. Because like... If we are... If at any point... If we were to raise funds or anything like that... People would be interested. That okay, you say you have released an MVP. How many daily active users do you have? How many... What's the metrics like? And it helps us as well to see that okay... How many people are getting there? And how many people are easily getting bored? And just leave the platform. And we can make those analytics.
+
+Speaker 1: That would be also...
+
+Speaker 1: Those would be states that we can also use to improve internally. And also it's needed by external investors if there are to be any. But...
+
+Speaker 1: How are we doing as of the... I don't know if there's anything that we need to discuss as for the MVP.
+
+Speaker 1: With our deadlines. I don't know how we're doing about that. Are we okay or...
+
+Speaker 1: Any issues? I guess we just have to see on Monday what they have.
+
+Speaker 1: If... The intro revealed they're using Cursor or Windsor. If they were using that then it would be really, really good. But we don't know. We just have to wait till Monday.
+
+Speaker 1: One issue too was... They had progress last week. But they're all working in different branches. So there's the integration part of whatever is done.
+
+Speaker 1: So like Morgan's front end was beautiful. But everyone else's was still the old front end.
+
+Speaker 2: Okay.
+
+Speaker 1: I don't think they'll be done. But I was hoping that... Most of what was in the tasks for us for this week. I think that's the MVP.
+
+Speaker 1: For the week or for... So I think if they're done with...
+
+Speaker 1: If they finish those tasks. It should just be next week. Just perfecting it and cleaning it.
+
+Speaker 1: That's I think functional.
+
+Speaker 1: In terms of functionality. I feel like that's all the functionality.
+
+Speaker 1: I don't think... To be fair. Yeah.
+
+Speaker 1: For the MVP, yeah.
+
+Speaker 1: Because we'll see on Monday. If they haven't finished. Then they should finish what we have given them.
+
+Speaker 1: If someone has finished their tasks. Of course we can throw them at them.
+
+Speaker 2: Okay.
+
+Speaker 2: Okay.
+
+Speaker 1: But since you say...
+
+Speaker 1: That's pretty much of the core functionality for the MVP. And we'll still have another week. It means that even if they are not able to... They weren't able to finish that. They can use that week to... Okay.
+
+Speaker 1: Because... The time is getting closer. The days are coming by so... Yeah.
+
+Speaker 1: So for the PDF documentation made before. That's the MVP you're going off of, right?
+
+Speaker 1: Or are you going off the tasks?
+
+Speaker 2: The tasks, the tasks. The tasks too. Which one are you going off?
+
+Speaker 1: I'm going off the tasks that he sent recently. Okay. Yeah. So when is the deadline for the one on the PDF?
+
+Speaker 1: The original one?
+
+Speaker 1: Remember I... You had made a PDF document. With like... It had like emojis and stuff. Yes. So that one.
+
+Speaker 1: Did you have a deadline for that? Is that what we're looking for, for May? Or are you thinking that's before Canvas integration? So like after the summer and then... No, no. It's for May. For May. Yeah. For the next two weeks. Because the document doesn't have integration. It doesn't. Yeah. Correct. I think it's in line with the tasks that he sent, right?
+
+Speaker 2: Yeah.
+
+Speaker 2: Okay.
+
+Speaker 1: Just want to make sure you're on the same page about that one.
+
+Speaker 1: But...
+
+Speaker 1: Yeah. Outside that, I don't have anything in terms of development. I don't know if anyone has anything between development. For me, it's...
+
+Speaker 2: Has Ryan deployed it yet or not yet? He hasn't said anything about deployment yet. Because I know that was a task for the last week, I think.
+
+Speaker 1: He said he's been busy with doing the backend. At least he might not get it done, but at least he's... Every week in, week out, it seems like he's the one doing a lot of stuff.
+
+Speaker 2: Yeah, he is. So it's not necessary to deploy it then?
+
+Speaker 1: No, he was supposed to deploy it. But if he's not, if he hasn't yet, then it's because he's working on the backend and trying to get the courses stuff set up. Because he's the only one doing the backend.
+
+Speaker 2: Okay.
+
+Speaker 2: Then, are you running it? Like, his code locally or not yet?
+
+Speaker 1: I ran it. I last ran it two weeks ago.
+
+Speaker 2: Okay.
+
+Speaker 2: So, my question is in... I know you asked one of them to help with the professors, I think it was Adam. So he's doing the professor analytics, right? So, for his side, do we want to see a UI or do we just want to see the research part of it?
+
+Speaker 1: What Ryan said, he already had an API that gets all the questions that have been asked, a course, and a PDF as well. He said that was already working.
+
+Speaker 1: And I'm hoping that when he gives that to Adam, Adam can then just use that API to then make a summary for the professor to see the API. Maybe just showing all of them raw, the way it is. Yeah. Or maybe having another AI layer that tries to summarize and stuff. Or both. I haven't really... It seems like Ryan understood it and said it was working. I don't know if Adam is on the same page.
+
+Speaker 1: Because I'm worried it's only focusing on the students' side. Yeah. So we need... Oh, this is the other one. We need Adam to focus on the professor's side. Pertaining also to the UI of the professor's side, right?
+
+Speaker 1: So, just wanted to make sure that when he does his code, he will make a UI that will show those analytics pretty much.
+
+Speaker 1: Let me see.
+
+Speaker 1: Yeah.
+
+Speaker 1: Maybe I didn't type that. I hide it in my head. Maybe I didn't type it before. I also just don't want to... Too much. Yeah, I was afraid of overwhelming and just dumping everything in one go. So maybe after this Monday, we'll see what happens and build up from there.
+
+Speaker 1: That's about it. That's about it. And then, when you guys get some time, please just get into the ClickUp and specifically this document. We need to look into it. It's just a brief of how we can tackle things from the research that I was just doing.
+
+Speaker 1: It's not that long. It's very short. Just look into it. There are still things that we still need to look into,
+
+Speaker 1: such as compliance to FERPA. I think it's Family Education. We also have some policies that make sure that your platform is usable by people who have accessibility needs, the disabled and things like that. So, I'm still looking into that. Once I just get out the important data, I'll probably throw it in one of the documents and send it out if there's anything that we need to put on top of it. Because I think that accessibility thing that I can just read you the text on the website or something like that. I think there was FERPA. There was COPA if we're going to be targeting K-12. Because COPA I think is for under 18 or something. It's under 18 or somewhere around 12. Those kind of policies. Then there was WCAG 12. Those kind of things that we're still looking into. Once I'm just done looking into them, I'll just send something which is summarized and what exactly it implies to what we are making. So that if we happen to get any questions pertaining to those things, we know we got them covered. Because I saw one of our competitors. It was Nectus. That's their main thing that they always talk about. Their compliance to FERPA and COPA. Those are just basic requirements that we'll have to get into despite whatever we do.
+
+Speaker 2: Thank you for looking into it. That's pretty much it.
+
+Speaker 1: I know you shared some good resources too. Like the Alice.
+
+Speaker 2: Oh, Alice.
+
+Speaker 2: Hassler Plan.
+
+Speaker 1: I haven't watched the video. Did you watch the video?
+
+Speaker 2: It was a pretty short clip. Can you pull it up? Let me pull it up. I told you guys we didn't want to watch the video.
+
+Speaker 2: Was that the video? Oh, this was the UI which was just nice.
+
+Speaker 2: Jesus.
+
+Speaker 2: This one looks pretty planned.
+
+Speaker 2: God damn.
+
+Speaker 2: Was the other one done?
+
+Speaker 2: Was it?
+
+Speaker 2: Upload.
+
+Speaker 2: Summary.
+
+Speaker 2: Oh.
+
+Speaker 2: And this was...
+
+Speaker 2: Okay. Yeah, I think it was done.
+
+Speaker 2: So they have the side chat part too.
+
+Speaker 2: Not so bad, not so bad.
+
+Speaker 3: Hi, I'm Kim from Alice. We help students by turning course materials into personalized learning and exam prep using AI. More than 2,000 students have already used Alice and their report, improved grades, reduced stress, and a deeper understanding of the course materials. With Alice, students have everything they need in just one platform. They upload what they want to learn and get instant access to insightful and structured notes, an AI chat that understands their context, and personalized flashcards and exercises. And they can even make learning fun by studying with or against their friends. Our exam simulator is a game changer and students love it. Customize your exam format and get access to new exercises that you've never seen before but are within your curriculum. Simulate a full exam environment and get instant grading and detailed feedback so you know exactly where to improve. And the more you use Alice, the better she gets at spotting your weaknesses so you can be more targeted in your study. If you're a student, go try us today and level up your studies.
+
+Speaker 1: Yeah. Yeah, I'll bet. They're real good. This chance is just B to C, man. I mean, they're B to C. So it looks like they're targeting the actual students and the students uploading their information. So this is technically like changing the team straight up. Because it is optimized for your learning material that you upload, which is pretty much the same with Chatting Team because you upload your material and you get personalized feedback.
+
+Speaker 1: But, you know, sometimes the user, the UI and everything takes everything, such as, like, the fact that that one's keeping the grades and whatever. Flashcards. Flashcards as well. And it's just putting in the PDF once and it just breaks things down. No extra prompts. Maybe that's how.
+
+Speaker 2: That is true, actually.
+
+Speaker 2: Would you get it as a student?
+
+Speaker 1: As a student? I still wouldn't get it, though. I just wouldn't. The bottleneck is money. It's good.
+
+Speaker 2: Now, even if you had money, would you get this one specifically?
+
+Speaker 2: Why would you use this instead of Chatting Team?
+
+Speaker 1: Well, like I said, it spots your weaknesses.
+
+Speaker 1: And the flashcards, the flashcard part, it spots your weaknesses. Towards the end when you showed, like, what your weaknesses are, that kind of grabbed my attention. Because especially before CharityBT was accessing all the chats at the same time, it would probably spot your weaknesses better than CharityBT at that point. Maybe now, because it can access, like, all your chats, it can definitely know your weaknesses. But CharityBT is not really caring about, it's doing your B2Bs, doing your homework.
+
+Speaker 1: Asking me medical questions.
+
+Speaker 1: Yeah, because sometimes, there was a time that I was having a conversation with CharityBT. I think I just took a prompt that I saw on Twitter and was saying, Ah, your curiosity, I see you asking about PG Vectors. Because I was looking into PG Vectors the day that you sent about PG Vectors, and how impactful it would be, and things like that. So I was like, I look at it, I see you, you understand PG Vectors.
+
+Speaker 1: I just know the bare minimum of these things. The crazy shit I've done this week was, I was walking home, I was almost towards UECC, and I was like, Ah, I need some new ideas for my app. And I'm tired of, like, asking MyChatGPT, and MyChatGPT was like, Oh, you're so innovative, you're the best, you're this and this. I was like, I'm going to go to the library, and then find a random chat GPT, and then ask it. Because I feel like mine's always gassing me up.
+
+Speaker 1: So that's what I did, I went to the library,
+
+Speaker 1: did a deep search on a different AI that wasn't mine, and just saw what it could see based on public knowledge. I did like a 17 minute report, it was a little good, but it wasn't as like, I could trust it on more than my own, because mine is just like, using my personal text. That's why I love Deep Research.
+
+Speaker 1: Deep Research just does its job in more scenarios.
+
+Speaker 2: How did you say it before?
+
+Speaker 1: Deep Research is cool, I'm just glad that they added more prompts, because I was maxing out my Deep Research.
+
+Speaker 2: He's a power user, this guy.
+
+Speaker 2: Aslaplan! Yeah, the Aslaplan is crazy.
+
+Speaker 2: You can tell it's a Gen Z that made this Aslaplan.
+
+Speaker 2: Ooo, ooo, ooo, ooo, ooo, ooo, ooo. Doing Ramadan, I went to...

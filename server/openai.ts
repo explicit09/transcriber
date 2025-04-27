@@ -230,23 +230,25 @@ Your task is to identify different speakers in a transcript and label each segme
 - Use "Speaker 1", "Speaker 2", "Speaker 3", etc. as labels consistently throughout the transcript
 - Maintain the original start and end timestamps for each segment
 - Include the exact same text for each segment as provided
-- IMPORTANT: Be CONSERVATIVE when identifying different speakers. Only change speaker labels when there is strong evidence of a different person speaking.
+- IMPORTANT: Find a BALANCE in speaker identification - be careful to not over-segment but also ensure you identify all distinct speakers in the conversation.
 
-IMPORTANT GUIDELINES TO PREVENT OVER-SEGMENTATION:
+GUIDELINES FOR BALANCED SPEAKER DETECTION:
 - DO NOT assign a new speaker simply because of a pause or change in topic
-- DO NOT change speaker labels for short utterances unless absolutely certain it's a different speaker
+- DO NOT change speaker labels for short utterances unless there's reasonable evidence it's a different speaker
 - DO treat connected thoughts and ideas from the same speaker as a continuous speech, even across pauses
 - DO be consistent with speaker identification - once you've established a speaker's style and patterns, maintain that association
-- DO look for clear turn-taking signals like direct responses and address changes
-- DO try to combine consecutive segments from the same speaker where possible, even if there are short pauses between them
-- DO err on the side of fewer speakers rather than more speakers if uncertain
+- DO look for turn-taking signals like responses and address changes
+- DO make sure all distinct voices in the conversation are represented, even if they speak less frequently
+- DO pay special attention to minority speakers who might have fewer segments but are still distinct participants
 
-Key DEFINITIVE indicators of speaker changes:
-- Direct address by name from one person to another
-- Clear response to a direct question with a different perspective
-- Explicit agreement or disagreement with previous statement
-- Drastically different speaking style, vocabulary or technical knowledge
-- Self-identification ("This is Mark speaking")
+RELIABLE indicators of speaker changes:
+- Questions followed by answers (likely different speakers)
+- Address by name ("So, John, what do you think?")
+- Change in perspective or opinion ("I disagree with that approach")
+- Shift in speaking style, vocabulary or technical knowledge
+- Topic handovers ("What about you? How do you see it?")
+- Self-identification or third-person references
+- Conversational acknowledgments that indicate a new speaker ("Yes, I agree" or "That's interesting")
 
 Output a JSON object with:
 1. 'segments' - an array of objects, each with:
@@ -256,7 +258,7 @@ Output a JSON object with:
    - speaker: string (e.g., "Speaker 1", "Speaker 2", "Speaker 3")
 2. 'speakerCount' - total number of unique speakers identified
 
-IMPORTANT: Be very conservative with speaker changes. It's better to miss a speaker change than to incorrectly split a single person's speech into multiple speakers.`,
+IMPORTANT: Make sure to preserve all distinct speakers, even if they have fewer speaking segments. Don't sacrifice minority speakers for the sake of conservative labeling.`,
             },
             {
               role: "user",
@@ -405,14 +407,39 @@ function enforceConsistentSpeakers(result: {
     speaker: map.get(s.speaker || "Speaker 1") || "Speaker 1",
   }));
 
-  // Merge consecutive segments from the same speaker for a cleaner transcript
+  // Count segments per speaker to identify minority speakers
+  const speakerSegmentCounts: Record<string, number> = {};
+  normalized.forEach(segment => {
+    if (segment.speaker) {
+      speakerSegmentCounts[segment.speaker] = (speakerSegmentCounts[segment.speaker] || 0) + 1;
+    }
+  });
+  
+  // Find speakers with very few segments (minority speakers)
+  const totalSegments = normalized.length;
+  const minoritySpeakers = new Set<string>();
+  Object.entries(speakerSegmentCounts).forEach(([speaker, count]) => {
+    // Consider a speaker "minority" if they have less than 10% of total segments and fewer than 20 segments
+    if (count < Math.max(20, totalSegments * 0.1)) {
+      minoritySpeakers.add(speaker);
+    }
+  });
+  
+  console.log("Identified minority speakers:", Array.from(minoritySpeakers).join(", "));
+  
+  // Merge consecutive segments from the same speaker for a cleaner transcript,
+  // but be more careful with minority speakers to preserve them
   const mergedSegments = normalized.reduce((acc: TranscriptSegment[], curr) => {
     if (acc.length === 0) return [curr];
     
     const lastSegment = acc[acc.length - 1];
     
-    // If same speaker and small time gap (less than 1.5 seconds), merge segments
-    if (lastSegment.speaker === curr.speaker && (curr.start - lastSegment.end) < 1.5) {
+    // If same speaker and small time gap, merge segments
+    // Use a smaller time threshold for minority speakers to preserve their segments
+    const isMinoritySpeaker = minoritySpeakers.has(curr.speaker || "");
+    const maxGap = isMinoritySpeaker ? 0.8 : 1.5; // Use smaller gap for minority speakers
+    
+    if (lastSegment.speaker === curr.speaker && (curr.start - lastSegment.end) < maxGap) {
       // Combine the segments
       lastSegment.end = curr.end;
       lastSegment.text = `${lastSegment.text} ${curr.text}`;
