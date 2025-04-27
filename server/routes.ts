@@ -13,7 +13,8 @@ import fs from "fs";
 import os from "os";
 import { 
   transcribeAudio, 
-  transcribeAudioWithFeatures, 
+  transcribeAudioWithFeatures,
+  transcribeWithPyannote,
   generateTranscriptSummary, 
   translateTranscript 
 } from "./openai";
@@ -21,6 +22,7 @@ import { generateTranscriptPDF } from "./pdf";
 import { z } from "zod";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
+import { checkDiarizationSetup } from "./diarization";
 
 // Setup multer for file uploads
 const upload = multer({
@@ -59,7 +61,32 @@ function formatTime(seconds: number): string {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
+// Check if advanced diarization is available
+let isPyannoteDiarizationAvailable = false;
+
+// This will be called at server startup
+async function checkDiarizationAvailability() {
+  try {
+    isPyannoteDiarizationAvailable = await checkDiarizationSetup();
+    console.log(`Pyannote.audio diarization is ${isPyannoteDiarizationAvailable ? 'AVAILABLE' : 'NOT AVAILABLE'}`);
+    
+    if (!isPyannoteDiarizationAvailable) {
+      console.log('For multi-speaker transcription, please install pyannote.audio:');
+      console.log('1. cd python');
+      console.log('2. pip install -r requirements.txt');
+      console.log('3. Get a HuggingFace token with access to pyannote/speaker-diarization-3.0');
+      console.log('4. Set HUGGINGFACE_TOKEN environment variable');
+    }
+  } catch (error) {
+    console.error('Error checking diarization availability:', error);
+    isPyannoteDiarizationAvailable = false;
+  }
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Check for pyannote diarization availability at startup
+  await checkDiarizationAvailability();
+  
   // Upload and transcribe audio file
   app.post('/api/transcribe', upload.single('file'), async (req: Request, res: Response) => {
     try {
@@ -121,122 +148,113 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Process transcription in the background
       (async () => {
         try {
-          // Transcribe the audio file (we already checked req.file exists above)
+          // Transcribe the audio file
           const filePath = file.path;
           
-          // Use the enhanced transcription if any advanced features are enabled
-          if (enableSpeakerLabels || enableTimestamps) {
-            const result = await transcribeAudioWithFeatures(filePath, {
+          // Determine if we should use advanced diarization
+          const usePyannote = isPyannoteDiarizationAvailable && enableSpeakerLabels;
+          
+          let result;
+          if (usePyannote) {
+            console.log("Using pyannote.audio for advanced speaker diarization");
+            result = await transcribeWithPyannote(filePath, {
+              enableTimestamps: enableTimestamps,
+              language: language || undefined,
+              // Optionally provide number of speakers if known
+              numSpeakers: participants ? participants.split(',').length : undefined
+            });
+          } else {
+            console.log("Using standard transcription" + (enableSpeakerLabels ? " with text-based speaker detection" : ""));
+            result = await transcribeAudioWithFeatures(filePath, {
               enableTimestamps: enableTimestamps,
               language: language || undefined,
             });
-            
-            // Format the transcript text with speaker labels if speaker diarization is enabled
-            let formattedText = result.text;
-            if (enableSpeakerLabels && result.structuredTranscript.segments.length > 0) {
-              // Log what we're using to format
-              console.log(`Formatting transcript with ${result.structuredTranscript.segments.length} segments and ${result.structuredTranscript.metadata?.speakerCount || 0} speakers`);
-              
-              // Group segments by speaker for cleaner output
-              let currentSpeaker = '';
-              let currentSegmentStart = 0;
-              let currentTexts: string[] = [];
-              let formattedSegments: string[] = [];
-              
-              result.structuredTranscript.segments.forEach(segment => {
-                const speaker = segment.speaker || 'Unknown Speaker';
-                
-                // If this is the same speaker as before, just accumulate the text
-                if (speaker === currentSpeaker) {
-                  currentTexts.push(segment.text);
-                } else {
-                  // If we have accumulated text for a previous speaker, add it to our output
-                  if (currentTexts.length > 0) {
-                    const timePrefix = enableTimestamps ? `[${formatTime(currentSegmentStart)}] ` : '';
-                    formattedSegments.push(`${timePrefix}${currentSpeaker}: ${currentTexts.join(' ')}`);
-                  }
-                  
-                  // Start a new speaker group
-                  currentSpeaker = speaker;
-                  currentSegmentStart = segment.start;
-                  currentTexts = [segment.text];
-                }
-              });
-              
-              // Don't forget the last group
-              if (currentTexts.length > 0) {
-                const timePrefix = enableTimestamps ? `[${formatTime(currentSegmentStart)}] ` : '';
-                formattedSegments.push(`${timePrefix}${currentSpeaker}: ${currentTexts.join(' ')}`);
-              }
-              
-              formattedText = formattedSegments.join('\n\n');
-            }
-            
-            // Generate a summary if requested
-            let summary = null;
-            let keywords = null;
-            let actionItems = null;
-            
-            if (generateSummary && result.text) {
-              try {
-                // Apply threshold checks
-                const wordCount = result.text.split(/\s+/).filter(Boolean).length;
-                const lineCount = result.text.split('\n').filter(line => line.trim().length > 0).length;
-                
-                // Only generate summaries for substantial content (relaxed thresholds)
-                if (result.text.length >= 100 && wordCount >= 15) { // Reduced thresholds
-                  const summaryResult = await generateTranscriptSummary(result.text);
-                  summary = summaryResult.summary;
-                  actionItems = summaryResult.actionItems?.length 
-                    ? summaryResult.actionItems.join('\n') 
-                    : null;
-                  keywords = summaryResult.keywords.join(', ');
-                } else {
-                  // For short content, use a standard message
-                  summary = "The transcript is too brief for a meaningful summary.";
-                }
-              } catch (summaryError) {
-                console.error("Error generating summary:", summaryError);
-              }
-            }
-            
-            // Update the transcription record with enhanced data
-            await storage.updateTranscription(transcription.id, {
-              text: formattedText,
-              status: "completed",
-              updatedAt: new Date(),
-              speakerCount: result.structuredTranscript.metadata?.speakerCount || null,
-              duration: result.duration || null,
-              language: result.language || null,
-              summary,
-              keywords,
-              actionItems,
-              speakerLabels: enableSpeakerLabels && result.structuredTranscript.segments.some(s => s.speaker),
-              hasTimestamps: enableTimestamps,
-              // Store structured transcript as JSON string
-              structuredTranscript: JSON.stringify(result.structuredTranscript) 
-            });
-          } else {
-            // Use basic transcription for simple cases
-            const result = await transcribeAudio(filePath);
-            
-            // Update the transcription record
-            await storage.updateTranscription(transcription.id, {
-              text: result.text,
-              status: "completed",
-              updatedAt: new Date(),
-              duration: result.duration || null,
-              language: result.language || null,
-              speakerLabels: false,
-              hasTimestamps: false,
-              // Store null for structured transcript when using basic transcription
-              structuredTranscript: null 
-            });
           }
-
-          // Clean up the file
-          fs.unlink(filePath, (err) => {
-            if (err) console.error(`Error deleting file: ${err?.message || 'Unknown error'}`);
+          
+          // Format the transcript text with speaker labels if speaker diarization is enabled
+          let formattedText = result.text;
+          if (enableSpeakerLabels && result.structuredTranscript.segments.length > 0) {
+            // Log what we're using to format
+            console.log(`Formatting transcript with ${result.structuredTranscript.segments.length} segments and ${result.structuredTranscript.metadata?.speakerCount || 0} speakers`);
+            
+            // Group segments by speaker for cleaner output
+            let currentSpeaker = '';
+            let currentSegmentStart = 0;
+            let currentTexts: string[] = [];
+            let formattedSegments: string[] = [];
+            
+            result.structuredTranscript.segments.forEach(segment => {
+              const speaker = segment.speaker || 'Unknown Speaker';
+              
+              // If this is the same speaker as before, just accumulate the text
+              if (speaker === currentSpeaker) {
+                currentTexts.push(segment.text);
+              } else {
+                // If we have accumulated text for a previous speaker, add it to our output
+                if (currentTexts.length > 0) {
+                  const timePrefix = enableTimestamps ? `[${formatTime(currentSegmentStart)}] ` : '';
+                  formattedSegments.push(`${timePrefix}${currentSpeaker}: ${currentTexts.join(' ')}`);
+                }
+                
+                // Start a new speaker group
+                currentSpeaker = speaker;
+                currentSegmentStart = segment.start;
+                currentTexts = [segment.text];
+              }
+            });
+            
+            // Don't forget the last group
+            if (currentTexts.length > 0) {
+              const timePrefix = enableTimestamps ? `[${formatTime(currentSegmentStart)}] ` : '';
+              formattedSegments.push(`${timePrefix}${currentSpeaker}: ${currentTexts.join(' ')}`);
+            }
+            
+            formattedText = formattedSegments.join('\n\n');
+          }
+          
+          // Generate a summary if requested
+          let summary = null;
+          let keywords = null;
+          let actionItems = null;
+          
+          if (generateSummary && result.text) {
+            try {
+              // Apply threshold checks
+              const wordCount = result.text.split(/\s+/).filter(Boolean).length;
+              const lineCount = result.text.split('\n').filter(line => line.trim().length > 0).length;
+              
+              // Only generate summaries for substantial content (relaxed thresholds)
+              if (result.text.length >= 100 && wordCount >= 15) { // Reduced thresholds
+                const summaryResult = await generateTranscriptSummary(result.text);
+                summary = summaryResult.summary;
+                actionItems = summaryResult.actionItems?.length 
+                  ? summaryResult.actionItems.join('\n') 
+                  : null;
+                keywords = summaryResult.keywords.join(', ');
+              } else {
+                // For short content, use a standard message
+                summary = "The transcript is too brief for a meaningful summary.";
+              }
+            } catch (summaryError) {
+              console.error("Error generating summary:", summaryError);
+            }
+          }
+          
+          // Update the transcription record with enhanced data
+          await storage.updateTranscription(transcription.id, {
+            text: formattedText,
+            status: "completed",
+            updatedAt: new Date(),
+            speakerCount: result.structuredTranscript.metadata?.speakerCount || null,
+            duration: result.duration || null,
+            language: result.language || null,
+            summary,
+            keywords,
+            actionItems,
+            speakerLabels: enableSpeakerLabels && result.structuredTranscript.segments.some(s => s.speaker),
+            hasTimestamps: enableTimestamps,
+            // Store structured transcript as JSON string
+            structuredTranscript: JSON.stringify(result.structuredTranscript) 
           });
         } catch (error) {
           // Handle errors and update the record (Original simpler error handling)

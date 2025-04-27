@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import fs from "fs";
 import Bottleneck from "bottleneck";
 import { TranscriptSegment, StructuredTranscript } from "@shared/schema";
+import { diarizeAudio } from "./diarization";
 
 interface WhisperSegment {
   start: number;
@@ -471,4 +472,212 @@ export async function translateTranscript(text: string | null, targetLanguage: s
   } catch {
     return { translatedText: `Error translating to ${targetLanguage}.`, confidence: 0 };
   }
+}
+
+/**
+ * Transcribe audio with advanced speaker diarization using pyannote.audio
+ * This function uses the more accurate pyannote diarization instead of the text-based approach
+ */
+export async function transcribeWithPyannote(
+  audioFilePath: string,
+  options: {
+    enableTranslation?: boolean;
+    targetLanguage?: string;
+    language?: string;
+    numSpeakers?: number;
+    enableTimestamps?: boolean;
+  } = {}
+): Promise<{
+  text: string;
+  structuredTranscript: StructuredTranscript;
+  duration?: number;
+  language?: string;
+  translatedText?: string;
+}> {
+  // Handle translation case
+  if (options.enableTranslation && options.targetLanguage) {
+    return handleTranslation(audioFilePath, options.targetLanguage);
+  }
+
+  // Step 1: Get diarization results from pyannote.audio
+  console.log("Running speaker diarization with pyannote.audio...");
+  const diarizationResult = await diarizeAudio(audioFilePath, options.numSpeakers);
+  
+  if (!diarizationResult.segments || diarizationResult.segments.length === 0) {
+    console.warn("Diarization returned no segments, falling back to regular transcription");
+    return transcribeAudioWithFeatures(audioFilePath, options);
+  }
+  
+  console.log(`Diarization found ${diarizationResult.segments.length} speaker segments`);
+  
+  // Step 2: Get transcription from Whisper
+  console.log("Transcribing audio with Whisper...");
+  const streamFactory = () => fs.createReadStream(audioFilePath);
+  const transcription = await limiter.schedule(() =>
+    withRetry(() =>
+      openai.audio.transcriptions.create({
+        file: streamFactory(),
+        model: "whisper-1",
+        response_format: "verbose_json",
+        timestamp_granularities: ["segment", "word"],
+      })
+    )
+  );
+
+  const text = transcription.text;
+  const duration = transcription.duration;
+  const language = transcription.language;
+  
+  // Step 3: Get Whisper segments
+  const whisperSegments = transcription.segments
+    ? (transcription.segments as WhisperSegment[])
+        .map((s) => ({
+          start: s.start,
+          end: s.end,
+          text: s.text.trim(),
+          confidence: s.confidence ?? 1.0,
+        }))
+        .sort((a, b) => a.start - b.start)
+    : [];
+  
+  if (whisperSegments.length === 0) {
+    console.warn("Whisper returned no segments, using full text");
+    // Create a single segment if Whisper doesn't provide segments
+    whisperSegments.push({
+      start: 0,
+      end: duration || 0,
+      text: text,
+      confidence: 1.0,
+    });
+  }
+  
+  // Step 4: Align diarization results with Whisper segments
+  console.log("Aligning diarization with transcription...");
+  const alignedSegments = alignDiarizationWithTranscript(
+    diarizationResult.segments,
+    whisperSegments
+  );
+  
+  // Create final structured transcript
+  const speakerSet = new Set(alignedSegments.map(s => s.speaker));
+  const speakerCount = speakerSet.size;
+  
+  const structuredTranscript: StructuredTranscript = {
+    segments: alignedSegments,
+    metadata: { 
+      speakerCount, 
+      duration: duration || 0, 
+      language 
+    },
+  };
+
+  return { text, structuredTranscript, duration, language };
+}
+
+/**
+ * Handle audio translation using Whisper
+ */
+async function handleTranslation(audioFilePath: string, targetLanguage: string) {
+  const translation = await limiter.schedule(() =>
+    withRetry(() =>
+      openai.audio.translations.create({
+        file: fs.createReadStream(audioFilePath),
+        model: "whisper-1",
+        response_format: "verbose_json",
+      })
+    )
+  );
+
+  const translationText =
+    typeof translation === "string" ? translation : (translation as any).text || "";
+
+  const translationLanguage =
+    typeof translation === "string"
+      ? targetLanguage
+      : (translation as any).language || targetLanguage;
+
+  return {
+    text: translationText,
+    translatedText: translationText,
+    language: translationLanguage,
+    structuredTranscript: {
+      segments: [],
+      metadata: {
+        speakerCount: 1,
+        duration: undefined,
+        language: translationLanguage,
+      },
+    },
+  };
+}
+
+/**
+ * Align speaker diarization results with Whisper transcription segments
+ */
+function alignDiarizationWithTranscript(
+  diarization: { start: number; end: number; speaker: string }[],
+  whisperSegments: { start: number; end: number; text: string; confidence: number }[]
+): TranscriptSegment[] {
+  const alignedSegments: TranscriptSegment[] = [];
+  
+  // Sort both arrays by start time
+  const sortedDiarization = [...diarization].sort((a, b) => a.start - b.start);
+  const sortedWhisper = [...whisperSegments].sort((a, b) => a.start - b.start);
+  
+  // For each Whisper segment, find the dominant speaker
+  for (const whisperSegment of sortedWhisper) {
+    // Find all diarization segments that overlap with this Whisper segment
+    const overlappingSegments = sortedDiarization.filter(
+      diaSeg => 
+        // Check for overlap conditions
+        (diaSeg.start <= whisperSegment.end && diaSeg.end >= whisperSegment.start)
+    );
+    
+    if (overlappingSegments.length === 0) {
+      // No speaker found, use a default
+      alignedSegments.push({
+        start: whisperSegment.start,
+        end: whisperSegment.end,
+        text: whisperSegment.text,
+        speaker: "Speaker 1"
+      });
+      continue;
+    }
+    
+    // Calculate which speaker has the most overlap with this segment
+    const speakerOverlaps = new Map<string, number>();
+    
+    for (const diaSeg of overlappingSegments) {
+      // Calculate overlap duration
+      const overlapStart = Math.max(diaSeg.start, whisperSegment.start);
+      const overlapEnd = Math.min(diaSeg.end, whisperSegment.end);
+      const overlapDuration = overlapEnd - overlapStart;
+      
+      // Add to speaker's total overlap
+      const currentOverlap = speakerOverlaps.get(diaSeg.speaker) || 0;
+      speakerOverlaps.set(diaSeg.speaker, currentOverlap + overlapDuration);
+    }
+    
+    // Find speaker with maximum overlap
+    let maxOverlap = 0;
+    let dominantSpeaker = "Speaker 1";
+    
+    // Use Array.from to convert Map entries to an array to avoid linter error
+    Array.from(speakerOverlaps.entries()).forEach(([speaker, overlap]) => {
+      if (overlap > maxOverlap) {
+        maxOverlap = overlap;
+        dominantSpeaker = speaker;
+      }
+    });
+    
+    // Create aligned segment with the dominant speaker
+    alignedSegments.push({
+      start: whisperSegment.start,
+      end: whisperSegment.end,
+      text: whisperSegment.text,
+      speaker: dominantSpeaker
+    });
+  }
+  
+  return alignedSegments;
 }
