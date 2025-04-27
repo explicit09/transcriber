@@ -134,8 +134,39 @@ async function processSpeakerDiarization(timestampedSegments: TranscriptSegment[
     withRetry(() => openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
-        { role: 'system', content: `You are an expert at speaker diarization. Label speakers only when it is extremely clear from the text and timing that a different speaker is present. If uncertain, assume the same speaker continues. Prefer underestimating speakers rather than overestimating. Label consistently as \"Speaker 1\", \"Speaker 2\", etc. Return output as JSON with fields 'segments' (array) and 'speakerCount' (number).` },
-        { role: 'user', content: `Analyze this transcript for different speakers and return a JSON response:\nTranscript:\n${segmentsText}\nFull text:\n${safeFullText}` }
+        { 
+          role: 'system', 
+          content: `You are an expert at speaker diarization for conversational audio. Your task is to identify different speakers in the transcript.
+
+Rules for speaker identification:
+1. Look for clear speaker transitions like: questions and answers, agreements/disagreements, interjections, addressing others, and topic shifts.
+2. Pay attention to speech patterns, filler words, and consistent speaking styles that may indicate the same speaker.
+3. Identify when someone refers to "you" or "we" or asks a question that another person answers.
+4. When a statement is followed by a response like "Yeah", "No", "Okay", "Thank you", or similar short responses, these likely indicate different speakers.
+5. Label speakers consistently as "Speaker 1", "Speaker 2", etc.
+
+Balanced approach:
+- Unlike most diarization systems, prefer slightly overestimating speakers rather than underestimating when analyzing conversations.
+- When in doubt about whether a segment represents a new speaker, consider the flow of conversation and context.
+
+Output format:
+- Return a JSON object with fields 'segments' (array) and 'speakerCount' (number).
+- Each segment in the array must include: start (number), end (number), text (string), and speaker (string, e.g., "Speaker 1").
+- The segments array should match the input segments length exactly, with added speaker labels.
+- Example: { "segments": [{"start": 0, "end": 5, "text": "Hello", "speaker": "Speaker 1"}], "speakerCount": 1 }` 
+        },
+        { 
+          role: 'user', 
+          content: `Analyze this conversation transcript for different speakers and return a JSON response.
+
+This is a conversation between multiple people. Please identify speaker changes throughout the transcript.
+
+Transcript with timestamps:
+${segmentsText}
+
+Full text for context:
+${safeFullText}` 
+        },
       ],
       response_format: { type: 'json_object' },
       temperature: 0.1,
