@@ -31,6 +31,7 @@ export default function TranscriptionDetail() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<string>('view');
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   
   const id = params?.id;
 
@@ -88,6 +89,32 @@ export default function TranscriptionDetail() {
     }
   };
 
+  // Handle generate summary
+  const generateSummaryMutation = useMutation({
+    mutationFn: async () => {
+      setIsGeneratingSummary(true);
+      const response = await apiRequest("POST", `/api/transcriptions/${id}/summary`);
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/transcriptions/${id}`] });
+      toast({
+        title: "Summary generated",
+        description: "The transcript summary and action items have been generated successfully.",
+      });
+      setIsGeneratingSummary(false);
+    },
+    onError: (error) => {
+      console.error('Error generating summary:', error);
+      toast({
+        title: "Error generating summary",
+        description: "There was a problem generating the summary. Please try again.",
+        variant: "destructive",
+      });
+      setIsGeneratingSummary(false);
+    }
+  });
+  
   // Handle file download
   const handleDownload = async () => {
     try {
