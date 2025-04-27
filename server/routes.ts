@@ -309,19 +309,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         try {
           structuredTranscript = JSON.parse(transcription.structuredTranscript);
-          console.log("Successfully parsed structuredTranscript:", 
-            JSON.stringify({
-              speakerCount: structuredTranscript.metadata?.speakerCount,
-              segmentsCount: structuredTranscript.segments?.length,
-              hasSpeakers: structuredTranscript.segments?.some((s: any) => s.speaker),
-              firstSegment: structuredTranscript.segments?.[0] ? {
-                start: structuredTranscript.segments[0].start,
-                end: structuredTranscript.segments[0].end,
-                hasSpeaker: !!structuredTranscript.segments[0].speaker,
-                speaker: structuredTranscript.segments[0].speaker
-              } : null
-            })
-          );
+          
+          // Ensure all speakers are properly counted and preserved
+          if (structuredTranscript.segments && structuredTranscript.segments.length > 0) {
+            // Get unique speakers from segments
+            const speakerSet = new Set<string>();
+            structuredTranscript.segments.forEach((segment: any) => {
+              if (segment.speaker) {
+                speakerSet.add(segment.speaker);
+              }
+            });
+            
+            // Count actual speakers in the transcript
+            const actualSpeakerCount = speakerSet.size;
+            
+            // Update metadata to reflect actual speaker count
+            if (structuredTranscript.metadata) {
+              structuredTranscript.metadata.speakerCount = actualSpeakerCount;
+            } else {
+              structuredTranscript.metadata = {
+                speakerCount: actualSpeakerCount,
+                duration: transcription.duration || 0
+              };
+            }
+            
+            console.log("Successfully parsed structuredTranscript:", 
+              JSON.stringify({
+                speakerCount: actualSpeakerCount,
+                detectedSpeakers: Array.from(speakerSet).join(', '),
+                segmentsCount: structuredTranscript.segments.length,
+                hasSpeakers: structuredTranscript.segments.some((s: any) => s.speaker),
+                firstSegment: structuredTranscript.segments[0] ? {
+                  start: structuredTranscript.segments[0].start,
+                  end: structuredTranscript.segments[0].end,
+                  hasSpeaker: !!structuredTranscript.segments[0].speaker,
+                  speaker: structuredTranscript.segments[0].speaker
+                } : null
+              })
+            );
+            
+            // Update transcription object's speaker count to match actual speakers
+            transcription.speakerCount = actualSpeakerCount;
+          } else {
+            console.log("Structured transcript has no segments or empty segments array");
+          }
         } catch (e) {
           console.error("Failed to parse structuredTranscript JSON:", e);
           console.error("Raw structuredTranscript data:", transcription.structuredTranscript.substring(0, 200) + "...");
@@ -357,6 +388,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (t.structuredTranscript) {
           try {
             structuredTranscript = JSON.parse(t.structuredTranscript);
+            
+            // Ensure speaker counts are accurate
+            if (structuredTranscript && structuredTranscript.segments && structuredTranscript.segments.length > 0) {
+              // Count unique speakers in segments
+              const speakerSet = new Set<string>();
+              structuredTranscript.segments.forEach((segment: any) => {
+                if (segment.speaker) {
+                  speakerSet.add(segment.speaker);
+                }
+              });
+              
+              // Update metadata to match actual speaker count
+              const actualSpeakerCount = speakerSet.size;
+              if (structuredTranscript.metadata) {
+                structuredTranscript.metadata.speakerCount = actualSpeakerCount;
+              }
+              
+              // Update transcription object's speaker count
+              t.speakerCount = actualSpeakerCount;
+            }
           } catch (e) {
             console.error(`Failed to parse structuredTranscript for ID ${t.id}:`, e);
           }
@@ -1014,12 +1065,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Apply auto-merge algorithm
       const mergedSegments = autoMergeSpeakers(structuredTranscript.segments, target);
       
+      // Count actual speakers after merging
+      const speakerSet = new Set<string>();
+      mergedSegments.forEach(segment => {
+        if (segment.speaker) {
+          speakerSet.add(segment.speaker);
+        }
+      });
+      const actualSpeakerCount = speakerSet.size;
+      
+      console.log(`After merging: requested ${target} speakers, found ${actualSpeakerCount} speakers: ${Array.from(speakerSet).join(', ')}`);
+      
       // Create updated transcript structure
       const updatedStructuredTranscript: StructuredTranscript = {
         segments: mergedSegments,
         metadata: {
           ...structuredTranscript.metadata,
-          speakerCount: target
+          speakerCount: actualSpeakerCount // Use actual count, not target
         }
       };
       
@@ -1065,7 +1127,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updatedTranscription = await storage.updateTranscription(id, {
         text: formattedText,
         updatedAt: new Date(),
-        speakerCount: target,
+        speakerCount: actualSpeakerCount, // Use actual count, not target
         structuredTranscript: JSON.stringify(updatedStructuredTranscript)
       });
       
