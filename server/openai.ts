@@ -126,6 +126,10 @@ async function processSpeakerDiarization(timestampedSegments: TranscriptSegment[
   const segmentsText = timestampedSegments.map(s => `[${formatTime(s.start)} - ${formatTime(s.end)}]: ${s.text}`).join('\n');
   const safeFullText = fullText || segmentsText;
 
+  console.log('--- Calling GPT-4o for Diarization ---');
+  console.log('Segments Text Snippet:', segmentsText.substring(0, 200) + '...');
+  console.log('Full Text Snippet:', safeFullText ? safeFullText.substring(0, 200) + '...' : 'N/A');
+
   const response = await limiter.schedule(() =>
     withRetry(() => openai.chat.completions.create({
       model: 'gpt-4o',
@@ -138,14 +142,30 @@ async function processSpeakerDiarization(timestampedSegments: TranscriptSegment[
     }))
   );
 
+  console.log('--- GPT-4o Diarization Response ---');
+  const rawResponseContent = response.choices[0].message.content;
+  console.log('Raw Response:', rawResponseContent);
+
   let result;
   try {
-    result = JSON.parse(response.choices[0].message.content);
-  } catch {
+    // Check if content is a valid string before parsing
+    if (typeof rawResponseContent !== 'string') {
+      throw new Error('Received null or non-string content from GPT for diarization.');
+    }
+    result = JSON.parse(rawResponseContent);
+    console.log('Parsed Response:', JSON.stringify(result, null, 2));
+  } catch (parseError) {
+    // Ensure parseError is logged as a string
+    const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+    console.error(`!!! Failed to parse GPT Diarization Response: ${errorMessage}`);
+    // Explicitly create a string variable for logging
+    const contentToLog = typeof rawResponseContent === 'string' ? rawResponseContent : 'null';
+    console.error(`Raw content that failed parsing: ${contentToLog}`);
     result = {
       speakerCount: 1,
       segments: timestampedSegments.map(s => ({ ...s, speaker: 'Speaker 1' }))
     };
+    console.log('Falling back to default single speaker.');
   }
 
   const validated = enforceConsistentSpeakers(result);
@@ -154,6 +174,10 @@ async function processSpeakerDiarization(timestampedSegments: TranscriptSegment[
   if (speakerCountFromGPT > 8) {
     console.warn(`⚠️ High number of speakers detected (${speakerCountFromGPT}). Review recommended.`);
   }
+
+  console.log('--- Returning from processSpeakerDiarization ---');
+  console.log('Final Speaker Count:', speakerCountFromGPT);
+  console.log('Final Segments Snippet:', JSON.stringify(validated.segments.slice(0, 3), null, 2)); // Log first 3 segments
 
   return { segments: validated.segments, speakerCount: speakerCountFromGPT };
 }
