@@ -1047,6 +1047,35 @@ export function autoMergeSpeakers(segments: TranscriptSegment[], targetSpeakerCo
   // Sort by similarity (highest first)
   speakerPairs.sort((a, b) => b.similarity - a.similarity);
   
+  // Identify significant and minority speakers based on their contribution
+  const totalSegments = segments.length;
+  const significantSpeakers = new Set<string>();
+  const minoritySpeakers = new Set<string>();
+  
+  for (const speaker of speakerArray) {
+    const stats = speakerStats[speaker];
+    
+    // Consider a speaker significant if they have substantial contribution
+    if (
+      stats.segmentCount / totalSegments > 0.05 ||  // More than 5% of segments
+      stats.segmentCount >= 8 ||                    // At least 8 segments
+      stats.totalWords >= 80                        // At least 80 total words spoken
+    ) {
+      significantSpeakers.add(speaker);
+    }
+    
+    // Consider a speaker a minority if they have minimal but distinct contribution
+    if (
+      stats.segmentCount < Math.max(8, totalSegments * 0.05) && // Less than 5% of segments, but at least a few
+      stats.segmentCount >= 2                                    // At least 2 segments (not just noise)
+    ) {
+      minoritySpeakers.add(speaker);
+    }
+  }
+  
+  console.log("Significant speakers:", Array.from(significantSpeakers).join(", "));
+  console.log("Minority speakers:", Array.from(minoritySpeakers).join(", "));
+  
   // Create speaker mapping
   const speakerMapping: Record<string, string> = {};
   speakerArray.forEach(speaker => {
@@ -1068,9 +1097,41 @@ export function autoMergeSpeakers(segments: TranscriptSegment[], targetSpeakerCo
     
     // If they're not already merged, merge them
     if (root1 !== root2) {
-      // Choose which speaker to keep based on segment count
-      const keepSpeaker = speakerStats[root1].segmentCount >= speakerStats[root2].segmentCount ? root1 : root2;
-      const mergeSpeaker = keepSpeaker === root1 ? root2 : root1;
+      // Special case: Try to preserve minority speakers if possible
+      // Only merge minority speakers as a last resort
+      const bothSignificant = significantSpeakers.has(root1) && significantSpeakers.has(root2);
+      const eitherMinority = minoritySpeakers.has(root1) || minoritySpeakers.has(root2);
+      
+      // If we still have non-minority speakers to merge, skip this pair if either is a minority
+      const nonMinoritySpeakersRemaining = currentSpeakerCount - minoritySpeakers.size > targetSpeakerCount;
+      if (eitherMinority && nonMinoritySpeakersRemaining) {
+        continue;
+      }
+      
+      // If both are significant speakers, only merge if we absolutely have to
+      const significantSpeakersRemaining = significantSpeakers.size > targetSpeakerCount;
+      if (bothSignificant && !significantSpeakersRemaining) {
+        continue;
+      }
+      
+      // Choose which speaker to keep based on significance and segment count
+      let keepSpeaker: string;
+      let mergeSpeaker: string;
+      
+      if (significantSpeakers.has(root1) && !significantSpeakers.has(root2)) {
+        // Keep the significant speaker
+        keepSpeaker = root1;
+        mergeSpeaker = root2;
+      } else if (!significantSpeakers.has(root1) && significantSpeakers.has(root2)) {
+        // Keep the significant speaker
+        keepSpeaker = root2;
+        mergeSpeaker = root1;
+      } else {
+        // If both are significant or both are not significant,
+        // keep the one with more segments
+        keepSpeaker = speakerStats[root1].segmentCount >= speakerStats[root2].segmentCount ? root1 : root2;
+        mergeSpeaker = keepSpeaker === root1 ? root2 : root1;
+      }
       
       // Update the mapping
       speakerMapping[mergeSpeaker] = keepSpeaker;
