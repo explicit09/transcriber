@@ -274,9 +274,11 @@ IMPORTANT: Many meetings have MORE THAN 2 participants. Carefully analyze the tr
       
       // If we found 3+ speakers, log additional details for debugging
       if (result.speakerCount > 2) {
-        const speakerCounts = {};
+        const speakerCounts: Record<string, number> = {};
         result.segments.forEach(s => {
-          speakerCounts[s.speaker] = (speakerCounts[s.speaker] || 0) + 1;
+          if (s.speaker) {
+            speakerCounts[s.speaker] = (speakerCounts[s.speaker] || 0) + 1;
+          }
         });
         console.log('Speaker distribution:', JSON.stringify(speakerCounts));
       }
@@ -739,42 +741,291 @@ function enforceNumberOfSpeakers(
   console.log(`Too many speakers detected (${speakers.length} vs desired ${desiredNumSpeakers}) - merging similar speakers`);
   
   // We need to reduce the number of speakers
-  // Strategy: Map less frequent speakers to more frequent ones
+  // More advanced strategy: Analyze speaker patterns and merge similar speakers
   
-  // 1. Count speaker frequencies
-  const speakerCounts = new Map<string, number>();
+  // 1. Count speaker frequencies and calculate segment durations
+  const speakerStats: Record<string, {count: number, totalDuration: number, avgSegmentLength: number}> = {};
+  
   segments.forEach(segment => {
-    if (segment.speaker) {
-      speakerCounts.set(segment.speaker, (speakerCounts.get(segment.speaker) || 0) + 1);
+    if (!segment.speaker) return;
+    
+    const speaker = segment.speaker;
+    if (!speakerStats[speaker]) {
+      speakerStats[speaker] = {count: 0, totalDuration: 0, avgSegmentLength: 0};
     }
+    
+    const duration = segment.end - segment.start;
+    speakerStats[speaker].count += 1;
+    speakerStats[speaker].totalDuration += duration;
   });
   
-  // 2. Sort speakers by frequency (most frequent first)
-  const sortedSpeakers = Array.from(speakerCounts.entries())
-    .sort((a, b) => b[1] - a[1])
+  // Calculate average segment length for each speaker
+  for (const speaker in speakerStats) {
+    speakerStats[speaker].avgSegmentLength = 
+      speakerStats[speaker].totalDuration / speakerStats[speaker].count;
+  }
+  
+  // 2. Sort speakers by their prevalence (most frequent/longest first)
+  const sortedSpeakers = Object.entries(speakerStats)
+    .sort((a, b) => {
+      // Prioritize speakers with more content
+      if (b[1].totalDuration > a[1].totalDuration * 3) return 1;
+      if (a[1].totalDuration > b[1].totalDuration * 3) return -1;
+      
+      // If similar duration, look at frequency and avg segment length
+      return b[1].count - a[1].count;
+    })
     .map(entry => entry[0]);
   
-  // 3. Keep the top N speakers, map the rest to these
+  // 3. Keep the top N speakers, merge the rest based on timing patterns
   const speakersToKeep = sortedSpeakers.slice(0, desiredNumSpeakers);
-  const speakerMap = new Map<string, string>();
   
-  // Map each speaker to one we're keeping
-  sortedSpeakers.forEach((speaker, index) => {
-    if (index < desiredNumSpeakers) {
-      // Keep this speaker as-is
-      speakerMap.set(speaker, speaker);
-    } else {
-      // Map to the most frequent speaker
-      // (we could be more sophisticated here with timing analysis)
-      speakerMap.set(speaker, speakersToKeep[index % desiredNumSpeakers]);
+  // 4. Build a speaker similarity map
+  const speakerSimilarity: Record<string, string[]> = {};
+  
+  // First, analyze adjacent segments for the same speakers
+  let lastSpeaker = '';
+  let speakerTransitions: Record<string, Record<string, number>> = {};
+  
+  segments.forEach(segment => {
+    if (!segment.speaker) return;
+    
+    const currentSpeaker = segment.speaker;
+    
+    if (lastSpeaker && lastSpeaker !== currentSpeaker) {
+      // Track transitions between speakers
+      if (!speakerTransitions[lastSpeaker]) {
+        speakerTransitions[lastSpeaker] = {};
+      }
+      
+      speakerTransitions[lastSpeaker][currentSpeaker] = 
+        (speakerTransitions[lastSpeaker][currentSpeaker] || 0) + 1;
     }
+    
+    lastSpeaker = currentSpeaker;
   });
   
-  // 4. Apply the mapping to all segments
+  // Create a mapping for speakers to merge
+  const speakerMap = new Map<string, string>();
+  
+  // First, map each keeper speaker to itself
+  speakersToKeep.forEach(speaker => {
+    speakerMap.set(speaker, speaker);
+  });
+  
+  // For non-keeper speakers, find the most similar keeper
+  sortedSpeakers.forEach(speaker => {
+    if (speakersToKeep.includes(speaker)) {
+      return; // Skip keepers, they're already mapped
+    }
+    
+    // Find the most similar keeper speaker
+    let bestMatch = speakersToKeep[0]; // Default to first speaker
+    let bestScore = -1;
+    
+    for (const keeper of speakersToKeep) {
+      // Calculate similarity based on transitions
+      let score = 0;
+      
+      // If they frequently transition to/from each other, they might be the same speaker
+      // incorrectly split due to pauses or tone changes
+      const transitionsTo = (speakerTransitions[speaker]?.[keeper] || 0);
+      const transitionsFrom = (speakerTransitions[keeper]?.[speaker] || 0);
+      score += transitionsTo + transitionsFrom;
+      
+      // Also consider segment duration patterns
+      const durationSimilarity = Math.min(
+        speakerStats[speaker].avgSegmentLength / Math.max(speakerStats[keeper].avgSegmentLength, 0.1),
+        speakerStats[keeper].avgSegmentLength / Math.max(speakerStats[speaker].avgSegmentLength, 0.1)
+      );
+      
+      score += durationSimilarity * 2;
+      
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = keeper;
+      }
+    }
+    
+    // Map to the best matching keeper
+    speakerMap.set(speaker, bestMatch);
+    console.log(`Merging speaker ${speaker} into ${bestMatch} (score: ${bestScore.toFixed(2)})`);
+  });
+  
+  // 5. Apply the mapping to all segments
   const updatedSegments = segments.map(segment => ({
     ...segment,
-    speaker: segment.speaker ? speakerMap.get(segment.speaker) || segment.speaker : segment.speaker
+    speaker: segment.speaker ? (speakerMap.get(segment.speaker) || segment.speaker) : segment.speaker
   }));
   
   return updatedSegments;
+}
+
+/**
+ * Automatically merges similar speakers in transcription segments
+ */
+export function autoMergeSpeakers(segments: TranscriptSegment[], targetSpeakerCount: number): TranscriptSegment[] {
+  if (!segments?.length) return [];
+  
+  // Get all unique speakers
+  const speakers = new Set<string>();
+  for (const segment of segments) {
+    if (segment.speaker) {
+      speakers.add(segment.speaker);
+    }
+  }
+  
+  // If we already have fewer speakers than target, no need to merge
+  const speakerArray = Array.from(speakers);
+  if (speakerArray.length <= targetSpeakerCount) {
+    return segments;
+  }
+  
+  // Calculate statistics for each speaker
+  interface SpeakerStats {
+    totalWords: number;
+    averageWordsPerSegment: number;
+    segmentCount: number;
+    totalDuration: number;
+    averageDuration: number;
+    wordFrequencies: Record<string, number>;
+  }
+  
+  const speakerStats: Record<string, SpeakerStats> = {};
+  
+  for (const speaker of speakerArray) {
+    const speakerSegments = segments.filter(s => s.speaker === speaker);
+    
+    const totalWords = speakerSegments.reduce((sum, segment) => {
+      return sum + (segment.text.split(/\s+/).filter(Boolean).length);
+    }, 0);
+    
+    const totalDuration = speakerSegments.reduce((sum, segment) => {
+      return sum + ((segment.end || 0) - (segment.start || 0));
+    }, 0);
+    
+    // Calculate word frequencies (simple bag of words)
+    const wordFrequencies: Record<string, number> = {};
+    for (const segment of speakerSegments) {
+      const words = segment.text.toLowerCase()
+        .replace(/[,.?!:;()\[\]{}'"]/g, '')
+        .split(/\s+/)
+        .filter(word => word.length > 2); // Filter out short words
+      
+      for (const word of words) {
+        wordFrequencies[word] = (wordFrequencies[word] || 0) + 1;
+      }
+    }
+    
+    speakerStats[speaker] = {
+      totalWords,
+      averageWordsPerSegment: totalWords / speakerSegments.length,
+      segmentCount: speakerSegments.length,
+      totalDuration,
+      averageDuration: totalDuration / speakerSegments.length,
+      wordFrequencies
+    };
+  }
+  
+  // Calculate similarity between speakers
+  interface SpeakerPair {
+    speaker1: string;
+    speaker2: string;
+    similarity: number;
+  }
+  
+  const speakerPairs: SpeakerPair[] = [];
+  
+  for (let i = 0; i < speakerArray.length; i++) {
+    for (let j = i + 1; j < speakerArray.length; j++) {
+      const speaker1 = speakerArray[i];
+      const speaker2 = speakerArray[j];
+      const stats1 = speakerStats[speaker1];
+      const stats2 = speakerStats[speaker2];
+      
+      // Calculate jaccard similarity of word usage
+      const words1 = Object.keys(stats1.wordFrequencies);
+      const words2 = Object.keys(stats2.wordFrequencies);
+      const commonWords = words1.filter(word => words2.includes(word));
+      const vocabularySimilarity = commonWords.length / (words1.length + words2.length - commonWords.length);
+      
+      // Calculate similarity in speaking style metrics
+      const durationSimilarity = 1 - Math.abs(stats1.averageDuration - stats2.averageDuration) / 
+                                 Math.max(stats1.averageDuration, stats2.averageDuration);
+      
+      const wordsSimilarity = 1 - Math.abs(stats1.averageWordsPerSegment - stats2.averageWordsPerSegment) /
+                              Math.max(stats1.averageWordsPerSegment, stats2.averageWordsPerSegment);
+      
+      // Calculate a weighted similarity score
+      const similarity = (
+        vocabularySimilarity * 0.6 + 
+        durationSimilarity * 0.2 + 
+        wordsSimilarity * 0.2
+      );
+      
+      speakerPairs.push({
+        speaker1,
+        speaker2,
+        similarity
+      });
+    }
+  }
+  
+  // Sort by similarity (highest first)
+  speakerPairs.sort((a, b) => b.similarity - a.similarity);
+  
+  // Create speaker mapping
+  const speakerMapping: Record<string, string> = {};
+  speakerArray.forEach(speaker => {
+    speakerMapping[speaker] = speaker;
+  });
+  
+  // Iteratively merge the most similar speakers until we reach the target count
+  let currentSpeakerCount = speakerArray.length;
+  for (const pair of speakerPairs) {
+    if (currentSpeakerCount <= targetSpeakerCount) {
+      break;
+    }
+    
+    const { speaker1, speaker2 } = pair;
+    
+    // Find the root speakers (in case they've already been merged)
+    const root1 = findRootSpeaker(speakerMapping, speaker1);
+    const root2 = findRootSpeaker(speakerMapping, speaker2);
+    
+    // If they're not already merged, merge them
+    if (root1 !== root2) {
+      // Choose which speaker to keep based on segment count
+      const keepSpeaker = speakerStats[root1].segmentCount >= speakerStats[root2].segmentCount ? root1 : root2;
+      const mergeSpeaker = keepSpeaker === root1 ? root2 : root1;
+      
+      // Update the mapping
+      speakerMapping[mergeSpeaker] = keepSpeaker;
+      
+      // Decrement the speaker count
+      currentSpeakerCount--;
+    }
+  }
+  
+  // Apply the mapping to create new segments
+  return segments.map(segment => {
+    if (!segment.speaker) return segment;
+    
+    const rootSpeaker = findRootSpeaker(speakerMapping, segment.speaker);
+    return {
+      ...segment,
+      speaker: rootSpeaker
+    };
+  });
+}
+
+/**
+ * Helper function to find the root speaker in the mapping
+ */
+function findRootSpeaker(speakerMapping: Record<string, string>, speaker: string): string {
+  let current = speaker;
+  while (speakerMapping[current] !== current) {
+    current = speakerMapping[current];
+  }
+  return current;
 }

@@ -295,6 +295,7 @@ export default function TranscriptionContainer() {
               structuredTranscript={transcription.structuredTranscript?.segments}
               fileName={transcription.meetingTitle || currentFile?.name || "transcript"}
               onNewTranscription={handleTryAgain}
+              transcriptionId={transcription.id}
             />
           </div>
         )}

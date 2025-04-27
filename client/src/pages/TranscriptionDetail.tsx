@@ -6,6 +6,7 @@ import { TranscriptEditor } from '@/components/TranscriptEditor';
 import NavigableTranscript from '@/components/NavigableTranscript';
 import SpeakerLabels from '@/components/SpeakerLabels';
 import TranscriptView from '@/components/TranscriptView';
+import SpeakerSimilarity from '@/components/SpeakerSimilarity';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -32,6 +33,7 @@ export default function TranscriptionDetail() {
   const [activeTab, setActiveTab] = useState<string>('view');
   const [isDeleting, setIsDeleting] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [isMergingSpeakers, setIsMergingSpeakers] = useState(false);
   
   const id = params?.id;
 
@@ -138,6 +140,35 @@ export default function TranscriptionDetail() {
       });
     }
   };
+
+  // Handle speaker merging
+  const mergeSpeakersMutation = useMutation({
+    mutationFn: async (targetSpeakerCount: number) => {
+      setIsMergingSpeakers(true);
+      const response = await apiRequest("POST", `/api/transcriptions/${id}/merge-speakers`, {
+        targetSpeakerCount
+      });
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/transcriptions/${id}`] });
+      toast({
+        title: "Speakers merged",
+        description: "Similar speakers have been successfully merged.",
+      });
+    },
+    onError: (error) => {
+      console.error('Error merging speakers:', error);
+      toast({
+        title: "Error merging speakers",
+        description: "There was a problem merging the speakers. Please try again.",
+        variant: "destructive",
+      });
+    },
+    onSettled: () => {
+      setIsMergingSpeakers(false);
+    }
+  });
 
   // Loading state
   if (isLoading) {
@@ -251,9 +282,10 @@ export default function TranscriptionDetail() {
       )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+        <TabsList className="grid w-full max-w-md grid-cols-3">
           <TabsTrigger value="view">View</TabsTrigger>
           <TabsTrigger value="edit">Edit</TabsTrigger>
+          <TabsTrigger value="speakers">Speakers</TabsTrigger>
         </TabsList>
 
         <TabsContent value="view" className="mt-4">
@@ -277,6 +309,15 @@ export default function TranscriptionDetail() {
             transcription={transcription}
             onSave={(text) => saveTranscriptMutation.mutateAsync(text)}
           />
+        </TabsContent>
+
+        <TabsContent value="speakers" className="mt-4">
+          {transcription.structuredTranscript && (
+            <SpeakerSimilarity 
+              transcriptionId={parseInt(id)}
+              onMergeSpeakers={(targetCount) => mergeSpeakersMutation.mutateAsync(targetCount)}
+            />
+          )}
         </TabsContent>
       </Tabs>
     </div>

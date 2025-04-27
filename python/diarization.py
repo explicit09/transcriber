@@ -56,6 +56,10 @@ def diarize_audio(audio_path, num_speakers=None, hf_token=None):
         clustering_params["clustering"]["num_clusters"] = num_speakers
         print(f"Using fixed number of speakers: {num_speakers}", file=sys.stderr)
     else:
+        # Make more conservative by default - higher threshold means more conservative clustering
+        clustering_params["clustering"]["threshold"] = 0.85  # More conservative (harder to create new speakers)
+        # Also set min_cluster_size higher to require more evidence for a new speaker
+        clustering_params["clustering"]["min_cluster_size"] = 25
         print("Using automatic speaker counting with conservative parameters", file=sys.stderr)
     
     # Apply parameters

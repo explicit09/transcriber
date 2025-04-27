@@ -5,7 +5,8 @@ import {
   insertTranscriptionSchema, 
   audioFileSchema, 
   structuredTranscriptSchema, 
-  StructuredTranscript 
+  StructuredTranscript,
+  TranscriptSegment 
 } from "@shared/schema";
 import multer from "multer";
 import path from "path";
@@ -16,7 +17,8 @@ import {
   transcribeAudioWithFeatures,
   transcribeWithPyannote,
   generateTranscriptSummary, 
-  translateTranscript 
+  translateTranscript,
+  autoMergeSpeakers
 } from "./openai";
 import { generateTranscriptPDF } from "./pdf";
 import { z } from "zod";
@@ -54,11 +56,11 @@ const upload = multer({
   }
 });
 
-// Helper function to format time in MM:SS format
+// Helper function to format seconds into readable time
 function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
 // Check if advanced diarization is available
@@ -434,7 +436,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Update speaker labels in segments
       if (structuredData.segments && Array.isArray(structuredData.segments)) {
-        structuredData.segments = structuredData.segments.map(segment => {
+        structuredData.segments = structuredData.segments.map((segment: any) => {
           if (segment.speaker && speakerMappings[segment.speaker]) {
             return {
               ...segment,
@@ -449,7 +451,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (updatedText) {
           Object.entries(speakerMappings).forEach(([originalName, newName]) => {
             const regex = new RegExp(`\\b${originalName}\\b`, 'g');
-            updatedText = updatedText.replace(regex, newName);
+            updatedText = updatedText.replace(regex, newName as string);
           });
         }
         
@@ -973,6 +975,272 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error handling batch transcription:", error);
       return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Auto-merge speakers in a transcription
+  app.post('/api/transcriptions/:id/merge-speakers', async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid transcription ID" });
+      }
+      
+      const { targetSpeakerCount } = req.body;
+      if (!targetSpeakerCount || isNaN(parseInt(targetSpeakerCount))) {
+        return res.status(400).json({ message: "targetSpeakerCount is required and must be a number" });
+      }
+
+      const transcription = await storage.getTranscription(id);
+      if (!transcription) {
+        return res.status(404).json({ message: "Transcription not found" });
+      }
+      
+      if (!transcription.structuredTranscript) {
+        return res.status(400).json({ 
+          message: "This transcription doesn't have structured data with speaker information" 
+        });
+      }
+      
+      let structuredTranscript: StructuredTranscript;
+      try {
+        structuredTranscript = JSON.parse(transcription.structuredTranscript);
+      } catch (e) {
+        return res.status(500).json({ message: "Failed to parse structured transcript data" });
+      }
+      
+      const target = parseInt(targetSpeakerCount);
+      
+      // Apply auto-merge algorithm
+      const mergedSegments = autoMergeSpeakers(structuredTranscript.segments, target);
+      
+      // Create updated transcript structure
+      const updatedStructuredTranscript: StructuredTranscript = {
+        segments: mergedSegments,
+        metadata: {
+          ...structuredTranscript.metadata,
+          speakerCount: target
+        }
+      };
+      
+      // Format the transcript text with speaker labels
+      let formattedText = '';
+      if (mergedSegments.length > 0) {
+        // Group segments by speaker for cleaner output
+        let currentSpeaker = '';
+        let currentSegmentStart = 0;
+        let currentTexts: string[] = [];
+        let formattedSegments: string[] = [];
+        
+        mergedSegments.forEach(segment => {
+          const speaker = segment.speaker || 'Unknown Speaker';
+          
+          // If this is the same speaker as before, just accumulate the text
+          if (speaker === currentSpeaker) {
+            currentTexts.push(segment.text);
+          } else {
+            // If we have accumulated text for a previous speaker, add it to our output
+            if (currentTexts.length > 0) {
+              const timePrefix = transcription.hasTimestamps ? `[${formatTime(currentSegmentStart)}] ` : '';
+              formattedSegments.push(`${timePrefix}${currentSpeaker}: ${currentTexts.join(' ')}`);
+            }
+            
+            // Start a new speaker group
+            currentSpeaker = speaker;
+            currentSegmentStart = segment.start;
+            currentTexts = [segment.text];
+          }
+        });
+        
+        // Don't forget the last group
+        if (currentTexts.length > 0) {
+          const timePrefix = transcription.hasTimestamps ? `[${formatTime(currentSegmentStart)}] ` : '';
+          formattedSegments.push(`${timePrefix}${currentSpeaker}: ${currentTexts.join(' ')}`);
+        }
+        
+        formattedText = formattedSegments.join('\n\n');
+      }
+      
+      // Update the transcription with the merged data
+      const updatedTranscription = await storage.updateTranscription(id, {
+        text: formattedText,
+        updatedAt: new Date(),
+        speakerCount: target,
+        structuredTranscript: JSON.stringify(updatedStructuredTranscript)
+      });
+      
+      // Return the updated transcription with parsed structured data
+      return res.status(200).json({
+        ...updatedTranscription,
+        structuredTranscript: updatedStructuredTranscript
+      });
+    } catch (error) {
+      console.error("Error merging speakers:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get speaker similarity data for a transcription
+  app.get('/api/transcriptions/:id/speaker-similarity', async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: 'Transcription ID is required' });
+      }
+      
+      // Get the transcription
+      const transcription = await storage.getTranscription(id);
+      
+      if (!transcription) {
+        return res.status(404).json({ error: 'Transcription not found' });
+      }
+      
+      // Check if we have a structured transcript
+      if (!transcription.structuredTranscript) {
+        return res.status(400).json({ error: 'No structured transcript available to analyze' });
+      }
+      
+      // Parse the structured transcript
+      let segments;
+      try {
+        segments = JSON.parse(transcription.structuredTranscript) as TranscriptSegment[];
+      } catch (error) {
+        return res.status(500).json({ error: 'Failed to parse structured transcript' });
+      }
+      
+      // Get all unique speakers
+      const speakers = new Set<string>();
+      for (const segment of segments) {
+        if (segment.speaker) {
+          speakers.add(segment.speaker);
+        }
+      }
+      
+      const speakerArray = Array.from(speakers);
+      
+      // Calculate statistics for each speaker
+      interface SpeakerStats {
+        totalWords: number;
+        averageWordsPerSegment: number;
+        segmentCount: number;
+        totalDuration: number;
+        averageDuration: number;
+        wordFrequencies: Record<string, number>;
+        topWords: {word: string, count: number}[];
+      }
+      
+      const speakerStats: Record<string, SpeakerStats> = {};
+      
+      for (const speaker of speakerArray) {
+        const speakerSegments = segments.filter(s => s.speaker === speaker);
+        
+        const totalWords = speakerSegments.reduce((sum, segment) => {
+          return sum + (segment.text.split(/\s+/).filter(Boolean).length);
+        }, 0);
+        
+        const totalDuration = speakerSegments.reduce((sum, segment) => {
+          return sum + ((segment.end || 0) - (segment.start || 0));
+        }, 0);
+        
+        // Calculate word frequencies (simple bag of words)
+        const wordFrequencies: Record<string, number> = {};
+        for (const segment of speakerSegments) {
+          const words = segment.text.toLowerCase()
+            .replace(/[,.?!:;()\[\]{}'"]/g, '')
+            .split(/\s+/)
+            .filter(word => word.length > 2); // Filter out short words
+          
+          for (const word of words) {
+            wordFrequencies[word] = (wordFrequencies[word] || 0) + 1;
+          }
+        }
+        
+        // Get top words for this speaker
+        const topWords = Object.entries(wordFrequencies)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+          .map(([word, count]) => ({ word, count }));
+        
+        speakerStats[speaker] = {
+          totalWords,
+          averageWordsPerSegment: totalWords / speakerSegments.length,
+          segmentCount: speakerSegments.length,
+          totalDuration,
+          averageDuration: totalDuration / speakerSegments.length,
+          wordFrequencies,
+          topWords
+        };
+      }
+      
+      // Calculate similarity between speakers
+      interface SpeakerPair {
+        speaker1: string;
+        speaker2: string;
+        similarity: number;
+        vocabularySimilarity: number;
+        durationSimilarity: number;
+        wordsSimilarity: number;
+      }
+      
+      const speakerPairs: SpeakerPair[] = [];
+      
+      for (let i = 0; i < speakerArray.length; i++) {
+        for (let j = i + 1; j < speakerArray.length; j++) {
+          const speaker1 = speakerArray[i];
+          const speaker2 = speakerArray[j];
+          const stats1 = speakerStats[speaker1];
+          const stats2 = speakerStats[speaker2];
+          
+          // Calculate jaccard similarity of word usage
+          const words1 = Object.keys(stats1.wordFrequencies);
+          const words2 = Object.keys(stats2.wordFrequencies);
+          const commonWords = words1.filter(word => words2.includes(word));
+          const vocabularySimilarity = commonWords.length / (words1.length + words2.length - commonWords.length);
+          
+          // Calculate similarity in speaking style metrics
+          const durationSimilarity = 1 - Math.abs(stats1.averageDuration - stats2.averageDuration) / 
+                                    Math.max(stats1.averageDuration, stats2.averageDuration);
+          
+          const wordsSimilarity = 1 - Math.abs(stats1.averageWordsPerSegment - stats2.averageWordsPerSegment) /
+                                  Math.max(stats1.averageWordsPerSegment, stats2.averageWordsPerSegment);
+          
+          // Calculate a weighted similarity score
+          const similarity = (
+            vocabularySimilarity * 0.6 + 
+            durationSimilarity * 0.2 + 
+            wordsSimilarity * 0.2
+          );
+          
+          speakerPairs.push({
+            speaker1,
+            speaker2,
+            similarity,
+            vocabularySimilarity,
+            durationSimilarity,
+            wordsSimilarity
+          });
+        }
+      }
+      
+      // Sort by similarity (highest first)
+      speakerPairs.sort((a, b) => b.similarity - a.similarity);
+      
+      // Return speaker stats and similarity data
+      return res.json({
+        speakers: speakerArray,
+        speakerStats,
+        speakerPairs: speakerPairs.map(pair => ({
+          ...pair,
+          similarity: Math.round(pair.similarity * 100) / 100,
+          vocabularySimilarity: Math.round(pair.vocabularySimilarity * 100) / 100,
+          durationSimilarity: Math.round(pair.durationSimilarity * 100) / 100,
+          wordsSimilarity: Math.round(pair.wordsSimilarity * 100) / 100
+        })),
+        currentSpeakerCount: speakers.size
+      });
+    } catch (error) {
+      console.error('Error analyzing speaker similarity:', error);
+      return res.status(500).json({ error: 'Failed to analyze speaker similarity' });
     }
   });
 
