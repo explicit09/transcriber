@@ -60,17 +60,26 @@ export async function transcribeAudioWithFeatures(
       withRetry(() => openai.audio.translations.create({
         file: fs.createReadStream(audioFilePath),
         model: 'whisper-1',
-        response_format: 'verbose_json',
-        language: options.targetLanguage,
+        response_format: 'verbose_json'
       }))
     );
+    
+    // Handle the translation response based on its actual shape
+    const translationText = typeof translation === 'string' 
+      ? translation 
+      : (translation as any).text || '';
+    
+    const translationLanguage = typeof translation === 'string' 
+      ? options.targetLanguage 
+      : (translation as any).language || options.targetLanguage;
+    
     return {
-      text: translation.text,
-      translatedText: translation.text,
-      language: translation.language,
+      text: translationText,
+      translatedText: translationText,
+      language: translationLanguage,
       structuredTranscript: {
         segments: [],
-        metadata: { speakerCount: 1, duration: undefined, language: translation.language }
+        metadata: { speakerCount: 1, duration: undefined, language: translationLanguage }
       }
     };
   }
@@ -98,15 +107,16 @@ export async function transcribeAudioWithFeatures(
   return { text, structuredTranscript, duration, language };
 }
 
-async function processSpeakerDiarization(timestampedSegments: TranscriptSegment[], fullText: string): Promise<{ segments: TranscriptSegment[]; speakerCount: number }> {
+async function processSpeakerDiarization(timestampedSegments: TranscriptSegment[], fullText: string | null): Promise<{ segments: TranscriptSegment[]; speakerCount: number }> {
   const segmentsText = timestampedSegments.map(s => `[${formatTime(s.start)} - ${formatTime(s.end)}]: ${s.text}`).join('\n');
+  const safeFullText = fullText || segmentsText;
 
   const response = await limiter.schedule(() =>
     withRetry(() => openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
-        { role: 'system', content: `You are an expert at speaker diarization. Label speakers only when it is extremely clear from the text and timing that a different speaker is present. If uncertain, assume the same speaker continues. Prefer underestimating speakers rather than overestimating. Label consistently as \"Speaker 1\", \"Speaker 2\", etc.` },
-        { role: 'user', content: `Transcript:\n${segmentsText}\nFull text:\n${fullText}\nAt the end, provide total number of speakers you detected.` }
+        { role: 'system', content: `You are an expert at speaker diarization. Label speakers only when it is extremely clear from the text and timing that a different speaker is present. If uncertain, assume the same speaker continues. Prefer underestimating speakers rather than overestimating. Label consistently as \"Speaker 1\", \"Speaker 2\", etc. Return output as JSON with fields 'segments' (array) and 'speakerCount' (number).` },
+        { role: 'user', content: `Analyze this transcript for different speakers and return a JSON response:\nTranscript:\n${segmentsText}\nFull text:\n${safeFullText}` }
       ],
       response_format: { type: 'json_object' },
       temperature: 0.1,
@@ -148,7 +158,11 @@ function enforceConsistentSpeakers(result: { segments: TranscriptSegment[]; spea
   return { segments: normalizedSegments, speakerCount: map.size };
 }
 
-export async function generateTranscriptSummary(text: string) {
+export async function generateTranscriptSummary(text: string | null) {
+  if (!text) {
+    return { summary: 'No text provided.', actionItems: [], keywords: [] };
+  }
+  
   const wordCount = text.split(/\s+/).length;
   if (wordCount < 10) {
     return { summary: 'Too short.', actionItems: [], keywords: [] };
@@ -158,8 +172,8 @@ export async function generateTranscriptSummary(text: string) {
     withRetry(() => openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
-        { role: 'system', content: `Summarize clearly and only what's stated.` },
-        { role: 'user', content: text }
+        { role: 'system', content: `Summarize clearly and only what's stated. Provide output in JSON format with fields for "summary", "actionItems" (array), and "keywords" (array).` },
+        { role: 'user', content: `Analyze this transcript and provide a JSON response with summary, action items, and keywords: ${text}` }
       ],
       response_format: { type: 'json_object' },
       temperature: 0.1,
@@ -167,7 +181,12 @@ export async function generateTranscriptSummary(text: string) {
     }))
   );
 
-  return JSON.parse(response.choices[0].message.content);
+  try {
+    return JSON.parse(response.choices[0].message.content);
+  } catch (error) {
+    console.error("Error parsing summary result:", error);
+    return { summary: "Error generating summary.", actionItems: [], keywords: [] };
+  }
 }
 
 function formatTime(seconds: number): string {
@@ -177,7 +196,11 @@ function formatTime(seconds: number): string {
 }
 
 // Text translation function
-export async function translateTranscript(text: string, targetLanguage: string) {
+export async function translateTranscript(text: string | null, targetLanguage: string) {
+  if (!text) {
+    return { translatedText: "No text provided for translation." };
+  }
+  
   const response = await limiter.schedule(() => 
     withRetry(() => openai.chat.completions.create({
       model: 'gpt-4o',
@@ -186,7 +209,7 @@ export async function translateTranscript(text: string, targetLanguage: string) 
           role: 'system', 
           content: `You are a professional translator. Translate the following text to ${targetLanguage}, preserving all formatting and speaker information. Return your response as a JSON object with the following structure: { "translatedText": "text translated to ${targetLanguage}" }` 
         },
-        { role: 'user', content: text }
+        { role: 'user', content: `Translate the following text to ${targetLanguage} and return as JSON:\n${text}` }
       ],
       response_format: { type: 'json_object' },
       temperature: 0.1,

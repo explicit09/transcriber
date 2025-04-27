@@ -11,13 +11,15 @@ interface TranscriptSegment {
 }
 
 interface TranscriptionResultProps {
-  structuredTranscript: TranscriptSegment[];
+  structuredTranscript?: TranscriptSegment[];
+  transcriptionText?: string;
   fileName: string;
   onNewTranscription: () => void;
 }
 
 export default function TranscriptionResult({
   structuredTranscript,
+  transcriptionText,
   fileName,
   onNewTranscription
 }: TranscriptionResultProps) {
@@ -26,7 +28,13 @@ export default function TranscriptionResult({
 
   const handleCopyText = async () => {
     try {
-      const fullText = structuredTranscript.map(seg => `${seg.speaker}: ${seg.text}`).join("\n\n");
+      let fullText;
+      if (structuredTranscript && structuredTranscript.length > 0) {
+        fullText = structuredTranscript.map(seg => `${seg.speaker}: ${seg.text}`).join("\n\n");
+      } else {
+        fullText = transcriptionText || "";
+      }
+      
       await navigator.clipboard.writeText(fullText);
       setHasCopied(true);
       toast({
@@ -45,7 +53,13 @@ export default function TranscriptionResult({
   };
 
   const handleDownloadText = () => {
-    const fullText = structuredTranscript.map(seg => `${seg.speaker}: ${seg.text}`).join("\n\n");
+    let fullText;
+    if (structuredTranscript && structuredTranscript.length > 0) {
+      fullText = structuredTranscript.map(seg => `${seg.speaker}: ${seg.text}`).join("\n\n");
+    } else {
+      fullText = transcriptionText || "";
+    }
+    
     const element = document.createElement("a");
     element.setAttribute("href", 'data:text/plain;charset=utf-8,' + encodeURIComponent(fullText));
     element.setAttribute("download", `${fileName.split('.')[0]}_transcript.txt`);
@@ -78,17 +92,21 @@ export default function TranscriptionResult({
       </div>
 
       <div className="bg-gray-50 rounded-md border border-gray-200 p-4 max-h-96 overflow-y-auto space-y-4">
-        {structuredTranscript.map((seg, index) => (
-          <div key={index} className="pb-4 mb-3 border-b border-gray-200">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs font-mono text-gray-500">[{formatTime(seg.start)}]</span>
-              <span className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
-                {seg.speaker}
-              </span>
+        {structuredTranscript && structuredTranscript.length > 0 ? (
+          structuredTranscript.map((seg, index) => (
+            <div key={index} className="pb-4 mb-3 border-b border-gray-200">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-mono text-gray-500">[{formatTime(seg.start)}]</span>
+                <span className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                  {seg.speaker}
+                </span>
+              </div>
+              <p className="ml-6 text-gray-800 whitespace-pre-line">{seg.text}</p>
             </div>
-            <p className="ml-6 text-gray-800 whitespace-pre-line">{seg.text}</p>
-          </div>
-        ))}
+          ))
+        ) : (
+          <p className="text-gray-800 whitespace-pre-line">{transcriptionText}</p>
+        )}
       </div>
 
       <div className="mt-4 flex justify-end">
