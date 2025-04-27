@@ -30,13 +30,17 @@ export default function TranscriptView({ transcription }: TranscriptViewProps) {
   }, [transcription.actionItems]);
   
   // If we have structured transcript with segments, render with timestamps
-  const hasStructuredTranscript = transcription.structuredTranscript && 
+  const hasStructuredTranscript = 
+    transcription.structuredTranscript && 
     typeof transcription.structuredTranscript === 'object' && 
+    transcription.structuredTranscript.segments &&
     Array.isArray(transcription.structuredTranscript.segments);
   
-  const segments = hasStructuredTranscript ? transcription.structuredTranscript.segments : [];
+  const segments = hasStructuredTranscript && transcription.structuredTranscript?.segments 
+    ? transcription.structuredTranscript.segments 
+    : [];
   
-  console.log("No structured transcript available, using plain text");
+  // If no structured transcript, we'll show plain text
   
   return (
     <div className="space-y-6">
@@ -83,7 +87,7 @@ export default function TranscriptView({ transcription }: TranscriptViewProps) {
       <Separator />
       
       {/* Transcript Content */}
-      <ScrollArea className="max-h-[500px] rounded-md border">
+      <ScrollArea className="max-h-[600px] rounded-md border">
         {hasStructuredTranscript ? (
           <div className="space-y-4 p-4">
             {segments.map((segment, index) => (
@@ -116,7 +120,7 @@ export default function TranscriptView({ transcription }: TranscriptViewProps) {
           </div>
         ) : (
           <div className="p-4">
-            <pre className="whitespace-pre-wrap text-gray-800">{transcription.text}</pre>
+            <pre className="whitespace-pre-wrap text-gray-800 text-sm">{transcription.text}</pre>
           </div>
         )}
       </ScrollArea>

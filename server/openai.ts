@@ -429,8 +429,17 @@ ${text}`
 
   try {
     const content = response.choices[0].message.content || "";
-    return JSON.parse(content);
-  } catch {
+    console.log("OpenAI summary response:", content);
+    const parsedContent = JSON.parse(content);
+    
+    // Ensure the object has all required fields
+    return {
+      summary: parsedContent.summary || "No summary available.",
+      actionItems: Array.isArray(parsedContent.actionItems) ? parsedContent.actionItems : [],
+      keywords: Array.isArray(parsedContent.keywords) ? parsedContent.keywords : []
+    };
+  } catch (error) {
+    console.error("Error parsing summary:", error);
     return { summary: "Error generating summary.", actionItems: [], keywords: [] };
   }
 }
