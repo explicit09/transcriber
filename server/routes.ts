@@ -21,6 +21,7 @@ import {
   autoMergeSpeakers
 } from "./openai";
 import { transcribeWithAssemblyAI, formatTranscriptText } from "./assemblyai";
+import { transcribeWithHybridApproach } from "./hybrid";
 import { generateTranscriptPDF } from "./pdf";
 import { z } from "zod";
 import { ZodError } from "zod";
@@ -166,14 +167,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const filePath = file.path;
           
           // Determine which transcription method to use based on available services
-          const useAssemblyAI = isAssemblyAIAvailable && enableSpeakerLabels;
-          const usePyannote = !useAssemblyAI && isPyannoteDiarizationAvailable && enableSpeakerLabels;
+          const useHybrid = isAssemblyAIAvailable && enableSpeakerLabels;
+          const usePyannote = !useHybrid && isPyannoteDiarizationAvailable && enableSpeakerLabels;
+          const useAssemblyAI = !useHybrid && !usePyannote && isAssemblyAIAvailable && enableSpeakerLabels;
           
           // Calculate expected speaker count
           const expectedSpeakers = numSpeakers || (participants ? participants.split(',').length : undefined);
           
           let result;
-          if (useAssemblyAI) {
+          if (useHybrid) {
+            console.log("Using hybrid approach (OpenAI + AssemblyAI) for best transcription and diarization");
+            result = await transcribeWithHybridApproach(filePath, {
+              enableTimestamps: enableTimestamps,
+              language: language || undefined,
+              numSpeakers: expectedSpeakers
+            });
+          } else if (useAssemblyAI) {
             console.log("Using AssemblyAI for advanced speaker diarization");
             result = await transcribeWithAssemblyAI(filePath, {
               speakerLabels: enableSpeakerLabels,
