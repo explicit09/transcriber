@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest, getQueryFn } from "@/lib/queryClient";
@@ -157,7 +157,7 @@ export default function TranscriptionDetail() {
         </div>
         <div className="flex space-x-3">
           <Button variant="outline" onClick={handleDownload}>
-            <FileDownload className="mr-2 h-4 w-4" />
+            <Download className="mr-2 h-4 w-4" />
             Download
           </Button>
           
