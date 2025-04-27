@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { Card, CardContent } from "@/components/ui/card";
 
 interface FeatureCardProps {
   title: string;
@@ -8,14 +9,17 @@ interface FeatureCardProps {
 
 export default function FeatureCard({ title, description, icon }: FeatureCardProps) {
   return (
-    <div className="relative rounded-lg border border-gray-200 bg-white px-6 py-5 shadow-sm flex items-start space-x-3 hover:border-gray-300">
-      <div className="flex-shrink-0 h-10 w-10 rounded-full bg-primary-50 flex items-center justify-center">
-        {icon}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-900">{title}</p>
-        <p className="text-sm text-gray-500">{description}</p>
-      </div>
-    </div>
+    <Card className="overflow-hidden border-0 shadow-md h-full">
+      <div className="h-1 bg-gradient-to-r from-blue-500 to-cyan-400"></div>
+      <CardContent className="p-6">
+        <div className="flex flex-col h-full">
+          <div className="mb-4 p-3 rounded-full bg-blue-50 w-14 h-14 flex items-center justify-center">
+            {icon}
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
+          <p className="text-gray-600 text-sm flex-grow">{description}</p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
