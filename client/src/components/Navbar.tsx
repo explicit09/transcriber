@@ -1,47 +1,45 @@
 import { Link } from "wouter";
-import { Headphones, History, FileText, FileAudio } from "lucide-react";
+import { Headphones, History, FileText } from "lucide-react";
 import learnXLogo from "../assets/learn-x-logo.png";
 import { Button } from "@/components/ui/button";
 
 export default function Navbar() {
   return (
     <header className="bg-gradient-to-r from-slate-900 to-slate-800 shadow-lg">
-      <div className="container mx-auto py-0 px-4 flex items-center justify-between">
-        <div className="flex items-center">
-          <Link href="/">
-            <div className="flex items-center group cursor-pointer">
-              <img 
-                src={learnXLogo} 
-                alt="LEARN-X Logo" 
-                className="h-24 sm:h-32 md:h-40 lg:h-48 xl:h-56 2xl:h-64 w-auto mr-4 transition-transform duration-300 group-hover:scale-105" 
-              />
-              <div className="hidden md:block">
-                <h1 className="text-2xl md:text-3xl lg:text-4xl xl:text-5xl text-white font-bold tracking-wide">
-                  <span className="text-blue-400">Audio</span> Transcription
-                </h1>
-                <p className="text-sm md:text-base lg:text-lg text-gray-300">Meeting notes made easy</p>
-              </div>
+      <div className="container mx-auto px-4 flex items-center justify-between h-20 md:h-24 lg:h-28 overflow-hidden">
+        <Link href="/">
+          <div className="flex items-center group cursor-pointer max-w-[70%] flex-shrink-0">
+            <img 
+              src={learnXLogo} 
+              alt="LEARN-X Logo" 
+              className="h-12 sm:h-14 md:h-16 w-auto transition-transform duration-300 group-hover:scale-105 mr-3" 
+            />
+            <div>
+              <h1 className="text-lg sm:text-xl md:text-2xl text-white font-bold tracking-wide whitespace-nowrap">
+                <span className="text-blue-400">Audio</span> Transcription
+              </h1>
+              <p className="text-xs sm:text-sm md:text-base text-gray-300 whitespace-nowrap">Meeting notes made easy</p>
             </div>
-          </Link>
-        </div>
+          </div>
+        </Link>
         
-        <nav className="flex items-center space-x-2 md:space-x-4 my-2">
+        <nav className="flex items-center space-x-1 sm:space-x-2 flex-shrink-0">
           <Link href="/">
-            <Button variant="ghost" className="text-white hover:text-blue-400 hover:bg-slate-800/50 gap-2 text-base sm:text-lg md:text-xl p-2">
-              <Headphones className="h-4 sm:h-5 w-4 sm:w-5" />
-              <span className="hidden sm:inline font-medium">New Recording</span>
+            <Button variant="ghost" size="sm" className="text-white hover:text-blue-400 hover:bg-slate-800/50 flex items-center gap-1">
+              <Headphones className="h-5 w-5" />
+              <span className="hidden sm:inline text-sm whitespace-nowrap">New Recording</span>
             </Button>
           </Link>
           <Link href="/history">
-            <Button variant="ghost" className="text-white hover:text-blue-400 hover:bg-slate-800/50 gap-2 text-base sm:text-lg md:text-xl p-2">
-              <History className="h-4 sm:h-5 w-4 sm:w-5" />
-              <span className="hidden sm:inline font-medium">History</span>
+            <Button variant="ghost" size="sm" className="text-white hover:text-blue-400 hover:bg-slate-800/50 flex items-center gap-1">
+              <History className="h-5 w-5" />
+              <span className="hidden sm:inline text-sm whitespace-nowrap">History</span>
             </Button>
           </Link>
           <Link href="/transcription/latest">
-            <Button variant="secondary" className="bg-blue-500 hover:bg-blue-600 text-white border-0 hidden md:flex gap-2 text-base sm:text-lg md:text-xl p-2">
-              <FileText className="h-4 sm:h-5 w-4 sm:w-5" />
-              <span className="font-medium">Latest Transcript</span>
+            <Button variant="secondary" size="sm" className="bg-blue-500 hover:bg-blue-600 text-white border-0 hidden md:flex items-center gap-1">
+              <FileText className="h-5 w-5" />
+              <span className="text-sm whitespace-nowrap">Latest Transcript</span>
             </Button>
           </Link>
         </nav>
