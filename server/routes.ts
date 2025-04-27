@@ -127,7 +127,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Use the enhanced transcription if any advanced features are enabled
           if (enableSpeakerLabels || enableTimestamps) {
             const result = await transcribeAudioWithFeatures(filePath, {
-              enableSpeakerDiarization: enableSpeakerLabels,
               enableTimestamps: enableTimestamps,
               language: language || undefined,
             });
@@ -656,7 +655,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
               // Use the enhanced transcription if advanced features are enabled
               if (enableSpeakerLabels || enableTimestamps) {
                 const result = await transcribeAudioWithFeatures(file.path, {
-                  enableSpeakerDiarization: enableSpeakerLabels,
                   enableTimestamps: enableTimestamps,
                   language: language || undefined,
                 });
