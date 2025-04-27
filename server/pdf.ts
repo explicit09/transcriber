@@ -275,10 +275,10 @@ export async function generateTranscriptPDF(
       doc.roundedRect(margins.left, doc.y, doc.page.width - margins.left - margins.right, boxHeight, 8)
          .fillAndStroke(bgColor, styles.colors.lightGray);
       
-      // Checkbox-style indicator
+      // Checkbox-style indicator - align with the text baseline
       const checkboxSize = 20;
-      const checkboxX = margins.left + 20;
-      const checkboxY = doc.y + (boxHeight/2) - (checkboxSize/2);
+      const checkboxX = margins.left + 15;
+      const checkboxY = doc.y + 25;  // Align with text content, not center of box
       
       // Checkbox border
       doc.roundedRect(checkboxX, checkboxY, checkboxSize, checkboxSize, 3)
@@ -294,17 +294,20 @@ export async function generateTranscriptPDF(
          .stroke()
          .restore();
       
-      // Item number and priority indicator
+      // Label and text in the same column for better alignment
+      const textStartX = margins.left + 50;
+      
+      // Item number as a label
       doc.fontSize(styles.sizes.small)
          .fillColor(styles.colors.accent)
          .font(styles.fonts.subheading)
-         .text(`ITEM ${i + 1}`, margins.left + 50, doc.y + 10);
+         .text(`ITEM ${i + 1}`, textStartX, doc.y + 10);
       
       // Item text with better formatting
       doc.fontSize(styles.sizes.normal)
          .fillColor(styles.colors.text)
          .font(styles.fonts.normal)
-         .text(item, margins.left + 50, doc.y + 26, { 
+         .text(item, textStartX, doc.y + 26, { 
            width: doc.page.width - margins.left - margins.right - 70,
            lineGap: 2
          });
@@ -317,7 +320,7 @@ export async function generateTranscriptPDF(
       doc.moveDown(2);
       doc.fontSize(styles.sizes.small)
          .fillColor(styles.colors.text)
-         .font(styles.fonts.italic || styles.fonts.normal)
+         .font(styles.fonts.normal)
          .text('Note: Action items were automatically extracted from the meeting transcript using AI analysis.', 
            margins.left, doc.y, {
              width: doc.page.width - margins.left - margins.right,
