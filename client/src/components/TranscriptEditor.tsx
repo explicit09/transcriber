@@ -1,8 +1,14 @@
-import { useState, useMemo } from "react";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
+import React, { useState, useEffect, useMemo } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
+import * as z from 'zod';
+import { Button } from '@/components/ui/button';
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel } from '@/components/ui/form';
+import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Transcription } from '@/types/transcription';
 import { 
   Save, 
   Copy, 
@@ -11,61 +17,178 @@ import {
   FileText,
   File,
   Clock,
-  User
+  User,
+  Loader2,
+  Pencil,
+  Trash2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { formatTimestamp } from '@/lib/utils';
 
 import { StructuredTranscript, TranscriptSegment } from "@shared/schema";
 
 interface TranscriptEditorProps {
-  transcriptionId: number;
-  originalText: string;
-  fileName: string;
-  hasTimestamps?: boolean;
-  speakerLabels?: boolean;
-  structuredTranscript?: StructuredTranscript;
-  duration?: number;
+  transcription: Transcription;
+  onSave: (text: string) => Promise<void>;
+  readOnly?: boolean;
 }
 
-export default function TranscriptEditor({ 
-  transcriptionId, 
-  originalText,
-  fileName,
-  hasTimestamps = false,
-  speakerLabels = false,
-  structuredTranscript,
-  duration
-}: TranscriptEditorProps) {
-  const [editedText, setEditedText] = useState(originalText);
+const formSchema = z.object({
+  text: z.string().min(1, { message: 'Transcript cannot be empty' }),
+});
+
+export function TranscriptEditor({ transcription, onSave, readOnly = false }: TranscriptEditorProps) {
+  const [originalText, setOriginalText] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showStripped, setShowStripped] = useState(false);
+  const [preserveStructure, setPreserveStructure] = useState(true);
   const [showDiff, setShowDiff] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [viewMode, setViewMode] = useState<'plain' | 'structured'>('plain');
   const { toast } = useToast();
   
-  // Simplify parsedTranscript logic: just use the prop if available
+  // Initialize form with transcript text
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: { text: '' },
+  });
+
+  const watchText = form.watch('text');
+  const hasChanges = originalText !== watchText;
+
+  // Parse the structured transcript and generate editable text
   const parsedTranscript = useMemo(() => {
-    // Directly use the structuredTranscript prop if provided
-    if (structuredTranscript) {
-      return structuredTranscript;
+    try {
+      if (!transcription.structuredTranscript || 
+          !Array.isArray(transcription.structuredTranscript.segments) || 
+          transcription.structuredTranscript.segments.length === 0) {
+        console.info('No structured transcript available, using plain text');
+        return { text: transcription.text || '', isStructured: false };
+      }
+
+      // Validate segments
+      const validSegments = transcription.structuredTranscript.segments.filter(
+        segment => typeof segment === 'object' && 
+                  segment !== null && 
+                  typeof segment.text === 'string' && 
+                  segment.text.trim() !== '' &&
+                  (segment.start === undefined || typeof segment.start === 'number') &&
+                  (segment.end === undefined || typeof segment.end === 'number')
+      );
+
+      if (validSegments.length === 0) {
+        console.warn('No valid segments found in structured transcript');
+        return { text: transcription.text || '', isStructured: false };
+      }
+
+      // Check if speaker labels are present in segments
+      const hasSpeakers = validSegments.some(segment => segment.speaker);
+      
+      // Generate editable text from segments
+      let text = '';
+      validSegments.forEach((segment, index) => {
+        // Add timestamp if available
+        if (transcription.hasTimestamps && typeof segment.start === 'number') {
+          const mins = Math.floor(segment.start / 60);
+          const secs = Math.floor(segment.start % 60);
+          text += `[${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}] `;
+        }
+        
+        // Add speaker if available
+        if (segment.speaker && hasSpeakers) {
+          text += `${segment.speaker}: `;
+        }
+        
+        // Add the segment text
+        text += segment.text.trim();
+        
+        // Add a newline between segments unless it's the last one
+        if (index < validSegments.length - 1) {
+          text += '\n\n';
+        }
+      });
+      
+      return { text, isStructured: true };
+    } catch (error) {
+      console.error('Error parsing structured transcript:', error);
+      return { text: transcription.text || '', isStructured: false };
     }
-    // No need for complex fallback parsing logic anymore
-    return null;
-  }, [structuredTranscript]);
-  
+  }, [transcription]);
+
+  // Clean text function - strips unwanted characters and normalizes line breaks
+  const cleanText = (text: string): string => {
+    if (!showStripped) return text;
+    
+    // Remove various types of special characters and normalize spacing
+    let cleaned = text
+      // Replace multiple spaces with a single space
+      .replace(/\s+/g, ' ')
+      // Replace multiple newlines with double newlines
+      .replace(/\n{3,}/g, '\n\n')
+      // Strip HTML tags
+      .replace(/<[^>]*>/g, '')
+      // Normalize quotes
+      .replace(/["""]/g, '"')
+      .replace(/['']/g, "'")
+      // Remove weird Unicode characters (except for basic punctuation and symbols)
+      .replace(/[^\p{L}\p{N}\p{P}\p{Z}\p{S}]/gu, '')
+      .trim();
+    
+    // Preserve timestamps and speaker labels format if enabled
+    if (preserveStructure) {
+      // Ensure speaker labels are properly formatted with a colon
+      cleaned = cleaned.replace(/^([A-Za-z\s]+)(\s+)(?!:)/gm, '$1: ');
+      
+      // Ensure timestamps are properly formatted
+      cleaned = cleaned.replace(/\[(\d+)[:.，](\d+)\]/g, '[$1:$2]');
+    }
+    
+    return cleaned;
+  };
+
+  // Set initial text when transcription changes
+  useEffect(() => {
+    const initialText = parsedTranscript.text;
+    form.reset({ text: initialText });
+    setOriginalText(initialText);
+  }, [parsedTranscript, form]);
+
+  // Handle saving transcript changes
+  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    if (loading || readOnly) return;
+    
+    setLoading(true);
+    try {
+      await onSave(values.text);
+      setOriginalText(values.text);
+    } catch (error) {
+      console.error('Error saving transcript:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle resetting to original text
+  const handleReset = () => {
+    form.reset({ text: originalText });
+  };
+
   // Text analytics
-  const wordCount = editedText.trim().split(/\s+/).filter(Boolean).length;
-  const characterCount = editedText.length;
-  const sentenceCount = editedText.split(/[.!?]+/).filter(Boolean).length;
+  const wordCount = originalText.trim().split(/\s+/).filter(Boolean).length;
+  const characterCount = originalText.length;
+  const sentenceCount = originalText.split(/[.!?]+/).filter(Boolean).length;
   
   // Check for filler words
   const fillerWords = ["um", "uh", "like", "you know", "so", "actually", "basically"];
   const fillerWordCounts = fillerWords.reduce((acc, word) => {
     try {
       const regex = new RegExp(`\\b${word}\\b`, "gi");
-      const matches = editedText.match(regex);
+      const matches = originalText.match(regex);
       if (matches) {
         acc[word] = matches.length;
       }
@@ -79,7 +202,7 @@ export default function TranscriptEditor({
   
   // Save edited transcript
   const handleSave = async () => {
-    if (editedText === originalText) {
+    if (originalText === watchText) {
       toast({
         title: "No changes detected",
         description: "The transcript has not been modified.",
@@ -90,13 +213,12 @@ export default function TranscriptEditor({
     
     setIsSaving(true);
     try {
-      await apiRequest("PATCH", `/api/transcriptions/${transcriptionId}`, {
-        text: editedText
-      });
+      await onSave(watchText);
+      setOriginalText(watchText);
       
       // Invalidate the cache to refresh the data
       queryClient.invalidateQueries({
-        queryKey: [`/api/transcriptions/${transcriptionId}`]
+        queryKey: [`/api/transcriptions/${transcription.id}`]
       });
       
       toast({
@@ -117,7 +239,7 @@ export default function TranscriptEditor({
   
   // Copy to clipboard
   const handleCopy = () => {
-    navigator.clipboard.writeText(editedText);
+    navigator.clipboard.writeText(watchText);
     toast({
       title: "Copied to clipboard",
       description: "The transcript has been copied to your clipboard.",
@@ -125,24 +247,12 @@ export default function TranscriptEditor({
     });
   };
   
-  // Reset to original
-  const handleReset = () => {
-    if (editedText !== originalText) {
-      setEditedText(originalText);
-      toast({
-        title: "Transcript reset",
-        description: "Changes have been discarded and the original transcript restored.",
-        variant: "default",
-      });
-    }
-  };
-  
   // Download as TXT
   const downloadAsTxt = () => {
     const element = document.createElement("a");
-    const file = new Blob([editedText], {type: 'text/plain'});
+    const file = new Blob([watchText], {type: 'text/plain'});
     element.href = URL.createObjectURL(file);
-    element.download = `${sanitizeFileName(fileName)}.txt`;
+    element.download = `${sanitizeFileName(transcription.fileName)}.txt`;
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
@@ -156,7 +266,7 @@ export default function TranscriptEditor({
   
   // Download as structured text with timestamps and speakers
   const downloadStructuredText = () => {
-    if (!parsedTranscript) return;
+    if (!parsedTranscript.isStructured) return;
     
     setIsExporting(true);
     
@@ -164,22 +274,22 @@ export default function TranscriptEditor({
       // Format the transcript with timestamps and speakers
       let formattedText = "";
       
-      if (parsedTranscript.metadata) {
-        formattedText += `Duration: ${formatTimestamp(parsedTranscript.metadata.duration || 0)}\n`;
+      if (transcription.structuredTranscript.metadata) {
+        formattedText += `Duration: ${formatTimestamp(transcription.structuredTranscript.metadata.duration || 0)}\n`;
         
-        if (parsedTranscript.metadata.speakerCount) {
-          formattedText += `Speakers: ${parsedTranscript.metadata.speakerCount}\n`;
+        if (transcription.structuredTranscript.metadata.speakerCount) {
+          formattedText += `Speakers: ${transcription.structuredTranscript.metadata.speakerCount}\n`;
         }
         
-        if (parsedTranscript.metadata.language) {
-          formattedText += `Language: ${parsedTranscript.metadata.language}\n`;
+        if (transcription.structuredTranscript.metadata.language) {
+          formattedText += `Language: ${transcription.structuredTranscript.metadata.language}\n`;
         }
         
         formattedText += "\n";
       }
       
       // Format each segment with timestamp and speaker
-      parsedTranscript.segments.forEach((segment) => {
+      transcription.structuredTranscript.segments.forEach((segment) => {
         const timestamp = `[${formatTimestamp(segment.start)} - ${formatTimestamp(segment.end)}]`;
         const speaker = segment.speaker ? `[${segment.speaker}]` : "";
         formattedText += `${timestamp} ${speaker}\n${segment.text}\n\n`;
@@ -189,7 +299,7 @@ export default function TranscriptEditor({
       const element = document.createElement("a");
       const file = new Blob([formattedText], {type: 'text/plain'});
       element.href = URL.createObjectURL(file);
-      element.download = `${sanitizeFileName(fileName)}_with_timestamps.txt`;
+      element.download = `${sanitizeFileName(transcription.fileName)}_with_timestamps.txt`;
       document.body.appendChild(element);
       element.click();
       document.body.removeChild(element);
@@ -224,13 +334,95 @@ export default function TranscriptEditor({
   };
   
   return (
-    <div className="space-y-4">
+    <Card className="w-full">
+      <CardHeader>
+        <CardTitle>Edit Transcript</CardTitle>
+        <CardDescription>
+          Make changes to the transcript text, preserving timestamps and speaker labels.
+        </CardDescription>
+        <div className="flex items-center justify-between mt-4">
+          <div className="flex items-center space-x-2">
+            <Switch 
+              id="showStripped"
+              checked={showStripped}
+              onCheckedChange={setShowStripped}
+              disabled={readOnly}
+            />
+            <label htmlFor="showStripped" className="text-sm font-medium">
+              Clean text
+            </label>
+          </div>
+          {showStripped && (
+            <div className="flex items-center space-x-2">
+              <Switch 
+                id="preserveStructure"
+                checked={preserveStructure}
+                onCheckedChange={setPreserveStructure}
+                disabled={readOnly}
+              />
+              <label htmlFor="preserveStructure" className="text-sm font-medium">
+                Preserve structure
+              </label>
+            </div>
+          )}
+        </div>
+      </CardHeader>
+
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)}>
+          <CardContent>
+            <FormField
+              control={form.control}
+              name="text"
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      value={cleanText(field.value)}
+                      onChange={(e) => field.onChange(e.target.value)}
+                      className="font-mono min-h-[600px] resize-y"
+                      placeholder={readOnly ? "No transcript available" : "Enter transcript text here..."}
+                      disabled={readOnly}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {parsedTranscript.isStructured 
+                      ? "Structured transcript detected. Edit carefully to preserve timestamps and speaker labels."
+                      : "Plain text transcript. Add timestamps [MM:SS] and speaker labels 'Speaker: ' to improve readability."}
+                  </FormDescription>
+                </FormItem>
+              )}
+            />
+          </CardContent>
+          
+          {!readOnly && (
+            <CardFooter className="flex justify-between">
+              <Button 
+                type="button"
+                variant="outline"
+                onClick={handleReset}
+                disabled={!hasChanges || loading}
+              >
+                Reset
+              </Button>
+              <Button 
+                type="submit"
+                disabled={!hasChanges || loading}
+              >
+                {loading ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </CardFooter>
+          )}
+        </form>
+      </Form>
+      
       <div className="flex flex-col sm:flex-row justify-between sm:items-center space-y-2 sm:space-y-0 mb-2">
         <div className="text-sm text-gray-500 space-x-3">
           <span>{wordCount} words</span>
           <span>{characterCount} characters</span>
           <span>{sentenceCount} sentences</span>
-          {duration && <span>{Math.floor(duration / 60)}:{(duration % 60).toString().padStart(2, '0')} duration</span>}
+          {transcription.duration && <span>{Math.floor(transcription.duration / 60)}:{(transcription.duration % 60).toString().padStart(2, '0')} duration</span>}
           {totalFillerWords > 0 && (
             <span>{totalFillerWords} filler words</span>
           )}
@@ -238,14 +430,14 @@ export default function TranscriptEditor({
         
         <div className="flex items-center space-x-4">
           {/* Enable structured view only if parsedTranscript is valid */}
-          {parsedTranscript && (
+          {parsedTranscript.isStructured && (
             <div className="flex items-center space-x-2">
               <Switch
                 id="view-mode"
                 checked={viewMode === 'structured'}
                 onCheckedChange={(checked) => setViewMode(checked ? 'structured' : 'plain')}
               />
-              <Label htmlFor="view-mode">Show timestamps{speakerLabels ? ' & speakers' : ''}</Label>
+              <Label htmlFor="view-mode">Show timestamps</Label>
             </div>
           )}
           
@@ -264,9 +456,9 @@ export default function TranscriptEditor({
         <div className="min-h-[400px] border rounded-md p-3 font-mono text-sm overflow-auto whitespace-pre-wrap">
           {originalText.split('').map((char, i) => {
             // Simple character-by-character diff visualization
-            const editedChar = editedText[i];
+            const editedChar = watchText[i];
             
-            if (i >= editedText.length) {
+            if (i >= watchText.length) {
               // Character was deleted
               return <span key={i} className="bg-red-100 line-through">{char}</span>;
             } else if (char !== editedChar) {
@@ -277,35 +469,41 @@ export default function TranscriptEditor({
             return <span key={i}>{char}</span>;
           })}
           
-          {editedText.length > originalText.length && (
+          {watchText.length > originalText.length && (
             // Added new characters
             <span className="bg-green-100">
-              {editedText.slice(originalText.length)}
+              {watchText.slice(originalText.length)}
             </span>
           )}
         </div>
-      ) : viewMode === 'structured' && parsedTranscript ? (
+      ) : viewMode === 'structured' && parsedTranscript.isStructured ? (
         <div className="min-h-[400px] border rounded-md p-3 overflow-auto">
           {/* Generate a map of speaker to color for consistent coloring */}
           {(() => {
+            // Log structured transcript information
+            console.log("TranscriptEditor: Rendering structured view with", transcription.structuredTranscript.segments.length, "segments");
+            console.log("TranscriptEditor: Metadata", transcription.structuredTranscript.metadata);
+            
             // Extract unique speakers
             const speakers = Array.from(new Set(
-              parsedTranscript.segments
+              transcription.structuredTranscript.segments
                 .filter(segment => segment.speaker)
                 .map(segment => segment.speaker)
             ));
             
+            console.log("TranscriptEditor: Detected speakers:", speakers.join(", ") || "None");
+            
             // Define a set of distinguishable colors for speakers
             const speakerColors = [
-              { bg: 'bg-blue-100', text: 'text-blue-800' },
-              { bg: 'bg-green-100', text: 'text-green-800' },
-              { bg: 'bg-purple-100', text: 'text-purple-800' },
-              { bg: 'bg-amber-100', text: 'text-amber-800' },
-              { bg: 'bg-rose-100', text: 'text-rose-800' },
-              { bg: 'bg-cyan-100', text: 'text-cyan-800' },
-              { bg: 'bg-indigo-100', text: 'text-indigo-800' },
-              { bg: 'bg-teal-100', text: 'text-teal-800' },
-              { bg: 'bg-fuchsia-100', text: 'text-fuchsia-800' },
+              { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-200' },
+              { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-200' },
+              { bg: 'bg-purple-100', text: 'text-purple-800', border: 'border-purple-200' },
+              { bg: 'bg-amber-100', text: 'text-amber-800', border: 'border-amber-200' },
+              { bg: 'bg-rose-100', text: 'text-rose-800', border: 'border-rose-200' },
+              { bg: 'bg-cyan-100', text: 'text-cyan-800', border: 'border-cyan-200' },
+              { bg: 'bg-indigo-100', text: 'text-indigo-800', border: 'border-indigo-200' },
+              { bg: 'bg-teal-100', text: 'text-teal-800', border: 'border-teal-200' },
+              { bg: 'bg-fuchsia-100', text: 'text-fuchsia-800', border: 'border-fuchsia-200' },
             ];
             
             // Create a map of speaker to color
@@ -315,8 +513,16 @@ export default function TranscriptEditor({
               speakerColorMap.set(speaker, speakerColors[colorIndex]);
             });
             
-            return parsedTranscript.segments.map((segment, index) => {
-              const speakerColor = segment.speaker ? speakerColorMap.get(segment.speaker) : null;
+            // Check if we have any speakers
+            if (speakers.length === 0 && transcription.structuredTranscript.segments.length > 0) {
+              console.warn("TranscriptEditor: No speakers found in structured transcript despite having segments");
+            }
+            
+            return transcription.structuredTranscript.segments.map((segment, index) => {
+              let speakerColor = { bg: 'bg-gray-100', text: 'text-gray-800', border: 'border-gray-200' };
+              if (segment.speaker) {
+                speakerColor = speakerColorMap.get(segment.speaker) || speakerColor;
+              }
               
               return (
                 <div key={index} className="mb-4 pb-3 border-b last:border-b-0">
@@ -326,13 +532,13 @@ export default function TranscriptEditor({
                       {formatTimestamp(segment.start)} - {formatTimestamp(segment.end)}
                     </div>
                     {segment.speaker && (
-                      <div className={`px-2 py-0.5 ${speakerColor.bg} ${speakerColor.text} text-xs font-medium rounded-full flex items-center`}>
+                      <div className={`px-2 py-0.5 ${speakerColor.bg} ${speakerColor.text} text-xs font-semibold rounded-full flex items-center`}>
                         <User className="h-3 w-3 mr-1" />
                         {segment.speaker}
                       </div>
                     )}
                   </div>
-                  <div className={`text-sm p-2 rounded ${segment.speaker ? speakerColor.bg + ' bg-opacity-20' : ''}`}>
+                  <div className={`text-sm p-3 rounded border ${segment.speaker ? `${speakerColor.bg} bg-opacity-30 ${speakerColor.border}` : 'border-gray-200'}`}>
                     {segment.text}
                   </div>
                 </div>
@@ -340,45 +546,17 @@ export default function TranscriptEditor({
             });
           })()}
         </div>
-      ) : (
-        <Textarea
-          value={editedText}
-          onChange={(e) => setEditedText(e.target.value)}
-          className="min-h-[400px] font-mono text-sm"
-          placeholder="The transcript will appear here. Edit as needed."
-        />
       )}
       
       <div className="flex flex-col sm:flex-row gap-3 pt-2">
         <div className="flex space-x-2">
-          <Button onClick={handleSave} disabled={isSaving || editedText === originalText}>
-            <Save className="h-4 w-4 mr-2" />
-            {isSaving ? "Saving..." : "Save Changes"}
-          </Button>
-          
-          <Button variant="outline" onClick={handleCopy}>
-            <Copy className="h-4 w-4 mr-2" />
-            Copy
-          </Button>
-          
-          <Button 
-            variant="outline" 
-            onClick={handleReset}
-            disabled={editedText === originalText}
-          >
-            <RotateCcw className="h-4 w-4 mr-2" />
-            Reset
-          </Button>
-        </div>
-        
-        <div className="flex space-x-2 ml-auto">
           <Button variant="secondary" onClick={downloadAsTxt}>
             <FileText className="h-4 w-4 mr-2" />
             Export TXT
           </Button>
           
           {/* Enable structured export only if parsedTranscript is valid */}
-          {parsedTranscript && (
+          {parsedTranscript.isStructured && (
             <Button 
               variant="secondary" 
               onClick={downloadStructuredText}
@@ -408,6 +586,6 @@ export default function TranscriptEditor({
           </p>
         </div>
       )}
-    </div>
+    </Card>
   );
 }

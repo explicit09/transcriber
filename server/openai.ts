@@ -65,6 +65,8 @@ export async function transcribeAudioWithFeatures(
   options: {
     enableTranslation?: boolean;
     targetLanguage?: string;
+    enableTimestamps?: boolean;
+    language?: string;
   } = {}
 ): Promise<{
   text: string;
@@ -223,10 +225,19 @@ async function processSpeakerDiarization(
               content: `You are an expert at speaker diarization for conversational audio.
 
 Your task is to identify different speakers in a transcript and label each segment.
-- Analyze speaking patterns, vocabulary choices, and contextual clues to determine speaker changes
+- Analyze speaking patterns, vocabulary choices, speaking styles, and contextual clues to determine speaker changes
 - Use "Speaker 1", "Speaker 2", etc. as labels consistently throughout the transcript
+- Even if you're uncertain, make your best effort to distinguish between speakers
 - Maintain the original start and end timestamps for each segment
 - Include the exact same text for each segment as provided
+
+Key indicators of speaker changes:
+- Changes in topic or perspective
+- Responses to questions
+- Greeting/introduction patterns
+- Different vocabulary usage or speaking style
+- References to oneself vs references to others
+- Questions followed by answers (likely different speakers)
 
 Output a JSON object with:
 1. 'segments' - an array of objects, each with:
@@ -234,9 +245,9 @@ Output a JSON object with:
    - end: number (timestamp in seconds)
    - text: string (the spoken text)
    - speaker: string (e.g., "Speaker 1", "Speaker 2")
-2. 'speakerCount' - total number of unique speakers identified
+2. 'speakerCount' - total number of unique speakers identified (at least 2 for most conversations)
 
-Be conservative with speaker assignments - only split into multiple speakers if there's clear evidence of different people speaking.`,
+IMPORTANT: Most conversation transcripts have AT LEAST 2 speakers. Be especially attentive to dialog patterns, question/answer pairs, and changes in speaking style.`,
             },
             {
               role: "user",
@@ -269,7 +280,33 @@ Be conservative with speaker assignments - only split into multiple speakers if 
       // Check that speaker labels are included
       const hasSpeakers = result.segments.some((s: any) => s.speaker);
       if (!hasSpeakers) {
-        throw new Error("Response missing speaker labels");
+        // If no speakers are detected despite getting a response, force assign speakers
+        console.warn("No speaker labels detected in response, assigning default speakers");
+        
+        // Try to detect conversation turns
+        let currentTurn = 0;
+        let lastEnd = 0;
+        
+        // Assign speakers based on pauses in conversation or length
+        result.segments = result.segments.map((segment, index) => {
+          const pauseDetected = segment.start - lastEnd > 1.5; // Significant pause
+          const longUtterance = index > 0 && 
+                               (segment.end - segment.start > 8) && 
+                               (result.segments[index-1].end - result.segments[index-1].start < 5);
+          
+          // Change speaker if we detect a significant pause or pattern change
+          if (index === 0 || pauseDetected || longUtterance) {
+            currentTurn = (currentTurn + 1) % 2; // Alternate between 0 and 1
+          }
+          
+          lastEnd = segment.end;
+          return {
+            ...segment,
+            speaker: `Speaker ${currentTurn + 1}`
+          };
+        });
+        
+        result.speakerCount = 2; // Set minimum of two speakers
       }
       
       return enforceConsistentSpeakers(result);
@@ -306,15 +343,43 @@ function enforceConsistentSpeakers(result: {
 }): { segments: TranscriptSegment[]; speakerCount: number } {
   // Use Array.from instead of spread operator for Set to avoid TSC issues
   const labels = Array.from(new Set(result.segments.map((s) => s.speaker || "Speaker 1")));
+  console.log("Speaker labels before normalization:", labels.join(", "));
+  
+  // Create a mapping of detected labels to normalized Speaker N format
   const map = new Map<string, string>();
-  labels.forEach((label, idx) => map.set(label, `Speaker ${idx + 1}`));
+  labels.forEach((label, idx) => {
+    // If the label already follows the pattern "Speaker N", try to preserve the number
+    const match = label.match(/^Speaker\s+(\d+)$/i);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      // Check if this number is already used
+      const numUsed = Array.from(map.values()).some(v => v === `Speaker ${num}`);
+      if (!numUsed) {
+        map.set(label, `Speaker ${num}`);
+        return;
+      }
+    }
+    
+    // Otherwise assign a new number
+    map.set(label, `Speaker ${idx + 1}`);
+  });
+  
+  console.log("Speaker mapping:", 
+    Array.from(map.entries())
+      .map(([from, to]) => `${from} -> ${to}`)
+      .join(", ")
+  );
 
+  // Apply the mapping
   const normalized = result.segments.map((s) => ({
     ...s,
-    speaker: map.get(s.speaker || "Speaker 1")!,
+    speaker: map.get(s.speaker || "Speaker 1") || "Speaker 1",
   }));
 
-  return { segments: normalized, speakerCount: map.size };
+  return { 
+    segments: normalized, 
+    speakerCount: map.size || 1 // Ensure at least 1 speaker
+  };
 }
 
 // ---------------- Utility helpers ----------------------------------------
