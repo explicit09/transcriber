@@ -227,28 +227,31 @@ async function processSpeakerDiarization(
 
 Your task is to identify different speakers in a transcript and label each segment.
 - Analyze speaking patterns, vocabulary choices, speaking styles, and contextual clues to determine speaker changes
-- Use "Speaker 1", "Speaker 2", etc. as labels consistently throughout the transcript
+- Use "Speaker 1", "Speaker 2", "Speaker 3", etc. as labels consistently throughout the transcript
 - Even if you're uncertain, make your best effort to distinguish between speakers
 - Maintain the original start and end timestamps for each segment
 - Include the exact same text for each segment as provided
+- IMPORTANT: You MUST accurately identify ALL speakers in the conversation, even if there are more than 2
 
 Key indicators of speaker changes:
 - Changes in topic or perspective
 - Responses to questions
 - Greeting/introduction patterns
 - Different vocabulary usage or speaking style
-- References to oneself vs references to others
+- References to oneself vs references to others (I vs. you, etc.)
 - Questions followed by answers (likely different speakers)
+- Changes in speaking authority/role (e.g., presenter vs. audience member)
+- Direct mentions of others by name ("As John was saying...")
 
 Output a JSON object with:
 1. 'segments' - an array of objects, each with:
    - start: number (timestamp in seconds)
    - end: number (timestamp in seconds)
    - text: string (the spoken text)
-   - speaker: string (e.g., "Speaker 1", "Speaker 2")
-2. 'speakerCount' - total number of unique speakers identified (at least 2 for most conversations)
+   - speaker: string (e.g., "Speaker 1", "Speaker 2", "Speaker 3")
+2. 'speakerCount' - total number of unique speakers identified
 
-IMPORTANT: Most conversation transcripts have AT LEAST 2 speakers. Be especially attentive to dialog patterns, question/answer pairs, and changes in speaking style.`,
+IMPORTANT: Many meetings have MORE THAN 2 participants. Carefully analyze the transcript for evidence of 3, 4, or more distinct speakers. Each time you think a new person is speaking, assign them a new speaker number.`,
             },
             {
               role: "user",
@@ -256,7 +259,7 @@ IMPORTANT: Most conversation transcripts have AT LEAST 2 speakers. Be especially
             },
           ],
           response_format: { type: "json_object" },
-          temperature: 0.3,
+          temperature: 0.5,
         })
       )
     );
@@ -268,6 +271,15 @@ IMPORTANT: Most conversation transcripts have AT LEAST 2 speakers. Be especially
       
       // Log successful parsing
       console.log(`Successfully parsed diarization response. Detected ${result.speakerCount} speakers across ${result.segments.length} segments.`);
+      
+      // If we found 3+ speakers, log additional details for debugging
+      if (result.speakerCount > 2) {
+        const speakerCounts = {};
+        result.segments.forEach(s => {
+          speakerCounts[s.speaker] = (speakerCounts[s.speaker] || 0) + 1;
+        });
+        console.log('Speaker distribution:', JSON.stringify(speakerCounts));
+      }
       
       // Validate the result has the expected structure
       if (!result.segments || !Array.isArray(result.segments)) {
@@ -284,9 +296,10 @@ IMPORTANT: Most conversation transcripts have AT LEAST 2 speakers. Be especially
         // If no speakers are detected despite getting a response, force assign speakers
         console.warn("No speaker labels detected in response, assigning default speakers");
         
-        // Try to detect conversation turns
+        // Try to detect conversation turns with up to 4 potential speakers
         let currentTurn = 0;
         let lastEnd = 0;
+        let activeSpeakers = 2; // Start with assumption of 2 speakers minimum
         
         // Assign speakers based on pauses in conversation or length
         result.segments = result.segments.map((segment, index) => {
@@ -294,10 +307,17 @@ IMPORTANT: Most conversation transcripts have AT LEAST 2 speakers. Be especially
           const longUtterance = index > 0 && 
                                (segment.end - segment.start > 8) && 
                                (result.segments[index-1].end - result.segments[index-1].start < 5);
+          const significantGap = segment.start - lastEnd > 3.0; // Very long pause might indicate new speaker
           
           // Change speaker if we detect a significant pause or pattern change
           if (index === 0 || pauseDetected || longUtterance) {
-            currentTurn = (currentTurn + 1) % 2; // Alternate between 0 and 1
+            // For very significant gaps or every 5th turn, consider introducing a new speaker (up to 4)
+            if ((significantGap || index % 5 === 0) && activeSpeakers < 4) {
+              activeSpeakers++;
+            }
+            
+            // Cycle through detected speakers
+            currentTurn = (currentTurn + 1) % activeSpeakers; 
           }
           
           lastEnd = segment.end;
@@ -307,7 +327,7 @@ IMPORTANT: Most conversation transcripts have AT LEAST 2 speakers. Be especially
           };
         });
         
-        result.speakerCount = 2; // Set minimum of two speakers
+        result.speakerCount = activeSpeakers; // Use the number of active speakers detected
       }
       
       return enforceConsistentSpeakers(result);

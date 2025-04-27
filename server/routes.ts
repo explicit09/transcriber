@@ -399,6 +399,89 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Update speaker labels in a transcription
+  app.patch('/api/transcriptions/:id/speakers', async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid transcription ID" });
+      }
+      
+      const { speakerMappings } = req.body;
+      if (!speakerMappings || typeof speakerMappings !== 'object') {
+        return res.status(400).json({ message: "Speaker mappings are required" });
+      }
+      
+      // Get current transcription
+      const transcription = await storage.getTranscription(id);
+      if (!transcription) {
+        return res.status(404).json({ message: "Transcription not found" });
+      }
+      
+      // Parse structured transcript
+      if (!transcription.structuredTranscript) {
+        return res.status(400).json({ message: "No structured transcript available" });
+      }
+      
+      let structuredData;
+      try {
+        structuredData = typeof transcription.structuredTranscript === 'string' 
+          ? JSON.parse(transcription.structuredTranscript)
+          : transcription.structuredTranscript;
+      } catch (e) {
+        return res.status(400).json({ message: "Invalid structured transcript format" });
+      }
+      
+      // Update speaker labels in segments
+      if (structuredData.segments && Array.isArray(structuredData.segments)) {
+        structuredData.segments = structuredData.segments.map(segment => {
+          if (segment.speaker && speakerMappings[segment.speaker]) {
+            return {
+              ...segment,
+              speaker: speakerMappings[segment.speaker]
+            };
+          }
+          return segment;
+        });
+        
+        // Also update any text that contains speaker labels if needed
+        let updatedText = transcription.text || '';
+        if (updatedText) {
+          Object.entries(speakerMappings).forEach(([originalName, newName]) => {
+            const regex = new RegExp(`\\b${originalName}\\b`, 'g');
+            updatedText = updatedText.replace(regex, newName);
+          });
+        }
+        
+        // Update the transcription with new structured data and optionally text
+        const updates: any = {
+          structuredTranscript: JSON.stringify(structuredData),
+          updatedAt: new Date()
+        };
+        
+        if (updatedText !== transcription.text) {
+          updates.text = updatedText;
+        }
+        
+        const updated = await storage.updateTranscription(id, updates);
+        if (!updated) {
+          return res.status(404).json({ message: "Failed to update transcription" });
+        }
+        
+        // Return the updated transcription with parsed structuredTranscript
+        return res.status(200).json({
+          ...updated,
+          structuredTranscript: structuredData
+        });
+      } else {
+        return res.status(400).json({ message: "No segments found in structured transcript" });
+      }
+    } catch (error) {
+      console.error("Error updating speaker labels:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
   // Delete a transcription
   app.delete('/api/transcriptions/:id', async (req: Request, res: Response) => {
     try {

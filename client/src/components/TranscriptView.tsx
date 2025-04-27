@@ -3,16 +3,12 @@ import { StructuredTranscript, Transcription } from '@shared/schema';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CheckCircle2, Calendar, Users, FileText } from 'lucide-react';
+import { CheckCircle2, Calendar, Users, FileText, Mic } from 'lucide-react';
+import SpeakerLabels from './SpeakerLabels';
+import { formatTimestamp, getSpeakerColorClass } from '@/lib/utils';
 
 interface TranscriptViewProps {
   transcription: Transcription;
-}
-
-function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
 export default function TranscriptView({ transcription }: TranscriptViewProps) {
@@ -86,6 +82,30 @@ export default function TranscriptView({ transcription }: TranscriptViewProps) {
       
       <Separator />
       
+      {/* Speaker labels section */}
+      {hasStructuredTranscript && segments.some(s => s.speaker) && (
+        <div className="mb-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center text-lg">
+                <Mic className="h-5 w-5 mr-2 text-primary" />
+                Speakers
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <SpeakerLabels 
+                segments={segments} 
+                transcriptionId={transcription.id} 
+                onSpeakersUpdated={() => {
+                  // Force a refresh of the component by reloading the page
+                  window.location.reload();
+                }}
+              />
+            </CardContent>
+          </Card>
+        </div>
+      )}
+      
       {/* Transcript Content */}
       <div className="border rounded-md">
         <ScrollArea className="h-[600px] w-full">
@@ -98,18 +118,11 @@ export default function TranscriptView({ transcription }: TranscriptViewProps) {
                 >
                   <div className="flex items-start">
                     <span className="text-xs font-mono bg-gray-100 rounded px-1 py-0.5 text-gray-600 mr-2 mt-1 whitespace-nowrap">
-                      {formatTime(segment.start)}
+                      {formatTimestamp(segment.start)}
                     </span>
                     <div className="flex-1">
                       {segment.speaker && (
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium mb-1 ${
-                          segment.speaker.includes("1") ? "bg-blue-100 text-blue-800" :
-                          segment.speaker.includes("2") ? "bg-green-100 text-green-800" :
-                          segment.speaker.includes("3") ? "bg-purple-100 text-purple-800" :
-                          segment.speaker.includes("4") ? "bg-amber-100 text-amber-800" :
-                          segment.speaker.includes("5") ? "bg-red-100 text-red-800" :
-                          "bg-indigo-100 text-indigo-800"
-                        }`}>
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium mb-1 ${getSpeakerColorClass(segment.speaker)}`}>
                           {segment.speaker}
                         </span>
                       )}
