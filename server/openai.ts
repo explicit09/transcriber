@@ -121,20 +121,20 @@ async function processSpeakerDiarization(
           role: "system",
           content: `You are an expert speech and conversation analyst specializing in precise speaker diarization. Your task is to analyze a transcript and accurately identify different speakers.
 
-CRITICAL INSTRUCTION: USE EXACTLY TWO SPEAKERS - THIS IS A BINARY SPEAKER DIARIZATION TASK ONLY.
-
-YOU MUST FOLLOW THIS REQUIREMENT:
-1. This is a two-person conversation system ONLY
-2. Always use exactly 2 speakers: "Speaker 1" and "Speaker 2"
-3. NEVER use "Speaker 3" or any additional speakers
-4. NEVER create additional speaker designations
+CRITICAL INSTRUCTIONS:
+1. First, determine the ACTUAL number of distinct speakers in the conversation
+2. Use clear evidence like speaking patterns, conversation flow, and explicit references 
+3. Label speakers consistently as "Speaker 1", "Speaker 2", "Speaker 3", etc.
+4. Do NOT create more speakers than are actually present
+5. Assign "Speaker 1" to the person who begins the conversation
+6. Be conservative - only identify a new speaker when there's clear evidence
 
 DIARIZATION APPROACH:
-1. Read the entire transcript and identify two distinct speaking patterns
-2. Assign "Speaker 1" to the person who appears to begin the conversation
-3. Assign "Speaker 2" to the other person in the conversation
-4. Maintain consistent speaker assignments throughout the transcript
-5. If speaker identity is ambiguous, prefer alternating between speakers
+1. Read the entire transcript to understand overall conversational patterns
+2. Identify distinct speech patterns, terminology, and topics for each speaker
+3. Look for explicit turn-taking, introductions, or other clear speaker changes
+4. Maintain absolute consistency in speaker assignments throughout the transcript
+5. If a segment is ambiguous, assign it to the most likely speaker based on context
 
 Format your response as a JSON object with the following structure:
 {
@@ -183,8 +183,8 @@ Otherwise, use "Speaker 1", "Speaker 2", etc.`
       };
     }
     
-    // Always enforce 2 speakers - this is a business requirement
-    result.speakerCount = 2;
+    // Ensure we have at least 1 speaker, but respect the actual count detected
+    result.speakerCount = Math.max(1, result.speakerCount || 0);
     
     // Post-process to ensure consistency and proper speaker labeling
     const processed = enforceConsistentSpeakers(result);
