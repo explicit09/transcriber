@@ -50,7 +50,8 @@ export async function transcribeWithHybridApproach(
   
   const hybridSegments = alignAndCombineSegments(
     openaiResult.structuredTranscript.segments,
-    assemblyResult.structuredTranscript.segments
+    assemblyResult.structuredTranscript.segments,
+    options.numSpeakers
   );
   
   console.log(`Created ${hybridSegments.length} hybrid segments`);
@@ -62,9 +63,13 @@ export async function transcribeWithHybridApproach(
     language: openaiResult.language || assemblyResult.language
   };
   
+  // Merge consecutive segments from the same speaker
+  const mergedSegments = mergeConsecutiveSegments(hybridSegments);
+  console.log(`Merged ${hybridSegments.length} segments into ${mergedSegments.length} segments`);
+  
   // Create the hybrid structured transcript
   const structuredTranscript: StructuredTranscript = {
-    segments: hybridSegments,
+    segments: mergedSegments,
     metadata
   };
   
@@ -77,13 +82,128 @@ export async function transcribeWithHybridApproach(
 }
 
 /**
+ * Merge consecutive segments from the same speaker
+ * This reduces the "choppiness" of the transcript by combining adjacent segments
+ * from the same speaker into longer segments
+ */
+function mergeConsecutiveSegments(segments: TranscriptSegment[]): TranscriptSegment[] {
+  if (!segments.length) return [];
+  
+  const mergedSegments: TranscriptSegment[] = [];
+  let currentSegment = { ...segments[0] };
+  
+  for (let i = 1; i < segments.length; i++) {
+    const segment = segments[i];
+    
+    // If this segment is from the same speaker and close in time to the previous one, merge them
+    if (segment.speaker === currentSegment.speaker) {
+      // Add a small buffer (0.5 seconds) to allow for slight gaps between segments
+      const timeGap = segment.start - currentSegment.end;
+      
+      if (timeGap < 0.5) {
+        // Merge the text with a space
+        currentSegment.text += ' ' + segment.text;
+        // Extend the end time
+        currentSegment.end = segment.end;
+        continue;
+      }
+    }
+    
+    // If we get here, this segment is from a different speaker or too far apart in time
+    // So add the current segment to our results and start a new one
+    mergedSegments.push(currentSegment);
+    currentSegment = { ...segment };
+  }
+  
+  // Don't forget to add the last segment
+  mergedSegments.push(currentSegment);
+  
+  return mergedSegments;
+}
+
+/**
+ * Normalize speaker count by merging similar speakers
+ * This is useful when AssemblyAI over-detects speakers
+ */
+function normalizeHybridSpeakers(
+  segments: TranscriptSegment[],
+  targetSpeakerCount: number
+): TranscriptSegment[] {
+  if (!segments.length) return [];
+  
+  // Count current speakers
+  const speakerCounts: Record<string, number> = {};
+  segments.forEach(segment => {
+    if (!segment.speaker) return;
+    
+    if (!speakerCounts[segment.speaker]) {
+      speakerCounts[segment.speaker] = 0;
+    }
+    speakerCounts[segment.speaker]++;
+  });
+  
+  // Get current speakers and their segment counts
+  const speakers = Object.keys(speakerCounts);
+  const currentSpeakerCount = speakers.length;
+  
+  console.log(`Speaker distribution: ${JSON.stringify(speakerCounts)}`);
+  
+  // If we already have the target number of speakers or fewer, just return the segments
+  if (currentSpeakerCount <= targetSpeakerCount) {
+    console.log(`Current speaker count (${currentSpeakerCount}) <= target (${targetSpeakerCount}), no merging needed`);
+    return segments;
+  }
+  
+  // Sort speakers by frequency (most frequent first)
+  const sortedSpeakers = speakers.sort((a, b) => speakerCounts[b] - speakerCounts[a]);
+  
+  // Keep the top N most common speakers
+  const keptSpeakers = sortedSpeakers.slice(0, targetSpeakerCount);
+  
+  // Map minor speakers to the closest major speaker
+  // For simplicity, we'll merge all minor speakers into the least frequent major speaker
+  const leastFrequentMajorSpeaker = keptSpeakers[keptSpeakers.length - 1];
+  
+  console.log(`Keeping top ${targetSpeakerCount} speakers: ${keptSpeakers.join(', ')}`);
+  console.log(`Merging minor speakers into ${leastFrequentMajorSpeaker}`);
+  
+  // Create a mapping for all speakers
+  const speakerMapping: Record<string, string> = {};
+  
+  // Major speakers map to themselves
+  keptSpeakers.forEach(speaker => {
+    speakerMapping[speaker] = speaker;
+  });
+  
+  // Minor speakers map to the least frequent major speaker
+  sortedSpeakers.slice(targetSpeakerCount).forEach(speaker => {
+    speakerMapping[speaker] = leastFrequentMajorSpeaker;
+    console.log(`Mapping ${speaker} -> ${leastFrequentMajorSpeaker}`);
+  });
+  
+  // Apply the mapping to all segments
+  const normalizedSegments = segments.map(segment => {
+    if (segment.speaker && speakerMapping[segment.speaker]) {
+      return {
+        ...segment,
+        speaker: speakerMapping[segment.speaker]
+      };
+    }
+    return segment;
+  });
+  
+  return normalizedSegments;
+}
+
+/**
  * Align segments from OpenAI and AssemblyAI to create improved segments
  * This function tries to match AssemblyAI speaker labels with OpenAI segments
  * based on their time overlap
  */
 function alignAndCombineSegments(
   openaiSegments: TranscriptSegment[],
-  assemblySegments: TranscriptSegment[]
+  assemblySegments: TranscriptSegment[],
+  targetSpeakerCount?: number
 ): TranscriptSegment[] {
   if (!openaiSegments.length) return assemblySegments;
   if (!assemblySegments.length) return openaiSegments;
@@ -157,5 +277,6 @@ function alignAndCombineSegments(
     }
   });
   
-  return hybridSegments;
+  // Normalize to target speaker count if provided, default to 3 which is typical
+  return normalizeHybridSpeakers(hybridSegments, targetSpeakerCount || 3);
 }
