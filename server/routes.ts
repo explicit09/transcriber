@@ -64,21 +64,31 @@ function formatTime(seconds: number): string {
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
-// Check if advanced diarization is available
+// Check if advanced diarization methods are available
 let isPyannoteDiarizationAvailable = false;
+let isAssemblyAIAvailable = false;
 
 // This will be called at server startup
 async function checkDiarizationAvailability() {
   try {
+    // Check if pyannote is available
     isPyannoteDiarizationAvailable = await checkDiarizationSetup();
     console.log(`Pyannote.audio diarization is ${isPyannoteDiarizationAvailable ? 'AVAILABLE' : 'NOT AVAILABLE'}`);
     
     if (!isPyannoteDiarizationAvailable) {
-      console.log('For multi-speaker transcription, please install pyannote.audio:');
+      console.log('For multi-speaker transcription with Pyannote, please install pyannote.audio:');
       console.log('1. cd python');
       console.log('2. pip install -r requirements.txt');
       console.log('3. Get a HuggingFace token with access to pyannote/speaker-diarization-3.0');
       console.log('4. Set HUGGINGFACE_TOKEN environment variable');
+    }
+    
+    // Check if AssemblyAI is available
+    isAssemblyAIAvailable = !!process.env.ASSEMBLYAI_API_KEY;
+    console.log(`AssemblyAI diarization is ${isAssemblyAIAvailable ? 'AVAILABLE' : 'NOT AVAILABLE'}`);
+    
+    if (!isAssemblyAIAvailable) {
+      console.log('For multi-speaker transcription with AssemblyAI, please set the ASSEMBLYAI_API_KEY environment variable');
     }
   } catch (error) {
     console.error('Error checking diarization availability:', error);
@@ -155,20 +165,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Transcribe the audio file
           const filePath = file.path;
           
-          // Determine if we should use advanced diarization
-          const usePyannote = isPyannoteDiarizationAvailable && enableSpeakerLabels;
+          // Determine which transcription method to use based on available services
+          const useAssemblyAI = isAssemblyAIAvailable && enableSpeakerLabels;
+          const usePyannote = !useAssemblyAI && isPyannoteDiarizationAvailable && enableSpeakerLabels;
+          
+          // Calculate expected speaker count
+          const expectedSpeakers = numSpeakers || (participants ? participants.split(',').length : undefined);
           
           let result;
-          if (usePyannote) {
+          if (useAssemblyAI) {
+            console.log("Using AssemblyAI for advanced speaker diarization");
+            result = await transcribeWithAssemblyAI(filePath, {
+              speakerLabels: enableSpeakerLabels,
+              numSpeakers: expectedSpeakers,
+              language: language || undefined
+            });
+          } else if (usePyannote) {
             console.log("Using pyannote.audio for advanced speaker diarization");
             result = await transcribeWithPyannote(filePath, {
               enableTimestamps: enableTimestamps,
               language: language || undefined,
-              // Prioritize explicit numSpeakers input, fall back to participants count if available
-              numSpeakers: numSpeakers || (participants ? participants.split(',').length : undefined)
+              numSpeakers: expectedSpeakers
             });
           } else {
-            console.log("Using standard transcription" + (enableSpeakerLabels ? " with text-based speaker detection" : ""));
+            console.log("Using standard OpenAI transcription" + (enableSpeakerLabels ? " with text-based speaker detection" : ""));
             result = await transcribeAudioWithFeatures(filePath, {
               enableTimestamps: enableTimestamps,
               language: language || undefined,

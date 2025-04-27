@@ -160,9 +160,10 @@ export async function transcribeWithAssemblyAI(
       duration: transcript.audio_duration ? transcript.audio_duration / 1000 : undefined,
       language: transcript.language_code
     };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('AssemblyAI transcription error:', error);
-    throw new Error(`AssemblyAI transcription failed: ${error.message}`);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(`AssemblyAI transcription failed: ${errorMessage}`);
   }
 }
 
