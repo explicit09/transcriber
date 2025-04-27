@@ -284,25 +284,72 @@ function Actions({ onDownload, onGenerateSummary, transcription, generating }: {
 }
 
 function TranscriptView({ transcription, formatTime }: { transcription: Transcription; formatTime: (s: number)=>string }) {
+  // Generate a map of speaker to color for consistent coloring
+  const speakerColorMap = useMemo(() => {
+    if (!transcription.structuredTranscript) return {};
+    
+    // Color classes for different speakers
+    const colorClasses = [
+      { bg: 'bg-blue-100', text: 'text-blue-800' },
+      { bg: 'bg-green-100', text: 'text-green-800' },
+      { bg: 'bg-purple-100', text: 'text-purple-800' },
+      { bg: 'bg-amber-100', text: 'text-amber-800' },
+      { bg: 'bg-rose-100', text: 'text-rose-800' },
+      { bg: 'bg-cyan-100', text: 'text-cyan-800' },
+      { bg: 'bg-indigo-100', text: 'text-indigo-800' },
+      { bg: 'bg-teal-100', text: 'text-teal-800' },
+    ];
+    
+    // Extract unique speakers
+    const speakers = Array.from(new Set(
+      transcription.structuredTranscript.segments
+        .filter(segment => segment.speaker)
+        .map(segment => segment.speaker)
+    ));
+    
+    // Create a map of speaker to color
+    const colorMap: Record<string, {bg: string, text: string}> = {};
+    speakers.forEach((speaker, index) => {
+      if (speaker) {
+        const colorIndex = index % colorClasses.length;
+        colorMap[speaker] = colorClasses[colorIndex];
+      }
+    });
+    
+    return colorMap;
+  }, [transcription.structuredTranscript]);
+
   // Display structured transcript segments if available
   if (transcription.structuredTranscript && transcription.structuredTranscript.segments.length) {
+    console.log("Rendering structured transcript with segments:", transcription.structuredTranscript.segments.length);
+    console.log("First segment:", JSON.stringify(transcription.structuredTranscript.segments[0]));
+    
     return (
       <div className="space-y-3">
-        {transcription.structuredTranscript.segments.map((segment, idx) => (
-          <div key={idx} className="pb-3 border-b last:border-b-0">
-            <div className="flex items-center gap-2 text-xs text-gray-500">
-              {/* Ensure start is a number before formatting */} 
-              {transcription.hasTimestamps && typeof segment.start === 'number' && <span>{formatTime(segment.start)}</span>}
-              {transcription.speakerLabels && segment.speaker && (
-                <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full">
-                  {segment.speaker}
-                </span>
-              )}
+        {transcription.structuredTranscript.segments.map((segment, idx) => {
+          const speakerColor = segment.speaker && speakerColorMap[segment.speaker] ? speakerColorMap[segment.speaker] : { bg: 'bg-gray-100', text: 'text-gray-800' };
+          
+          return (
+            <div key={idx} className="pb-3 border-b last:border-b-0">
+              <div className="flex items-center gap-2 text-xs">
+                {/* Ensure start is a number before formatting */} 
+                {transcription.hasTimestamps && typeof segment.start === 'number' && 
+                  <span className="text-gray-500">{formatTime(segment.start)}</span>
+                }
+                {transcription.speakerLabels && segment.speaker && (
+                  <span className={`px-2 py-0.5 ${speakerColor.bg} ${speakerColor.text} text-xs rounded-full flex items-center`}>
+                    <Users className="h-3 w-3 mr-1" />
+                    {segment.speaker}
+                  </span>
+                )}
+              </div>
+              {/* Add margin and subtle background color based on speaker */}
+              <p className={`mt-1 p-2 rounded ${(transcription.hasTimestamps || transcription.speakerLabels) ? 'ml-2' : ''} ${segment.speaker ? `${speakerColor.bg} bg-opacity-20` : ''}`}>
+                {segment.text}
+              </p>
             </div>
-            {/* Add margin only if there's timestamp/speaker info */} 
-            <p className={`${(transcription.hasTimestamps && typeof segment.start === 'number') || (transcription.speakerLabels && segment.speaker) ? 'ml-12' : ''} text-gray-800`}>{segment.text}</p>
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   }
@@ -326,13 +373,19 @@ function TranscriptView({ transcription, formatTime }: { transcription: Transcri
           const speakerMatch = rest.match(/^([^:]+):\s*(.*)$/);
           if (speakerMatch) {
             const [, sp, txt] = speakerMatch;
+            // Try to use the color map if the speaker matches one we know
+            const speakerColor = speakerColorMap[sp] || { bg: 'bg-blue-100', text: 'text-blue-800' };
+            
             return (
               <div key={idx} className="pb-3 border-b last:border-b-0">
                 <div className="flex items-center gap-2 text-xs text-gray-500">
                   <span>{ts}</span>
-                  <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full">{sp}</span>
+                  <span className={`px-2 py-0.5 ${speakerColor.bg} ${speakerColor.text} text-xs rounded-full flex items-center`}>
+                    <Users className="h-3 w-3 mr-1" />
+                    {sp}
+                  </span>
                 </div>
-                <p className="ml-12 text-gray-800">{txt}</p>
+                <p className={`mt-1 p-2 rounded ml-2 ${speakerColor.bg} bg-opacity-20`}>{txt}</p>
               </div>
             );
           }

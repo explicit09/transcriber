@@ -134,11 +134,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Format the transcript text with speaker labels if speaker diarization is enabled
             let formattedText = result.text;
             if (enableSpeakerLabels && result.structuredTranscript.segments.length > 0) {
-              formattedText = result.structuredTranscript.segments.map(segment => {
-                const timeStr = enableTimestamps ? `[${formatTime(segment.start)}] ` : '';
-                const speakerStr = segment.speaker ? `${segment.speaker}: ` : '';
-                return `${timeStr}${speakerStr}${segment.text}`;
-              }).join('\n\n');
+              // Log what we're using to format
+              console.log(`Formatting transcript with ${result.structuredTranscript.segments.length} segments and ${result.structuredTranscript.metadata?.speakerCount || 0} speakers`);
+              
+              // Group segments by speaker for cleaner output
+              let currentSpeaker = '';
+              let currentSegmentStart = 0;
+              let currentTexts: string[] = [];
+              let formattedSegments: string[] = [];
+              
+              result.structuredTranscript.segments.forEach(segment => {
+                const speaker = segment.speaker || 'Unknown Speaker';
+                
+                // If this is the same speaker as before, just accumulate the text
+                if (speaker === currentSpeaker) {
+                  currentTexts.push(segment.text);
+                } else {
+                  // If we have accumulated text for a previous speaker, add it to our output
+                  if (currentTexts.length > 0) {
+                    const timePrefix = enableTimestamps ? `[${formatTime(currentSegmentStart)}] ` : '';
+                    formattedSegments.push(`${timePrefix}${currentSpeaker}: ${currentTexts.join(' ')}`);
+                  }
+                  
+                  // Start a new speaker group
+                  currentSpeaker = speaker;
+                  currentSegmentStart = segment.start;
+                  currentTexts = [segment.text];
+                }
+              });
+              
+              // Don't forget the last group
+              if (currentTexts.length > 0) {
+                const timePrefix = enableTimestamps ? `[${formatTime(currentSegmentStart)}] ` : '';
+                formattedSegments.push(`${timePrefix}${currentSpeaker}: ${currentTexts.join(' ')}`);
+              }
+              
+              formattedText = formattedSegments.join('\n\n');
             }
             
             // Generate a summary if requested
@@ -253,12 +284,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Parse structured transcript from JSON string if it exists
       let structuredTranscript = null;
       if (transcription.structuredTranscript) {
+        console.log(`Parsing structuredTranscript for ID ${id}, speakerLabels: ${transcription.speakerLabels}, speakerCount: ${transcription.speakerCount}`);
+        
         try {
           structuredTranscript = JSON.parse(transcription.structuredTranscript);
+          console.log("Successfully parsed structuredTranscript:", 
+            JSON.stringify({
+              speakerCount: structuredTranscript.metadata?.speakerCount,
+              segmentsCount: structuredTranscript.segments?.length,
+              hasSpeakers: structuredTranscript.segments?.some((s: any) => s.speaker),
+              firstSegment: structuredTranscript.segments?.[0] ? {
+                start: structuredTranscript.segments[0].start,
+                end: structuredTranscript.segments[0].end,
+                hasSpeaker: !!structuredTranscript.segments[0].speaker,
+                speaker: structuredTranscript.segments[0].speaker
+              } : null
+            })
+          );
         } catch (e) {
           console.error("Failed to parse structuredTranscript JSON:", e);
-          // Optionally return an error or just leave it null
+          console.error("Raw structuredTranscript data:", transcription.structuredTranscript.substring(0, 200) + "...");
+          // Try to recover by creating a basic structure
+          structuredTranscript = {
+            segments: [],
+            metadata: { speakerCount: transcription.speakerCount || 0, duration: transcription.duration || 0 }
+          };
         }
+      } else {
+        console.log(`No structuredTranscript for ID ${id}, speakerLabels: ${transcription.speakerLabels}`);
       }
 
       // Return the transcription object with the parsed structured data
@@ -662,12 +715,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 // Format the transcript text with speaker labels if speaker diarization is enabled
                 let formattedText = result.text;
                 if (enableSpeakerLabels && result.structuredTranscript.segments.length > 0) {
-                  // Ensure consistent speaker formatting with clear line breaks between speakers
-                  formattedText = result.structuredTranscript.segments.map(segment => {
-                    const timeStr = enableTimestamps ? `[${formatTime(segment.start)}] ` : '';
-                    const speakerStr = segment.speaker ? `${segment.speaker}: ` : '';
-                    return `${timeStr}${speakerStr}${segment.text}`;
-                  }).join('\n\n');
+                  // Log what we're using to format
+                  console.log(`Formatting transcript with ${result.structuredTranscript.segments.length} segments and ${result.structuredTranscript.metadata?.speakerCount || 0} speakers`);
+                  
+                  // Group segments by speaker for cleaner output
+                  let currentSpeaker = '';
+                  let currentSegmentStart = 0;
+                  let currentTexts: string[] = [];
+                  let formattedSegments: string[] = [];
+                  
+                  result.structuredTranscript.segments.forEach(segment => {
+                    const speaker = segment.speaker || 'Unknown Speaker';
+                    
+                    // If this is the same speaker as before, just accumulate the text
+                    if (speaker === currentSpeaker) {
+                      currentTexts.push(segment.text);
+                    } else {
+                      // If we have accumulated text for a previous speaker, add it to our output
+                      if (currentTexts.length > 0) {
+                        const timePrefix = enableTimestamps ? `[${formatTime(currentSegmentStart)}] ` : '';
+                        formattedSegments.push(`${timePrefix}${currentSpeaker}: ${currentTexts.join(' ')}`);
+                      }
+                      
+                      // Start a new speaker group
+                      currentSpeaker = speaker;
+                      currentSegmentStart = segment.start;
+                      currentTexts = [segment.text];
+                    }
+                  });
+                  
+                  // Don't forget the last group
+                  if (currentTexts.length > 0) {
+                    const timePrefix = enableTimestamps ? `[${formatTime(currentSegmentStart)}] ` : '';
+                    formattedSegments.push(`${timePrefix}${currentSpeaker}: ${currentTexts.join(' ')}`);
+                  }
+                  
+                  formattedText = formattedSegments.join('\n\n');
                 }
                 
                 // Generate a summary if requested

@@ -210,45 +210,102 @@ async function processSpeakerDiarization(
     .join("\n");
   const safeFullText = fullText || segmentsText;
 
-  const response = await limiter.schedule(() =>
-    withRetry(() =>
-      openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: `You are an expert at speaker diarization for conversational audio.\n\nOutput a JSON object with 'segments' (matching count) and 'speakerCount'. Each segment must keep start, end, text and add a 'speaker' label.`,
-          },
-          {
-            role: "user",
-            content: `Segments with timestamps:\n${segmentsText}\n\nFull text (context):\n${safeFullText}`,
-          },
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.3,
-      })
-    )
-  );
+  console.log(`Processing diarization for ${timestampedSegments.length} segments`);
 
-  let result: { segments: TranscriptSegment[]; speakerCount: number };
   try {
-    result = JSON.parse(response.choices[0].message.content);
-  } catch {
+    const response = await limiter.schedule(() =>
+      withRetry(() =>
+        openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: `You are an expert at speaker diarization for conversational audio.
+
+Your task is to identify different speakers in a transcript and label each segment.
+- Analyze speaking patterns, vocabulary choices, and contextual clues to determine speaker changes
+- Use "Speaker 1", "Speaker 2", etc. as labels consistently throughout the transcript
+- Maintain the original start and end timestamps for each segment
+- Include the exact same text for each segment as provided
+
+Output a JSON object with:
+1. 'segments' - an array of objects, each with:
+   - start: number (timestamp in seconds)
+   - end: number (timestamp in seconds)
+   - text: string (the spoken text)
+   - speaker: string (e.g., "Speaker 1", "Speaker 2")
+2. 'speakerCount' - total number of unique speakers identified
+
+Be conservative with speaker assignments - only split into multiple speakers if there's clear evidence of different people speaking.`,
+            },
+            {
+              role: "user",
+              content: `Segments with timestamps:\n${segmentsText}\n\nFull text (context):\n${safeFullText}`,
+            },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.3,
+        })
+      )
+    );
+
+    let result: { segments: TranscriptSegment[]; speakerCount: number };
+    try {
+      const content = response.choices[0].message.content || "";
+      result = JSON.parse(content);
+      
+      // Log successful parsing
+      console.log(`Successfully parsed diarization response. Detected ${result.speakerCount} speakers across ${result.segments.length} segments.`);
+      
+      // Validate the result has the expected structure
+      if (!result.segments || !Array.isArray(result.segments)) {
+        throw new Error("Response missing segments array");
+      }
+      
+      if (result.segments.length === 0) {
+        throw new Error("Response has empty segments array");
+      }
+      
+      // Check that speaker labels are included
+      const hasSpeakers = result.segments.some((s: any) => s.speaker);
+      if (!hasSpeakers) {
+        throw new Error("Response missing speaker labels");
+      }
+      
+      return enforceConsistentSpeakers(result);
+    } catch (error) {
+      console.error("Error parsing diarization response:", error);
+      
+      if (response.choices && response.choices[0] && response.choices[0].message) {
+        const previewContent = response.choices[0].message.content || "";
+        console.error("Response content:", previewContent.substring(0, 200) + "...");
+      }
+      
+      // Fallback: single speaker with detailed logging
+      console.log("Falling back to single speaker diarization");
+      result = {
+        speakerCount: 1,
+        segments: timestampedSegments.map((s) => ({ ...s, speaker: "Speaker 1" })),
+      };
+      return result;
+    }
+  } catch (apiError) {
+    console.error("API error during diarization:", apiError);
+    
     // Fallback: single speaker
-    result = {
+    return {
       speakerCount: 1,
       segments: timestampedSegments.map((s) => ({ ...s, speaker: "Speaker 1" })),
     };
   }
-
-  return enforceConsistentSpeakers(result);
 }
 
 function enforceConsistentSpeakers(result: {
   segments: TranscriptSegment[];
   speakerCount: number;
 }): { segments: TranscriptSegment[]; speakerCount: number } {
-  const labels = [...new Set(result.segments.map((s) => s.speaker || "Speaker 1"))];
+  // Use Array.from instead of spread operator for Set to avoid TSC issues
+  const labels = Array.from(new Set(result.segments.map((s) => s.speaker || "Speaker 1")));
   const map = new Map<string, string>();
   labels.forEach((label, idx) => map.set(label, `Speaker ${idx + 1}`));
 
@@ -297,7 +354,8 @@ export async function generateTranscriptSummary(text: string | null) {
   );
 
   try {
-    return JSON.parse(response.choices[0].message.content);
+    const content = response.choices[0].message.content || "";
+    return JSON.parse(content);
   } catch {
     return { summary: "Error generating summary.", actionItems: [], keywords: [] };
   }
@@ -325,7 +383,8 @@ export async function translateTranscript(text: string | null, targetLanguage: s
   );
 
   try {
-    return JSON.parse(response.choices[0].message.content);
+    const content = response.choices[0].message.content || "";
+    return JSON.parse(content);
   } catch {
     return { translatedText: `Error translating to ${targetLanguage}.`, confidence: 0 };
   }
