@@ -348,15 +348,19 @@ function TranscriptionCard({
       {/* Transcript text preview with scrollable container */}
       {t.text && (
         <div className="mt-2">
-          <details className="text-sm">
-            <summary className="cursor-pointer text-primary hover:text-primary/80 font-medium">
-              View Transcript
+          <details className="text-sm group">
+            <summary className="cursor-pointer text-primary hover:text-primary/80 font-medium flex items-center">
+              <span className="mr-1">View Transcript</span>
+              <span className="text-xs text-gray-500 group-open:hidden">(click to expand)</span>
+              <span className="text-xs text-gray-500 hidden group-open:inline">(click to collapse)</span>
             </summary>
-            <div className="mt-2 border rounded p-2">
-              <ScrollArea className="h-32">
-                <p className="text-sm text-gray-700 whitespace-pre-line">
-                  {t.text}
-                </p>
+            <div className="mt-2 border rounded">
+              <ScrollArea className="h-64 w-full">
+                <div className="p-3">
+                  <p className="text-sm text-gray-700 whitespace-pre-line break-words">
+                    {t.text}
+                  </p>
+                </div>
               </ScrollArea>
             </div>
           </details>
