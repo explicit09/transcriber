@@ -4,194 +4,182 @@ import path from 'path';
 import os from 'os';
 import { Transcription } from '@shared/schema';
 
+export interface PDFOptions {
+  includeTOC?: boolean;
+  logoPath?: string;
+  margins?: { top: number; bottom: number; left: number; right: number };
+  layout?: 'portrait' | 'landscape';
+}
+
 export async function generateTranscriptPDF(
   transcription: Transcription,
-  structuredTranscript?: any
+  structuredTranscript?: any,
+  options: PDFOptions = {}
 ): Promise<{ filePath: string; fileName: string }> {
-  // Create a temporary file
+  // Temp file
   const tempDir = os.tmpdir();
   const fileName = `transcript_${transcription.id}_${Date.now()}.pdf`;
   const filePath = path.join(tempDir, fileName);
-  
-  // Create a document
+
+  // TOC entries collector
+  const tocEntries: Array<{ title: string; page: number }> = [];
+
+  // Default margins & layout
+  const margins = options.margins ?? { top: 72, bottom: 72, left: 72, right: 72 };
+  const layout = options.layout ?? 'portrait';
+
+  // Create PDF document
   const doc = new PDFDocument({
-    margins: {
-      top: 72,
-      bottom: 72,
-      left: 72,
-      right: 72,
-    },
+    margins,
+    layout,
     info: {
       Title: transcription.meetingTitle || `Transcription ${transcription.id}`,
       Author: 'Transcription App',
       Subject: 'Meeting Transcription',
     },
+    bufferPages: true,
   });
-  
-  // Pipe its output to the file
+
+  // Page header and footer
+  doc.on('pageAdded', () => addHeaderFooter(doc, transcription));
+  // First page header/footer
+  addHeaderFooter(doc, transcription);
+
+  // Pipe stream
   const stream = fs.createWriteStream(filePath);
   doc.pipe(stream);
-  
-  // Add metadata section
-  doc.fontSize(20).font('Helvetica-Bold').text(transcription.meetingTitle || transcription.fileName, {
-    align: 'center',
-  });
-  
+
+  // Logo
+  if (options.logoPath && fs.existsSync(options.logoPath)) {
+    doc.image(options.logoPath, margins.left, 20, { width: 100 });
+  }
+
+  // Title
+  doc.moveDown( options.logoPath ? 5 : 2 )
+    .fontSize(20)
+    .font('Helvetica-Bold')
+    .text(transcription.meetingTitle || transcription.fileName, { align: 'center' });
+
+  // Record TOC: Meeting Details
+  if (options.includeTOC) tocEntries.push({ title: 'Meeting Details', page: doc.bufferedPageRange().start + 1 });
+
+  // Meeting Details
   doc.moveDown();
-  doc.fontSize(12).font('Helvetica');
-  
-  // Meeting details
-  const meetingDate = transcription.meetingDate 
-    ? new Date(transcription.meetingDate).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      })
-    : new Date(transcription.createdAt).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-  
   doc.fontSize(12).font('Helvetica-Bold').text('Meeting Details');
-  doc.fontSize(10).font('Helvetica').text(`Date: ${meetingDate}`);
-  
-  if (transcription.participants) {
-    doc.fontSize(10).text(`Participants: ${transcription.participants}`);
-  }
-  
+  doc.fontSize(10).font('Helvetica');
+  const meetDate = transcription.meetingDate || transcription.createdAt;
+  doc.text(`Date: ${new Date(meetDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`);
+  if (transcription.participants) doc.text(`Participants: ${transcription.participants}`);
   if (transcription.duration) {
-    const minutes = Math.floor(transcription.duration / 60);
-    const seconds = Math.round(transcription.duration % 60);
-    doc.fontSize(10).text(`Duration: ${minutes}m ${seconds}s`);
+    const m = Math.floor(transcription.duration / 60);
+    const s = Math.round(transcription.duration % 60);
+    doc.text(`Duration: ${m}m ${s}s`);
   }
-  
-  // Add summary if available
+
+  // Summary Section
   if (transcription.summary) {
-    doc.moveDown();
+    if (options.includeTOC) tocEntries.push({ title: 'Summary', page: doc.bufferedPageRange().start + 1 });
+    doc.addPage();
     doc.fontSize(12).font('Helvetica-Bold').text('Summary');
-    doc.fontSize(10).font('Helvetica').text(transcription.summary);
+    doc.moveDown(0.5);
+    doc.fontSize(10).font('Helvetica').text(transcription.summary, { width: 450, align: 'justify' });
   }
-  
-  // Action items section
-  if (transcription.actionItems) {
-    try {
-      // Parse the JSON string into an array
-      const actionItems = JSON.parse(transcription.actionItems);
-      
-      if (actionItems && Array.isArray(actionItems) && actionItems.length > 0) {
-        doc.moveDown();
-        doc.fontSize(12).font('Helvetica-Bold').text('Action Items');
-        
-        actionItems.forEach((item, index) => {
-          doc.fontSize(10).font('Helvetica').text(`${index + 1}. ${item}`, {
-            bulletRadius: 2,
-          });
-        });
-      }
-    } catch (error) {
-      console.log("JSON parsing of action items failed, trying string-based approach", error);
-      
-      // First try as string with line breaks 
-      if (typeof transcription.actionItems === 'string' && transcription.actionItems.trim().length > 0) {
-        const items = transcription.actionItems.split('\n').filter(item => item.trim().length > 0);
-        
-        if (items.length > 0) {
-          doc.moveDown();
-          doc.fontSize(12).font('Helvetica-Bold').text('Action Items');
-          
-          items.forEach((item, index) => {
-            doc.fontSize(10).font('Helvetica').text(`${index + 1}. ${item.trim()}`, {
-              bulletRadius: 2,
-            });
-          });
-        }
-      } 
-      // Fallback to extracting from summary
-      else if (transcription.summary) {
-        const extractedItems = extractActionItems(transcription.summary);
-        if (extractedItems.length > 0) {
-          doc.moveDown();
-          doc.fontSize(12).font('Helvetica-Bold').text('Action Items');
-          
-          extractedItems.forEach((item, index) => {
-            doc.fontSize(10).font('Helvetica').text(`${index + 1}. ${item}`, {
-              bulletRadius: 2,
-            });
-          });
-        }
-      }
-    }
+
+  // Action Items
+  const items = parseActionItems(transcription);
+  if (items.length) {
+    if (options.includeTOC) tocEntries.push({ title: 'Action Items', page: doc.bufferedPageRange().start + 1 });
+    doc.addPage();
+    doc.fontSize(12).font('Helvetica-Bold').text('Action Items');
+    items.forEach((it, i) => doc.fontSize(10).font('Helvetica').text(`${i + 1}. ${it}`, { indent: 20, width: 450 }));
   }
-  
-  doc.moveDown();
+
+  // Table of Contents at front
+  if (options.includeTOC && tocEntries.length) {
+    const toc = tocEntries.slice().sort((a, b) => a.page - b.page);
+    doc.flushPages();
+    doc.addPage({ at: 1 });
+    doc.fontSize(16).font('Helvetica-Bold').text('Table of Contents', { align: 'center' });
+    doc.moveDown();
+    toc.forEach(e => doc.fontSize(10).font('Helvetica').text(`${e.title} ...... ${e.page}`, { width: 450 }));
+  }
+
+  // Transcript Section
+  if (options.includeTOC) tocEntries.push({ title: 'Transcript', page: doc.bufferedPageRange().start + 1 });
+  doc.addPage();
   doc.fontSize(12).font('Helvetica-Bold').text('Transcript');
   doc.moveDown(0.5);
-  
-  // Add the transcript content
-  if (structuredTranscript && structuredTranscript.segments && structuredTranscript.segments.length > 0) {
-    // If we have a structured transcript with speakers
-    structuredTranscript.segments.forEach((segment: any) => {
-      const timeFormatted = formatTime(segment.start);
-      const speakerText = segment.speaker ? `${segment.speaker}: ` : '';
-      
-      doc.fontSize(9).font('Helvetica-Bold').text(
-        `[${timeFormatted}] ${speakerText}`,
-        { continued: true }
-      );
-      
-      doc.fontSize(9).font('Helvetica').text(segment.text);
-      doc.moveDown(0.5);
+  doc.fontSize(9).font('Courier');
+
+  if (structuredTranscript?.segments?.length) {
+    structuredTranscript.segments.forEach((seg: any) => {
+      const t = formatTime(seg.start);
+      const speaker = seg.speaker ? `${seg.speaker}: ` : '';
+      // Detect URL
+      const urlMatch = seg.text.match(/https?:\/\/\S+/);
+      if (urlMatch) {
+        doc.text(`[${t}] ${speaker}`, { continued: true });
+        doc.text(seg.text, { link: urlMatch[0], underline: true });
+      } else {
+        doc.text(`[${t}] ${speaker}${seg.text}`, { width: 450, align: 'left' });
+      }
+      doc.moveDown(0.3);
     });
   } else if (transcription.text) {
-    // If we just have plain text
-    doc.fontSize(10).font('Helvetica').text(transcription.text);
+    doc.text(transcription.text, { width: 450, align: 'justify' });
   }
-  
-  // Finalize PDF file
+
+  // Finalize
   doc.end();
-  
+
+  // Cleanup on finish
   return new Promise((resolve, reject) => {
     stream.on('finish', () => {
+      // delete file after 1 hour
+      setTimeout(() => fs.unlink(filePath, () => {}), 3600000);
       resolve({ filePath, fileName });
     });
-    
-    stream.on('error', (err) => {
-      reject(err);
-    });
+    stream.on('error', reject);
+    doc.on('error', reject);
   });
 }
 
-// Utility to extract action items from summary
-function extractActionItems(summary: string): string[] {
-  // This is a basic implementation - we look for lines containing action-oriented words
-  const lines = summary.split('\n');
-  const actionItems: string[] = [];
-  
-  const actionWords = ['need to', 'should', 'must', 'will', 'going to', 'plan', 'action', 
-    'task', 'todo', 'to-do', 'follow up', 'deadline', 'by the end of', 'next steps'];
-  
-  for (const line of lines) {
-    const lowerCaseLine = line.toLowerCase();
-    if (actionWords.some(word => lowerCaseLine.includes(word))) {
-      // Clean up the line (remove bullets, etc.)
-      let cleanLine = line.trim();
-      if (cleanLine.startsWith('- ')) {
-        cleanLine = cleanLine.substring(2);
-      }
-      if (cleanLine.startsWith('• ')) {
-        cleanLine = cleanLine.substring(2);
-      }
-      actionItems.push(cleanLine);
-    }
-  }
-  
-  return actionItems;
+function addHeaderFooter(doc: PDFKit.PDFDocument, transcription: Transcription) {
+  const range = doc.bufferedPageRange();
+  const current = doc.page.pageNumber;
+  const total = range.count;
+  // Header
+  doc.fontSize(8).font('Helvetica').text(
+    transcription.meetingTitle || '',
+    doc.page.margins.left,
+    20,
+    { width: doc.page.width - doc.page.margins.left - doc.page.margins.right, align: 'center' }
+  );
+  // Footer
+  doc.fontSize(8).text(
+    `Page ${current} of ${total}`,
+    doc.page.margins.left,
+    doc.page.height - 30,
+    { width: doc.page.width - doc.page.margins.left - doc.page.margins.right, align: 'center' }
+  );
 }
 
-// Format time from seconds to MM:SS
-function formatTime(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+function parseActionItems(trans: Transcription): string[] {
+  try {
+    const arr = JSON.parse(trans.actionItems || '[]');
+    if (Array.isArray(arr) && arr.length) return arr;
+  } catch {}
+  const lines = (trans.actionItems || '').split(/\r?\n/).filter(l => l.trim());
+  if (lines.length) return lines;
+  // Regex-based extraction
+  const kw = ['need to', 'should', 'must', 'deadline', 'follow up', 'plan'];
+  return (trans.summary || '').split(/\r?\n/)
+    .filter(l => kw.some(w => l.toLowerCase().includes(w)))
+    .map(l => l.replace(/^[\-•]\s*/, '').trim());
+}
+
+function formatTime(sec: number): string {
+  const m = Math.floor(sec / 60).toString().padStart(2, '0');
+  const s = Math.floor(sec % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
 }
