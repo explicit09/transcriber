@@ -11,7 +11,7 @@ const openai = new OpenAI({
 // Concurrency limiter for API calls
 const limiter = new Bottleneck({
   maxConcurrent: 5,
-  minTime: 200 // at most 5 requests per second
+  minTime: 200 // 5 requests per second
 });
 
 // Exponential-backoff retry helper
@@ -35,7 +35,7 @@ export async function transcribeAudio(
 ): Promise<{ text: string; duration?: number; language?: string }> {
   const streamFactory = () => fs.createReadStream(audioFilePath);
 
-  const transcription = await limiter.schedule(() => 
+  const transcription = await limiter.schedule(() =>
     withRetry(() => openai.audio.transcriptions.create({
       file: streamFactory(),
       model: 'whisper-1',
@@ -66,10 +66,8 @@ export async function transcribeAudioWithFeatures(
   language?: string;
   translatedText?: string;
 }> {
-  // Transcribe or translate directly with Whisper if requested
   if (options.enableTranslation && options.targetLanguage) {
-    // Whisper audio-to-text translation
-    const translation = await limiter.schedule(() => 
+    const translation = await limiter.schedule(() =>
       withRetry(() => openai.audio.translations.create({
         file: fs.createReadStream(audioFilePath),
         model: 'whisper-1',
@@ -77,26 +75,36 @@ export async function transcribeAudioWithFeatures(
         language: options.targetLanguage,
       }))
     );
-    return { text: translation.text, translatedText: translation.text, language: translation.language };
+    return {
+      text: translation.text,
+      translatedText: translation.text,
+      language: translation.language,
+      structuredTranscript: {
+        segments: [],
+        metadata: { speakerCount: 1, duration: undefined, language: translation.language }
+      }
+    };
   }
 
-  // Standard transcription
   const { text, duration, language } = await transcribeAudio(audioFilePath);
 
-  // Build segments
   const segments: TranscriptSegment[] = text && Array.isArray((text as any).segments)
-    ? (text as any).segments.map((s: any) => ({ start: s.start, end: s.end, text: s.text, speaker: undefined }))
+    ? (text as any).segments.map((s: any) => ({
+        start: s.start,
+        end: s.end,
+        text: s.text,
+        speaker: undefined
+      }))
     : [];
 
   let speakerCount: number | undefined;
 
   if (options.enableSpeakerDiarization && segments.length) {
-    const { segments: diaSegments, speakerCount: count } =
+    const { segments: diarizedSegments, speakerCount: count } =
       await processSpeakerDiarization(segments, text);
     speakerCount = count;
-    // Replace segments
     segments.length = 0;
-    segments.push(...diaSegments);
+    segments.push(...diarizedSegments);
   }
 
   const structuredTranscript: StructuredTranscript = {
@@ -116,11 +124,16 @@ async function processSpeakerDiarization(
     .map(s => `[${formatTime(s.start)} - ${formatTime(s.end)}]: ${s.text}`)
     .join('\n');
 
-  const response = await limiter.schedule(() => 
+  const response = await limiter.schedule(() =>
     withRetry(() => openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
-        { role: 'system', content: `You are an expert at speaker diarization. Identify the exact number of speakers and label segments as "Speaker X".` },
+        { role: 'system', content: `
+          You are an expert at speaker diarization.
+          Identify the correct number of speakers based only on text and timing.
+          If uncertain, prefer fewer speakers.
+          Label speakers consistently as "Speaker 1", "Speaker 2", etc.
+        ` },
         { role: 'user', content: `Transcript:\n${segmentsText}\nFull text:\n${fullText}` }
       ],
       response_format: { type: 'json_object' },
@@ -132,35 +145,54 @@ async function processSpeakerDiarization(
   try {
     result = JSON.parse(response.choices[0].message.content);
   } catch {
-    // Fallback: majority-based assignment
     const primary = timestampedSegments[0];
-    result = { speakerCount: 1, segments: timestampedSegments.map(s => ({ ...s, speaker: 'Speaker 1' })) };
+    result = { 
+      speakerCount: 1,
+      segments: timestampedSegments.map(s => ({
+        ...s,
+        speaker: 'Speaker 1'
+      }))
+    };
   }
 
-  // Normalize and enforce labeling
-  return enforceConsistentSpeakers(result);
+  const validated = enforceConsistentSpeakers(result);
+
+  if (validated.speakerCount > 8) {
+    console.warn(`⚠️ High number of speakers detected (${validated.speakerCount}). Review recommended.`);
+  }
+
+  return validated;
 }
 
-// Ensure speakers are labeled "Speaker X" and count correct
+// Enforce consistent "Speaker X" labeling
 function enforceConsistentSpeakers(
   result: { segments: TranscriptSegment[]; speakerCount: number }
 ): { segments: TranscriptSegment[]; speakerCount: number } {
   const labels = [...new Set(result.segments.map(s => s.speaker || 'Speaker 1'))];
   const map = new Map<string, string>();
-  labels.forEach((lbl, i) => map.set(lbl, `Speaker ${i + 1}`));
-  const segments = result.segments.map(s => ({
+  labels.forEach((label, index) => {
+    map.set(label, `Speaker ${index + 1}`);
+  });
+
+  const normalizedSegments = result.segments.map(s => ({
     ...s,
     speaker: map.get(s.speaker || 'Speaker 1')!
   }));
-  return { segments, speakerCount: map.size };
+
+  return {
+    segments: normalizedSegments,
+    speakerCount: map.size
+  };
 }
 
-// Summary generation using GPT
+// Generate transcript summary using GPT
 export async function generateTranscriptSummary(text: string) {
   const wordCount = text.split(/\s+/).length;
-  if (wordCount < 10) return { summary: 'Too short.', actionItems: [], keywords: [] };
+  if (wordCount < 10) {
+    return { summary: 'Too short.', actionItems: [], keywords: [] };
+  }
 
-  const response = await limiter.schedule(() => 
+  const response = await limiter.schedule(() =>
     withRetry(() => openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
@@ -169,14 +201,14 @@ export async function generateTranscriptSummary(text: string) {
       ],
       response_format: { type: 'json_object' },
       temperature: 0.1,
-      max_tokens: 1500
+      max_tokens: 1500,
     }))
   );
 
   return JSON.parse(response.choices[0].message.content);
 }
 
-// Helper: format seconds to MM:SS
+// Format seconds to MM:SS
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60).toString().padStart(2, '0');
   const s = Math.floor(seconds % 60).toString().padStart(2, '0');
