@@ -6,20 +6,20 @@ import { Button } from "@/components/ui/button";
 export default function Navbar() {
   return (
     <header className="bg-gradient-to-r from-slate-900 to-slate-800 shadow-lg">
-      <div className="container mx-auto py-6 px-4 flex items-center justify-between">
+      <div className="container mx-auto py-4 sm:py-6 md:py-8 lg:py-10 px-4 flex items-center justify-between">
         <div className="flex items-center">
           <Link href="/">
             <div className="flex items-center group cursor-pointer">
               <img 
                 src={learnXLogo} 
                 alt="LEARN-X Logo" 
-                className="h-28 w-auto mr-4 transition-transform duration-300 group-hover:scale-105" 
+                className="h-24 sm:h-32 md:h-40 lg:h-48 xl:h-56 2xl:h-64 w-auto mr-4 transition-transform duration-300 group-hover:scale-105" 
               />
               <div className="hidden md:block">
-                <h1 className="text-3xl text-white font-bold tracking-wide">
+                <h1 className="text-2xl md:text-3xl lg:text-4xl xl:text-5xl text-white font-bold tracking-wide">
                   <span className="text-blue-400">Audio</span> Transcription
                 </h1>
-                <p className="text-base text-gray-300">Meeting notes made easy</p>
+                <p className="text-sm md:text-base lg:text-lg text-gray-300">Meeting notes made easy</p>
               </div>
             </div>
           </Link>
@@ -27,20 +27,20 @@ export default function Navbar() {
         
         <nav className="flex items-center space-x-2 md:space-x-4">
           <Link href="/">
-            <Button variant="ghost" className="text-white hover:text-blue-400 hover:bg-slate-800/50 gap-2 text-lg p-6">
-              <Headphones className="h-5 w-5" />
+            <Button variant="ghost" className="text-white hover:text-blue-400 hover:bg-slate-800/50 gap-2 text-base sm:text-lg md:text-xl p-4 sm:p-5 md:p-6 lg:p-7">
+              <Headphones className="h-4 sm:h-5 md:h-6 w-4 sm:w-5 md:w-6" />
               <span className="hidden sm:inline font-medium">New Recording</span>
             </Button>
           </Link>
           <Link href="/history">
-            <Button variant="ghost" className="text-white hover:text-blue-400 hover:bg-slate-800/50 gap-2 text-lg p-6">
-              <History className="h-5 w-5" />
+            <Button variant="ghost" className="text-white hover:text-blue-400 hover:bg-slate-800/50 gap-2 text-base sm:text-lg md:text-xl p-4 sm:p-5 md:p-6 lg:p-7">
+              <History className="h-4 sm:h-5 md:h-6 w-4 sm:w-5 md:w-6" />
               <span className="hidden sm:inline font-medium">History</span>
             </Button>
           </Link>
           <Link href="/transcription/latest">
-            <Button variant="secondary" className="bg-blue-500 hover:bg-blue-600 text-white border-0 hidden md:flex gap-2 text-lg p-6">
-              <FileText className="h-5 w-5" />
+            <Button variant="secondary" className="bg-blue-500 hover:bg-blue-600 text-white border-0 hidden md:flex gap-2 text-base sm:text-lg md:text-xl p-4 sm:p-5 md:p-6 lg:p-7">
+              <FileText className="h-4 sm:h-5 md:h-6 w-4 sm:w-5 md:w-6" />
               <span className="font-medium">Latest Transcript</span>
             </Button>
           </Link>
