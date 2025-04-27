@@ -95,14 +95,22 @@ function mergeConsecutiveSegments(segments: TranscriptSegment[]): TranscriptSegm
   for (let i = 1; i < segments.length; i++) {
     const segment = segments[i];
     
-    // If this segment is from the same speaker and close in time to the previous one, merge them
+    // If this segment is from the same speaker, try to merge regardless of time gap
     if (segment.speaker === currentSegment.speaker) {
-      // Add a small buffer (0.5 seconds) to allow for slight gaps between segments
+      // Instead of using a small time buffer, we'll use a much larger one (5 seconds)
+      // This will allow for natural pauses in speech from the same speaker
       const timeGap = segment.start - currentSegment.end;
       
-      if (timeGap < 0.5) {
-        // Merge the text with a space
-        currentSegment.text += ' ' + segment.text;
+      // Even with large gaps (up to 5 seconds), we'll combine for the same speaker
+      // This addresses the issue where the same speaker has consecutive entries
+      if (timeGap < 5.0) {
+        // For large gaps, add an ellipsis to indicate a pause
+        if (timeGap > 1.0) {
+          currentSegment.text += '... ' + segment.text;
+        } else {
+          // For smaller gaps, just use a space
+          currentSegment.text += ' ' + segment.text;
+        }
         // Extend the end time
         currentSegment.end = segment.end;
         continue;

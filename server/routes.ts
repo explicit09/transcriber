@@ -211,36 +211,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log(`Formatting transcript with ${result.structuredTranscript.segments.length} segments and ${result.structuredTranscript.metadata?.speakerCount || 0} speakers`);
             
             // Group segments by speaker for cleaner output
+            // This enhanced version combines consecutive utterances from the same speaker
+            // even if they have different timestamps
             let currentSpeaker = '';
             let currentSegmentStart = 0;
             let currentTexts: string[] = [];
             let formattedSegments: string[] = [];
             
+            // First pass - consolidate segments by speaker entirely, regardless of timestamps
+            const speakerGroups: { 
+              speaker: string; 
+              texts: string[]; 
+              start: number; 
+              end: number;
+            }[] = [];
+            
+            // Iterate through all segments to build speaker groups
             result.structuredTranscript.segments.forEach(segment => {
               const speaker = segment.speaker || 'Unknown Speaker';
               
-              // If this is the same speaker as before, just accumulate the text
-              if (speaker === currentSpeaker) {
-                currentTexts.push(segment.text);
+              // If we have a current group for this speaker, add to it
+              if (speakerGroups.length > 0 && speakerGroups[speakerGroups.length - 1].speaker === speaker) {
+                const currentGroup = speakerGroups[speakerGroups.length - 1];
+                currentGroup.texts.push(segment.text);
+                currentGroup.end = segment.end;
               } else {
-                // If we have accumulated text for a previous speaker, add it to our output
-                if (currentTexts.length > 0) {
-                  const timePrefix = enableTimestamps ? `[${formatTime(currentSegmentStart)}] ` : '';
-                  formattedSegments.push(`${timePrefix}${currentSpeaker}: ${currentTexts.join(' ')}`);
-                }
-                
-                // Start a new speaker group
-                currentSpeaker = speaker;
-                currentSegmentStart = segment.start;
-                currentTexts = [segment.text];
+                // Start a new group for this speaker
+                speakerGroups.push({
+                  speaker,
+                  texts: [segment.text],
+                  start: segment.start,
+                  end: segment.end
+                });
               }
             });
             
-            // Don't forget the last group
-            if (currentTexts.length > 0) {
-              const timePrefix = enableTimestamps ? `[${formatTime(currentSegmentStart)}] ` : '';
-              formattedSegments.push(`${timePrefix}${currentSpeaker}: ${currentTexts.join(' ')}`);
-            }
+            // Now format each group
+            speakerGroups.forEach(group => {
+              const timePrefix = enableTimestamps ? `[${formatTime(group.start)}] ` : '';
+              formattedSegments.push(`${timePrefix}${group.speaker}: ${group.texts.join(' ')}`);
+            });
             
             formattedText = formattedSegments.join('\n\n');
           }
