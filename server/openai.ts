@@ -228,20 +228,25 @@ async function processSpeakerDiarization(
 Your task is to identify different speakers in a transcript and label each segment.
 - Analyze speaking patterns, vocabulary choices, speaking styles, and contextual clues to determine speaker changes
 - Use "Speaker 1", "Speaker 2", "Speaker 3", etc. as labels consistently throughout the transcript
-- Even if you're uncertain, make your best effort to distinguish between speakers
 - Maintain the original start and end timestamps for each segment
 - Include the exact same text for each segment as provided
-- IMPORTANT: You MUST accurately identify ALL speakers in the conversation, even if there are more than 2
+- IMPORTANT: Be CONSERVATIVE when identifying different speakers. Only change speaker labels when there is strong evidence of a different person speaking.
 
-Key indicators of speaker changes:
-- Changes in topic or perspective
-- Responses to questions
-- Greeting/introduction patterns
-- Different vocabulary usage or speaking style
-- References to oneself vs references to others (I vs. you, etc.)
-- Questions followed by answers (likely different speakers)
-- Changes in speaking authority/role (e.g., presenter vs. audience member)
-- Direct mentions of others by name ("As John was saying...")
+IMPORTANT GUIDELINES TO PREVENT OVER-SEGMENTATION:
+- DO NOT assign a new speaker simply because of a pause or change in topic
+- DO NOT change speaker labels for short utterances unless absolutely certain it's a different speaker
+- DO treat connected thoughts and ideas from the same speaker as a continuous speech, even across pauses
+- DO be consistent with speaker identification - once you've established a speaker's style and patterns, maintain that association
+- DO look for clear turn-taking signals like direct responses and address changes
+- DO try to combine consecutive segments from the same speaker where possible, even if there are short pauses between them
+- DO err on the side of fewer speakers rather than more speakers if uncertain
+
+Key DEFINITIVE indicators of speaker changes:
+- Direct address by name from one person to another
+- Clear response to a direct question with a different perspective
+- Explicit agreement or disagreement with previous statement
+- Drastically different speaking style, vocabulary or technical knowledge
+- Self-identification ("This is Mark speaking")
 
 Output a JSON object with:
 1. 'segments' - an array of objects, each with:
@@ -251,7 +256,7 @@ Output a JSON object with:
    - speaker: string (e.g., "Speaker 1", "Speaker 2", "Speaker 3")
 2. 'speakerCount' - total number of unique speakers identified
 
-IMPORTANT: Many meetings have MORE THAN 2 participants. Carefully analyze the transcript for evidence of 3, 4, or more distinct speakers. Each time you think a new person is speaking, assign them a new speaker number.`,
+IMPORTANT: Be very conservative with speaker changes. It's better to miss a speaker change than to incorrectly split a single person's speech into multiple speakers.`,
             },
             {
               role: "user",
@@ -259,7 +264,7 @@ IMPORTANT: Many meetings have MORE THAN 2 participants. Carefully analyze the tr
             },
           ],
           response_format: { type: "json_object" },
-          temperature: 0.5,
+          temperature: 0.2, // Lower temperature for more conservative/consistent speaker assignments
         })
       )
     );
@@ -298,24 +303,25 @@ IMPORTANT: Many meetings have MORE THAN 2 participants. Carefully analyze the tr
         // If no speakers are detected despite getting a response, force assign speakers
         console.warn("No speaker labels detected in response, assigning default speakers");
         
-        // Try to detect conversation turns with up to 4 potential speakers
+        // Try to detect conversation turns with up to 3 potential speakers (more conservative)
         let currentTurn = 0;
         let lastEnd = 0;
         let activeSpeakers = 2; // Start with assumption of 2 speakers minimum
         
         // Assign speakers based on pauses in conversation or length
         result.segments = result.segments.map((segment, index) => {
-          const pauseDetected = segment.start - lastEnd > 1.5; // Significant pause
+          // Be more conservative with speaker changes - require longer pauses
+          const pauseDetected = segment.start - lastEnd > 2.5; // More significant pause (increased from 1.5)
           const longUtterance = index > 0 && 
-                               (segment.end - segment.start > 8) && 
+                               (segment.end - segment.start > 10) && // Longer utterances (increased from 8)
                                (result.segments[index-1].end - result.segments[index-1].start < 5);
-          const significantGap = segment.start - lastEnd > 3.0; // Very long pause might indicate new speaker
+          const significantGap = segment.start - lastEnd > 4.0; // Very long pause (increased from 3.0)
           
-          // Change speaker if we detect a significant pause or pattern change
-          if (index === 0 || pauseDetected || longUtterance) {
-            // For very significant gaps or every 5th turn, consider introducing a new speaker (up to 4)
-            if ((significantGap || index % 5 === 0) && activeSpeakers < 4) {
-              activeSpeakers++;
+          // Be even more conservative with speaker changes
+          if (index === 0 || (pauseDetected && (longUtterance || significantGap))) {
+            // Only consider a third speaker in very clear cases 
+            if (significantGap && index >= 10 && activeSpeakers < 3) {
+              activeSpeakers = 3; // Maximum of 3 speakers to avoid over-fragmentation
             }
             
             // Cycle through detected speakers
@@ -399,8 +405,28 @@ function enforceConsistentSpeakers(result: {
     speaker: map.get(s.speaker || "Speaker 1") || "Speaker 1",
   }));
 
+  // Merge consecutive segments from the same speaker for a cleaner transcript
+  const mergedSegments = normalized.reduce((acc: TranscriptSegment[], curr) => {
+    if (acc.length === 0) return [curr];
+    
+    const lastSegment = acc[acc.length - 1];
+    
+    // If same speaker and small time gap (less than 1.5 seconds), merge segments
+    if (lastSegment.speaker === curr.speaker && (curr.start - lastSegment.end) < 1.5) {
+      // Combine the segments
+      lastSegment.end = curr.end;
+      lastSegment.text = `${lastSegment.text} ${curr.text}`;
+      return acc;
+    }
+    
+    // Otherwise add as new segment
+    return [...acc, curr];
+  }, []);
+  
+  console.log(`Merged ${normalized.length} segments into ${mergedSegments.length} segments`);
+
   return { 
-    segments: normalized, 
+    segments: mergedSegments, 
     speakerCount: map.size || 1 // Ensure at least 1 speaker
   };
 }
@@ -858,7 +884,27 @@ function enforceNumberOfSpeakers(
     speaker: segment.speaker ? (speakerMap.get(segment.speaker) || segment.speaker) : segment.speaker
   }));
   
-  return updatedSegments;
+  // 6. Merge consecutive segments from the same speaker to clean up transcript
+  const mergedSegments = updatedSegments.reduce((acc: TranscriptSegment[], curr) => {
+    if (acc.length === 0) return [curr];
+    
+    const lastSegment = acc[acc.length - 1];
+    
+    // If same speaker and small time gap (less than 1.5 seconds), merge segments
+    if (lastSegment.speaker === curr.speaker && (curr.start - lastSegment.end) < 1.5) {
+      // Combine the segments
+      lastSegment.end = curr.end;
+      lastSegment.text = `${lastSegment.text} ${curr.text}`;
+      return acc;
+    }
+    
+    // Otherwise add as new segment
+    return [...acc, curr];
+  }, []);
+  
+  console.log(`Merged ${updatedSegments.length} segments into ${mergedSegments.length} segments after speaker reduction`);
+  
+  return mergedSegments;
 }
 
 /**
