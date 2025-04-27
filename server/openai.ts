@@ -102,7 +102,7 @@ export async function transcribeAudioWithFeatures(
       file: streamFactory(),
       model: 'whisper-1',
       response_format: 'verbose_json',
-      timestamp_granularities: ['segment'],
+      timestamp_granularities: ['segment', 'word'],
     }))
   );
 
@@ -193,13 +193,13 @@ async function processSpeakerDiarization(timestampedSegments: TranscriptSegment[
   const segmentsText = timestampedSegments.map(s => `[${formatTime(s.start)} - ${formatTime(s.end)}]: ${s.text}`).join('\n');
   const safeFullText = fullText || segmentsText;
 
-  console.log('--- Calling GPT-4 for Diarization ---');
+  console.log('--- Calling GPT-4o for Diarization ---');
   console.log('Segments Text Snippet:', segmentsText.substring(0, 200) + '...');
   console.log('Full Text Snippet:', safeFullText ? safeFullText.substring(0, 200) + '...' : 'N/A');
 
   const response = await limiter.schedule(() =>
     withRetry(() => openai.chat.completions.create({
-      model: 'gpt-4',
+      model: 'gpt-4o',
       messages: [
         { 
           role: 'system', 
@@ -227,6 +227,10 @@ Rules for speaker identification:
    - Note when speakers finish each other's sentences
    - Identify group dynamics (e.g., moderator vs participants)
 
+6. Analyze the conversation flow and identify the main topics discussed.
+7. Identify the key points and decisions made during the conversation.
+8. Note any action items or tasks assigned to specific speakers.
+
 Output format:
 - Return a JSON object with fields 'segments' (array) and 'speakerCount' (number).
 - Each segment must include: start (number), end (number), text (string), and speaker (string).
@@ -251,7 +255,7 @@ ${safeFullText}`
     }))
   );
 
-  console.log('--- GPT-4 Diarization Response ---');
+  console.log('--- GPT-4o Diarization Response ---');
   const rawResponseContent = response.choices[0].message.content;
   console.log('Raw Response:', rawResponseContent);
 
@@ -320,20 +324,35 @@ export async function generateTranscriptSummary(text: string | null) {
     withRetry(() => openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
-        { role: 'system', content: `Summarize clearly and only what's stated. Provide output in JSON format with fields for "summary", "actionItems" (array), and "keywords" (array).` },
-        { role: 'user', content: `Analyze this transcript and provide a JSON response with summary, action items, and keywords: ${text}` }
+        { 
+          role: 'system', 
+          content: 'You are an expert at analyzing conversations and creating clear, structured summaries. Focus on key discussion points, action items, decisions made, and important themes. Maintain speaker context when relevant. Be objective and factual. Provide output in JSON format with fields for "summary", "actionItems" (array), and "keywords" (array).'
+        },
+        { 
+          role: 'user', 
+          content: `Analyze this conversation transcript and provide a structured summary: ${text}` 
+        }
       ],
       response_format: { type: 'json_object' },
-      temperature: 0.1,
+      temperature: 0.3,
       max_tokens: 1500,
     }))
   );
 
   try {
-    return JSON.parse(response.choices[0].message.content);
+    const result = JSON.parse(response.choices[0].message.content);
+    return {
+      summary: result.summary || "Error generating summary.",
+      actionItems: Array.isArray(result.actionItems) ? result.actionItems : [],
+      keywords: Array.isArray(result.keywords) ? result.keywords : []
+    };
   } catch (error) {
     console.error("Error parsing summary result:", error);
-    return { summary: "Error generating summary.", actionItems: [], keywords: [] };
+    return { 
+      summary: "Error generating summary.", 
+      actionItems: [], 
+      keywords: [] 
+    };
   }
 }
 
@@ -355,21 +374,41 @@ export async function translateTranscript(text: string | null, targetLanguage: s
       messages: [
         { 
           role: 'system', 
-          content: `You are a professional translator. Translate the following text to ${targetLanguage}, preserving all formatting and speaker information. Return your response as a JSON object with the following structure: { "translatedText": "text translated to ${targetLanguage}" }` 
+          content: `You are a professional translator. Follow these rules:
+1. Translate the text accurately to ${targetLanguage}
+2. Preserve all speaker labels (e.g., "Speaker 1:", "Speaker 2:")
+3. Maintain conversation flow and tone
+4. Keep formatting and punctuation consistent
+5. Preserve any timestamps or metadata
+
+Return your response as a JSON object with this structure:
+{
+  "translatedText": "text translated to ${targetLanguage}",
+  "confidence": number between 0 and 1
+}`
         },
-        { role: 'user', content: `Translate the following text to ${targetLanguage} and return as JSON:\n${text}` }
+        { 
+          role: 'user', 
+          content: `Translate this conversation to ${targetLanguage}:\n${text}` 
+        }
       ],
       response_format: { type: 'json_object' },
-      temperature: 0.1,
+      temperature: 0.2,
       max_tokens: 4000
     }))
   );
 
   try {
     const result = JSON.parse(response.choices[0].message.content);
-    return { translatedText: result.translatedText || "" };
+    return {
+      translatedText: result.translatedText || `Error translating to ${targetLanguage}.`,
+      confidence: typeof result.confidence === 'number' ? result.confidence : 1.0
+    };
   } catch (error) {
     console.error("Error parsing translation result:", error);
-    return { translatedText: "Translation error occurred." };
+    return { 
+      translatedText: `Error translating to ${targetLanguage}.`,
+      confidence: 0
+    };
   }
 }
