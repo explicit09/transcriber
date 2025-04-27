@@ -222,20 +222,11 @@ export async function generateTranscriptPDF(
   // ==================== ACTION ITEMS PAGE ====================
   const items = parseActionItems(transcription);
   if (items.length) {
-    // If we don't have enough space on current page, add a new one
-    if (doc.y > doc.page.height - 150) {
-      doc.addPage();
-      doc.y = 40;
-    } else if (doc.page.pageNumber > 1) {
-      // Add some spacing if we're continuing on the same page
-      doc.y += 30;
-    } else {
-      // First page after cover
-      doc.addPage();
-      doc.y = 40;
-    }
+    // Always start action items on a new page for consistency
+    doc.addPage();
+    doc.y = 40;
     
-    // Section header
+    // Section header with gradient for visual appeal
     doc.rect(margins.left, doc.y, doc.page.width - margins.left - margins.right, 40)
        .fill(styles.colors.success);
     
@@ -246,38 +237,93 @@ export async function generateTranscriptPDF(
     
     doc.y += 60;
     
-    // Action items list with more visual style
+    // Introduction text
+    doc.fontSize(styles.sizes.normal)
+       .fillColor(styles.colors.text)
+       .font(styles.fonts.normal)
+       .text('The following action items were identified from the meeting:', 
+         margins.left, doc.y, { 
+           width: doc.page.width - margins.left - margins.right,
+           align: 'left'
+         });
+    
+    doc.y += 30;
+    
+    // Action items in a cleaner checklist style
     items.forEach((item, i) => {
-      if (doc.y > doc.page.height - 100) {
+      if (doc.y > doc.page.height - 80) {
         doc.addPage();
-        doc.y = 60;
+        
+        // Repeat section header on continuation pages
+        doc.rect(margins.left, 40, doc.page.width - margins.left - margins.right, 40)
+           .fill(styles.colors.success);
+        
+        doc.fontSize(styles.sizes.heading)
+           .fillColor('white')
+           .font(styles.fonts.heading)
+           .text('Action Items (Continued)', margins.left + 20, 55);
+        
+        doc.y = 100;
       }
       
-      // Item box
-      const boxHeight = Math.max(50, doc.heightOfString(item, { width: doc.page.width - margins.left - margins.right - 60 }) + 30);
-      doc.roundedRect(margins.left, doc.y, doc.page.width - margins.left - margins.right, boxHeight, 5)
-         .fillAndStroke('white', styles.colors.lightGray);
+      // Background for item (alternating colors for better readability)
+      const bgColor = i % 2 === 0 ? '#f0fff4' : '#f7fdfa'; // Very light green tints
+      const boxHeight = Math.max(50, doc.heightOfString(item, { 
+        width: doc.page.width - margins.left - margins.right - 70
+      }) + 30);
       
-      // Item number circle
-      const circleSize = 24;
-      doc.circle(margins.left + 20, doc.y + (boxHeight/2), circleSize/2)
+      doc.roundedRect(margins.left, doc.y, doc.page.width - margins.left - margins.right, boxHeight, 8)
+         .fillAndStroke(bgColor, styles.colors.lightGray);
+      
+      // Checkbox-style indicator
+      const checkboxSize = 20;
+      const checkboxX = margins.left + 20;
+      const checkboxY = doc.y + (boxHeight/2) - (checkboxSize/2);
+      
+      // Checkbox border
+      doc.roundedRect(checkboxX, checkboxY, checkboxSize, checkboxSize, 3)
          .fillAndStroke(styles.colors.success, styles.colors.success);
       
-      doc.fontSize(styles.sizes.normal)
-         .fillColor('white')
-         .font(styles.fonts.heading)
-         .text((i + 1).toString(), margins.left + 20 - (doc.widthOfString((i + 1).toString())/2), doc.y + (boxHeight/2) - 6);
+      // Checkmark
+      doc.save()
+         .moveTo(checkboxX + 5, checkboxY + 10)
+         .lineTo(checkboxX + 8, checkboxY + 14)
+         .lineTo(checkboxX + 15, checkboxY + 6)
+         .strokeColor('white')
+         .lineWidth(2)
+         .stroke()
+         .restore();
       
-      // Item text
+      // Item number and priority indicator
+      doc.fontSize(styles.sizes.small)
+         .fillColor(styles.colors.accent)
+         .font(styles.fonts.subheading)
+         .text(`ITEM ${i + 1}`, margins.left + 50, doc.y + 10);
+      
+      // Item text with better formatting
       doc.fontSize(styles.sizes.normal)
          .fillColor(styles.colors.text)
          .font(styles.fonts.normal)
-         .text(item, margins.left + 50, doc.y + 15, { 
-           width: doc.page.width - margins.left - margins.right - 60
+         .text(item, margins.left + 50, doc.y + 26, { 
+           width: doc.page.width - margins.left - margins.right - 70,
+           lineGap: 2
          });
       
-      doc.y += boxHeight + 10;
+      doc.y += boxHeight + 15;
     });
+    
+    // Note at the bottom
+    if (doc.y < doc.page.height - 100) {
+      doc.moveDown(2);
+      doc.fontSize(styles.sizes.small)
+         .fillColor(styles.colors.text)
+         .font(styles.fonts.italic || styles.fonts.normal)
+         .text('Note: Action items were automatically extracted from the meeting transcript using AI analysis.', 
+           margins.left, doc.y, {
+             width: doc.page.width - margins.left - margins.right,
+             align: 'center'
+           });
+    }
   }
   
   // ==================== TRANSCRIPT PAGE ====================
