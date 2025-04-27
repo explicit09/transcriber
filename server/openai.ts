@@ -3,6 +3,17 @@ import fs from "fs";
 import Bottleneck from "bottleneck";
 import { TranscriptSegment, StructuredTranscript } from "@shared/schema";
 
+interface WhisperSegment {
+  start: number;
+  end: number;
+  text: string;
+  confidence?: number;
+}
+
+interface EnhancedTranscriptSegment extends TranscriptSegment {
+  confidence: number;
+}
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || 'default_key'
 });
@@ -100,23 +111,79 @@ export async function transcribeAudioWithFeatures(
   const language = transcription.language;
 
   // Map the raw Whisper segments to our TranscriptSegment structure
-  let segments: TranscriptSegment[] = transcription.segments
-    ? transcription.segments.map((s: any) => ({ start: s.start, end: s.end, text: s.text, speaker: undefined }))
+  let segments: EnhancedTranscriptSegment[] = transcription.segments
+    ? (transcription.segments as WhisperSegment[])
+        .map(s => ({ 
+          start: s.start, 
+          end: s.end, 
+          text: s.text.trim(), 
+          speaker: undefined,
+          confidence: s.confidence ?? 1.0
+        }))
+        .sort((a, b) => a.start - b.start) // Ensure segments are ordered by time
     : [];
 
-  let speakerCount: number | undefined;
+  // Merge very short segments (less than 0.3 seconds) with adjacent segments
+  segments = segments.reduce((acc: EnhancedTranscriptSegment[], curr) => {
+    if (acc.length === 0) return [curr];
+    
+    const prev = acc[acc.length - 1];
+    if (curr.start - prev.end < 0.3 && curr.start >= prev.start) {
+      prev.end = curr.end;
+      prev.text = `${prev.text} ${curr.text}`;
+      prev.confidence = Math.min(prev.confidence, curr.confidence);
+      return acc;
+    }
+    
+    return [...acc, curr];
+  }, []);
+
+  let speakerCount = 1; // Default to 1 speaker
 
   if (options.enableSpeakerDiarization && segments.length) {
     // Pass the original segments and the full text to the diarization process
-    const { segments: diarizedSegments, speakerCount: count } = await processSpeakerDiarization(segments, text);
+    const { segments: diarizedSegments, speakerCount: count } = await processSpeakerDiarization(
+      segments as TranscriptSegment[], 
+      text
+    );
+    
+    // Post-process diarized segments
+    const processedSegments = (diarizedSegments as EnhancedTranscriptSegment[]).map((segment, i, arr) => {
+      // Keep same speaker if segment gap is very small (< 0.3s) and confidence is high
+      if (i > 0 && 
+          segment.start - arr[i-1].end < 0.3 && 
+          segment.confidence > 0.8 && 
+          arr[i-1].confidence > 0.8) {
+        segment.speaker = arr[i-1].speaker;
+      }
+      return segment;
+    });
+
     speakerCount = count;
     segments.length = 0;
-    segments.push(...diarizedSegments);
+    segments.push(...processedSegments);
   }
 
+  // Handle potential overlapping segments
+  segments = segments.reduce((acc: EnhancedTranscriptSegment[], curr) => {
+    if (acc.length === 0) return [curr];
+    
+    const prev = acc[acc.length - 1];
+    if (curr.start < prev.end) {
+      // If segments overlap and have different speakers, adjust timing
+      if (curr.speaker !== prev.speaker) {
+        const midpoint = (curr.start + prev.end) / 2;
+        prev.end = midpoint;
+        curr.start = midpoint;
+      }
+    }
+    
+    return [...acc, curr];
+  }, []);
+
   const structuredTranscript: StructuredTranscript = {
-    segments,
-    metadata: { speakerCount, duration, language },
+    segments: segments as TranscriptSegment[],
+    metadata: { speakerCount, duration: duration || 0, language },
   };
 
   return { text, structuredTranscript, duration, language };
@@ -126,40 +193,51 @@ async function processSpeakerDiarization(timestampedSegments: TranscriptSegment[
   const segmentsText = timestampedSegments.map(s => `[${formatTime(s.start)} - ${formatTime(s.end)}]: ${s.text}`).join('\n');
   const safeFullText = fullText || segmentsText;
 
-  console.log('--- Calling GPT-4o for Diarization ---');
+  console.log('--- Calling GPT-4 for Diarization ---');
   console.log('Segments Text Snippet:', segmentsText.substring(0, 200) + '...');
   console.log('Full Text Snippet:', safeFullText ? safeFullText.substring(0, 200) + '...' : 'N/A');
 
   const response = await limiter.schedule(() =>
     withRetry(() => openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4',
       messages: [
         { 
           role: 'system', 
           content: `You are an expert at speaker diarization for conversational audio. Your task is to identify different speakers in the transcript.
 
 Rules for speaker identification:
-1. Look for clear speaker transitions like: questions and answers, agreements/disagreements, interjections, addressing others, and topic shifts.
-2. Pay attention to speech patterns, filler words, and consistent speaking styles that may indicate the same speaker.
-3. Identify when someone refers to "you" or "we" or asks a question that another person answers.
-4. When a statement is followed by a response like "Yeah", "No", "Okay", "Thank you", or similar short responses, these likely indicate different speakers.
-5. Label speakers consistently as "Speaker 1", "Speaker 2", etc.
-
-Balanced approach:
-- Unlike most diarization systems, prefer slightly overestimating speakers rather than underestimating when analyzing conversations.
-- When in doubt about whether a segment represents a new speaker, consider the flow of conversation and context.
+1. Look for clear speaker transitions through:
+   - Question and answer patterns
+   - Agreements/disagreements
+   - Interjections and interruptions
+   - Direct addressing of others
+   - Topic shifts and turn-taking
+2. Pay attention to:
+   - Unique speech patterns and filler words per speaker
+   - Consistent speaking styles and vocabulary
+   - References to self ("I", "my") or others ("you", "they")
+   - Response patterns (e.g., "Yeah", "Okay", "Thank you")
+3. Consider conversation dynamics:
+   - When someone asks a question, the answer likely comes from a different speaker
+   - Side comments or interjections often indicate a different speaker
+   - Multiple people agreeing/disagreeing simultaneously
+4. Label speakers consistently as "Speaker 1", "Speaker 2", etc.
+5. For informal conversations:
+   - Track overlapping speech and interruptions
+   - Note when speakers finish each other's sentences
+   - Identify group dynamics (e.g., moderator vs participants)
 
 Output format:
 - Return a JSON object with fields 'segments' (array) and 'speakerCount' (number).
-- Each segment in the array must include: start (number), end (number), text (string), and speaker (string, e.g., "Speaker 1").
-- The segments array should match the input segments length exactly, with added speaker labels.
+- Each segment must include: start (number), end (number), text (string), and speaker (string).
+- Maintain exact input segment count, only adding speaker labels.
 - Example: { "segments": [{"start": 0, "end": 5, "text": "Hello", "speaker": "Speaker 1"}], "speakerCount": 1 }` 
         },
         { 
           role: 'user', 
           content: `Analyze this conversation transcript for different speakers and return a JSON response.
 
-This is a conversation between multiple people. Please identify speaker changes throughout the transcript.
+This is an informal conversation between multiple people. Please identify speaker changes by analyzing speech patterns, turn-taking, and conversation dynamics.
 
 Transcript with timestamps:
 ${segmentsText}
@@ -169,11 +247,11 @@ ${safeFullText}`
         },
       ],
       response_format: { type: 'json_object' },
-      temperature: 0.1,
+      temperature: 0.3,
     }))
   );
 
-  console.log('--- GPT-4o Diarization Response ---');
+  console.log('--- GPT-4 Diarization Response ---');
   const rawResponseContent = response.choices[0].message.content;
   console.log('Raw Response:', rawResponseContent);
 
