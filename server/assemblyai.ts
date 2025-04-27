@@ -1,10 +1,10 @@
-import AssemblyAI from 'assemblyai';
+import { AssemblyAI } from 'assemblyai';
 import fs from 'fs';
 import { StructuredTranscript, TranscriptSegment } from '@shared/schema';
 
 // Initialize the AssemblyAI client with your API key
 const client = new AssemblyAI({
-  apiKey: process.env.ASSEMBLYAI_API_KEY
+  apiKey: process.env.ASSEMBLYAI_API_KEY || ''
 });
 
 /**
@@ -71,7 +71,7 @@ export async function transcribeWithAssemblyAI(
     
     if (transcript.utterances && transcript.utterances.length > 0) {
       // Process utterances (speaker diarization results)
-      segments = transcript.utterances.map(utterance => ({
+      segments = transcript.utterances.map((utterance: any) => ({
         start: utterance.start / 1000, // Convert from ms to seconds
         end: utterance.end / 1000, // Convert from ms to seconds
         text: utterance.text,
@@ -142,7 +142,7 @@ export async function transcribeWithAssemblyAI(
     
     // Create structured transcript
     const speakerCount = transcript.utterances ? 
-      new Set(transcript.utterances.map(u => `Speaker ${u.speaker}`)).size : 
+      new Set(transcript.utterances.map((u: any) => `Speaker ${u.speaker}`)).size : 
       1;
     
     const structuredTranscript: StructuredTranscript = {
