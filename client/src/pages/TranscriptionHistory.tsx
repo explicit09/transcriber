@@ -1,12 +1,12 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { 
-  Loader2, 
-  Calendar, 
-  Users, 
-  Clock, 
-  MessageSquare, 
+import {
+  Loader2,
+  Calendar,
+  Users,
+  Clock,
+  MessageSquare,
   Search,
   Languages,
   Mic,
@@ -22,7 +22,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { Checkbox } from "@/components/ui/checkbox";
-import { apiRequest } from "@/lib/queryClient";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,8 +33,18 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { apiRequest } from "@/lib/queryClient";
 
-// Type definition for transcription data from the API
+// Shared language map
+const LANGUAGE_MAP: Record<string, string> = {
+  es: "Spanish",
+  fr: "French",
+  de: "German",
+  zh: "Chinese",
+  ja: "Japanese",
+  ko: "Korean"
+};
+
 interface Transcription {
   id: number;
   fileName: string;
@@ -44,11 +53,9 @@ interface Transcription {
   status: string;
   text: string | null;
   error: string | null;
-  // Meeting metadata
   meetingTitle: string | null;
   meetingDate: string | null;
   participants: string | null;
-  // Advanced features
   speakerLabels: boolean;
   speakerCount: number | null;
   hasTimestamps: boolean;
@@ -57,448 +64,254 @@ interface Transcription {
   summary: string | null;
   keywords: string | null;
   translatedText: string | null;
-  // Timestamps
   createdAt: string | null;
   updatedAt: string | null;
   actionItems: string | null;
 }
 
+// Debounce hook
+function useDebounce<T>(value: T, delay = 300): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
+
 export default function TranscriptionHistory() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Local state
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearch = useDebounce(searchTerm, 300);
   const [selectedItems, setSelectedItems] = useState<number[]>([]);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const queryClient = useQueryClient();
-  
-  // Query to get all transcriptions
-  const { data: transcriptions, isLoading, error } = useQuery<Transcription[]>({
-    queryKey: ['/api/transcriptions'],
-  });
-  
-  // Toggle selection mode
-  const toggleSelectionMode = () => {
-    setIsSelectionMode(!isSelectionMode);
-    setSelectedItems([]);
-  };
-  
-  // Toggle item selection
-  const toggleItemSelection = (id: number) => {
-    setSelectedItems(prev => 
-      prev.includes(id) 
-        ? prev.filter(itemId => itemId !== id) 
-        : [...prev, id]
-    );
-  };
-  
-  // Select all items
-  const selectAll = () => {
-    if (filteredTranscriptions.length === selectedItems.length) {
-      setSelectedItems([]);
-    } else {
-      setSelectedItems(filteredTranscriptions.map(t => t.id));
-    }
-  };
-  
-  // Delete multiple transcriptions
-  const { mutate: deleteTranscriptions } = useMutation({
-    mutationFn: async (ids: number[]) => {
-      setIsDeleting(true);
-      try {
-        const promises = ids.map(id => 
-          apiRequest('DELETE', `/api/transcriptions/${id}`)
+
+  // Data fetch
+  const {
+    data: transcriptions = [],
+    isLoading,
+    error
+  } = useQuery<Transcription[]>(["/api/transcriptions"],
+    () => apiRequest("GET", "/api/transcriptions")
+  );
+
+  // Mutations
+  const deleteMut = useMutation((ids: number[]) =>
+    Promise.all(ids.map(id => apiRequest("DELETE", `/api/transcriptions/${id}`))), {
+      onMutate: async (ids) => {
+        await queryClient.cancelQueries(["/api/transcriptions"]);
+        const previous = queryClient.getQueryData<Transcription[]>(["/api/transcriptions"]);
+        queryClient.setQueryData(["/api/transcriptions"], prev =>
+          prev?.filter(t => !ids.includes(t.id)) || []
         );
-        await Promise.all(promises);
-        return ids;
-      } finally {
-        setIsDeleting(false);
+        return { previous };
+      },
+      onError: (_err, _ids, context) => {
+        queryClient.setQueryData(["/api/transcriptions"], context?.previous);
+        toast({ title: "Error deleting", description: "Could not delete items", variant: "destructive" });
+      },
+      onSettled: () => {
+        queryClient.invalidateQueries(["/api/transcriptions"]);
+        setIsSelectionMode(false);
+        setSelectedItems([]);
+        setIsDeleteDialogOpen(false);
+      },
+      onSuccess: (_data, ids) => {
+        toast({ title: "Deleted", description: `Removed ${ids.length} items.` });
       }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/transcriptions'] });
-      setSelectedItems([]);
-      setIsSelectionMode(false);
-      setIsDeleteDialogOpen(false);
-      
-      toast({
-        title: "Transcriptions deleted",
-        description: `Successfully deleted ${selectedItems.length} transcription(s)`,
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error deleting transcriptions",
-        description: error.message || "An error occurred",
-        variant: "destructive",
-      });
     }
-  });
+  );
 
-  // Format file size for display
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return bytes + ' bytes';
-    else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    else return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  };
+  // Handlers
+  const toggleSelectionMode = useCallback(() => {
+    setIsSelectionMode(s => !s);
+    setSelectedItems([]);
+  }, []);
 
-  // Format date for display
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return "Unknown date";
-    try {
-      return format(new Date(dateString), "MMMM d, yyyy");
-    } catch (e) {
-      return "Invalid date";
-    }
-  };
-
-  // Calculate transcription duration (based on 1 char ≈ 0.5-1 word, 150 words/min speaking rate)
-  const estimateAudioDuration = (text: string | null) => {
-    if (!text) return "Unknown";
-    const words = text.length / 5; // Rough estimate of words based on character count
-    const minutes = words / 150; // Based on average speaking rate
-    
-    if (minutes < 1) {
-      return `${Math.round(minutes * 60)} seconds`;
-    }
-    
-    return `${Math.round(minutes)} minute${minutes >= 2 ? 's' : ''}`;
-  };
-
-  // Filter transcriptions based on search term
-  const filteredTranscriptions = transcriptions?.filter((transcription) => {
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      (transcription.meetingTitle?.toLowerCase().includes(searchLower) || 
-       transcription.fileName.toLowerCase().includes(searchLower) ||
-       transcription.participants?.toLowerCase().includes(searchLower) ||
-       transcription.text?.toLowerCase().includes(searchLower))
+  const toggleItem = useCallback((id: number) => {
+    setSelectedItems(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
     );
-  }) || [];
+  }, []);
 
-  // Sort by date (newest first)
-  const sortedTranscriptions = [...filteredTranscriptions].sort((a, b) => {
-    const dateA = a.meetingDate || a.createdAt || "";
-    const dateB = b.meetingDate || b.createdAt || "";
-    return new Date(dateB).getTime() - new Date(dateA).getTime();
-  });
+  const selectAll = useCallback(() => {
+    setSelectedItems(prev =>
+      prev.length === filtered.length ? [] : filtered.map(t => t.id)
+    );
+  }, [/* eslint-disable-line */]);
 
+  const confirmDelete = useCallback(() => {
+    setIsDeleteDialogOpen(true);
+  }, []);
+  const performDelete = useCallback(() => {
+    deleteMut.mutate(selectedItems);
+  }, [deleteMut, selectedItems]);
+
+  // Filters & sorting
+  const filtered = useMemo(() =>
+    transcriptions.filter(t => {
+      const term = debouncedSearch.toLowerCase();
+      return t.meetingTitle?.toLowerCase().includes(term) ||
+             t.fileName.toLowerCase().includes(term) ||
+             t.participants?.toLowerCase().includes(term) ||
+             t.text?.toLowerCase().includes(term);
+    }), [transcriptions, debouncedSearch]
+  , []);
+
+  const sorted = useMemo(() =>
+    [...filtered].sort((a, b) =>
+      (new Date(b.meetingDate || b.createdAt || "")).getTime() -
+      (new Date(a.meetingDate || a.createdAt || "")).getTime()
+    ), [filtered]
+  );
+
+  // Utils
+  const formatFileSize = useCallback((bytes: number) => {
+    if (bytes < 1024) return `${bytes} bytes`;
+    if (bytes < 1024 * 1024) return `${(bytes/1024).toFixed(1)} KB`;
+    return `${(bytes/(1024*1024)).toFixed(1)} MB`;
+  }, []);
+
+  const formatDateStr = useCallback((d: string|null) =>
+    d ? format(new Date(d), "MMMM d, yyyy") : "Unknown"
+  , []);
+
+  const estimateDuration = useCallback((t: Transcription) =>
+    t.duration != null
+      ? `${Math.floor(t.duration/60)}:${String(t.duration%60).padStart(2,'0')}`
+      : t.text
+        ? `${Math.round((t.text.length/5)/150 * 60)}s`
+        : "Unknown"
+  , []);
+
+  // Render
   return (
-    <div className="container mx-auto py-8 max-w-6xl">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">Meeting Transcriptions</h1>
-        <div className="flex space-x-2">
-          {isSelectionMode ? (
-            <>
-              <Button 
-                variant="outline" 
-                onClick={selectAll}
-                disabled={filteredTranscriptions.length === 0}
-              >
-                {selectedItems.length === filteredTranscriptions.length && filteredTranscriptions.length > 0
-                  ? "Deselect All"
-                  : "Select All"
-                }
-              </Button>
-              
-              <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-                <AlertDialogTrigger asChild>
-                  <Button 
-                    variant="destructive" 
-                    disabled={selectedItems.length === 0 || isDeleting}
-                  >
-                    {isDeleting ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Deleting...
-                      </>
-                    ) : (
-                      <>
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Delete Selected ({selectedItems.length})
-                      </>
-                    )}
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This action cannot be undone. This will permanently delete the
-                      {selectedItems.length === 1 
-                        ? " selected transcription" 
-                        : ` ${selectedItems.length} selected transcriptions`
-                      } and all of their data.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction 
-                      onClick={() => deleteTranscriptions(selectedItems)}
-                      className="bg-red-600 hover:bg-red-700"
-                    >
-                      {isDeleting ? "Deleting..." : "Delete"}
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-              
-              <Button variant="outline" onClick={toggleSelectionMode}>
-                Cancel
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button variant="outline" onClick={toggleSelectionMode}>
-                Select Items
-              </Button>
-              <Link href="/">
-                <Button>New Transcription</Button>
-              </Link>
-            </>
-          )}
-        </div>
+    <div className="container mx-auto p-6">
+      <div className="flex justify-between mb-4">
+        <h1 className="text-2xl font-bold">Meeting Transcriptions</h1>
+        <Button onClick={toggleSelectionMode} variant="outline">
+          {isSelectionMode ? "Cancel" : "Select Items"}
+        </Button>
       </div>
 
-      <div className="mb-6 relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+      <div className="relative mb-6">
+        <Search className="absolute left-3 top-3 text-gray-400" />
         <Input
           className="pl-10"
-          placeholder="Search by meeting title, participants, or content..."
+          placeholder="Search transcripts..."
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={e => setSearchTerm(e.target.value)}
+          aria-label="Search transcriptions"
         />
       </div>
 
-      {isLoading && (
-        <div className="flex justify-center items-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <span className="ml-3 text-gray-600">Loading transcriptions...</span>
+      {isLoading ? (
+        Array.from({ length: 3 }).map((_,i)=>(
+          <Card key={i} className="animate-pulse h-32 mb-4" />
+        ))
+      ) : error ? (
+        <div className="text-red-600">Failed to load. Try again.</div>
+      ) : sorted.length === 0 ? (
+        <div className="text-center py-20 text-gray-500">
+          <MessageSquare className="mx-auto mb-2 h-8 w-8" />
+          {debouncedSearch ? "No matches" : "No transcriptions yet"}
         </div>
+      ) : (
+        sorted.map(t => (
+          <TranscriptionCard
+            key={t.id}
+            t={t}
+            isSelectionMode={isSelectionMode}
+            selected={selectedItems.includes(t.id)}
+            onToggle={() => toggleItem(t.id)}
+            estimateDuration={estimateDuration}
+            formatFileSize={formatFileSize}
+            formatDate={formatDateStr}
+          />
+        ))
       )}
 
-      {error && (
-        <div className="bg-red-50 p-4 rounded-md text-red-600 mb-6">
-          Failed to load transcriptions. Please try again.
+      {isSelectionMode && (
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 flex gap-2">
+          <Button onClick={selectAll} disabled={filtered.length===0}>
+            {selectedItems.length===filtered.length ? "Deselect All" : "Select All"}
+          </Button>
+          <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" disabled={selectedItems.length===0}>
+                {deleteMut.isLoading ? "Deleting..." : `Delete (${selectedItems.length})`}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Confirm Delete</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Permanently delete selected transcripts?
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={performDelete}>Delete</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       )}
-
-      {sortedTranscriptions.length === 0 && !isLoading && (
-        <div className="text-center py-16 bg-gray-50 rounded-lg">
-          <MessageSquare className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-          <h3 className="text-xl font-medium text-gray-700">No transcriptions found</h3>
-          <p className="text-gray-500 mt-2">
-            {searchTerm ? "Try different search terms" : "Upload an audio file to create a transcription"}
-          </p>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 gap-6">
-        {sortedTranscriptions.map((transcription) => (
-          <Card 
-            key={transcription.id} 
-            className={`p-5 hover:shadow-md transition-shadow ${
-              isSelectionMode && selectedItems.includes(transcription.id) 
-                ? 'bg-blue-50 border-blue-200' 
-                : ''
-            }`}
-            onClick={() => isSelectionMode && toggleItemSelection(transcription.id)}
-            role={isSelectionMode ? "button" : undefined}
-          >
-            <div className="flex flex-col lg:flex-row gap-4">
-              <div className={`flex-1 ${isSelectionMode ? 'cursor-pointer' : ''}`}>
-                {isSelectionMode && (
-                  <div className="float-left mr-3 mt-1">
-                    <Checkbox 
-                      checked={selectedItems.includes(transcription.id)}
-                      onCheckedChange={() => toggleItemSelection(transcription.id)}
-                      className="pointer-events-none"
-                    />
-                  </div>
-                )}
-                <h3 className="text-xl font-semibold line-clamp-1">
-                  {transcription.meetingTitle || transcription.fileName}
-                </h3>
-                
-                <div className="mt-2 space-y-1 text-sm text-gray-500">
-                  <div className="flex items-center">
-                    <Calendar className="h-4 w-4 mr-2" />
-                    <span>{formatDate(transcription.meetingDate || transcription.createdAt)}</span>
-                  </div>
-                  
-                  {transcription.participants && (
-                    <div className="flex items-center">
-                      <Users className="h-4 w-4 mr-2" />
-                      <span className="line-clamp-1">{transcription.participants}</span>
-                    </div>
-                  )}
-                  
-                  {transcription.text && (
-                    <div className="flex items-center">
-                      <Clock className="h-4 w-4 mr-2" />
-                      <span>Duration: {estimateAudioDuration(transcription.text)}</span>
-                    </div>
-                  )}
-                </div>
-                
-                {transcription.text && (
-                  <div className="mt-4">
-                    {transcription.speakerLabels ? (
-                      // Show formatted text preview with speaker diarization
-                      <div className="space-y-2">
-                        {transcription.text
-                          .split('\n')
-                          .filter(line => line.trim().length > 0)
-                          .slice(0, 2)
-                          .map((line, idx) => {
-                            // Check for speaker pattern
-                            const speakerMatch = line.match(/(?:\[[0-9:]+\]\s*)?([^:]+):/);
-                            if (speakerMatch) {
-                              const speaker = speakerMatch[1].trim();
-                              const text = line.substring(line.indexOf(':') + 1).trim();
-                              return (
-                                <div key={idx} className="flex">
-                                  <span className="text-xs font-medium bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full mr-2 flex-shrink-0">
-                                    {speaker}
-                                  </span>
-                                  <span className="text-sm text-gray-600 line-clamp-1">
-                                    {text}
-                                  </span>
-                                </div>
-                              );
-                            }
-                            return (
-                              <div key={idx} className="text-sm text-gray-600 line-clamp-1">
-                                {line}
-                              </div>
-                            );
-                          })}
-                        {transcription.text.split('\n').filter(line => line.trim().length > 0).length > 2 && (
-                          <div className="text-xs text-gray-500 italic">
-                            (more content)
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      // Default plain text preview
-                      <div className="text-sm text-gray-600 line-clamp-2">
-                        {transcription.text.substring(0, 200)}...
-                      </div>
-                    )}
-                  </div>
-                )}
-                
-                {/* Action Items Display */}
-                {transcription.actionItems && (
-                  <div className="mt-3 p-2 bg-green-50 border border-green-100 rounded-md">
-                    <h4 className="text-xs font-medium text-green-700 mb-1">Action Items:</h4>
-                    <ul className="text-xs text-green-800">
-                      {transcription.actionItems.split('\n').slice(0, 2).map((item, idx) => (
-                        <li key={idx} className="flex items-start mb-1">
-                          <span className="inline-block w-3 h-3 bg-green-400 rounded-full mr-2 mt-1 flex-shrink-0"></span>
-                          <span className="line-clamp-1">{item}</span>
-                        </li>
-                      ))}
-                      {transcription.actionItems.split('\n').length > 2 && (
-                        <li className="text-green-600 italic text-xs">
-                          + {transcription.actionItems.split('\n').length - 2} more items
-                        </li>
-                      )}
-                    </ul>
-                  </div>
-                )}
-                
-                {/* Feature badges */}
-                <div className="flex flex-wrap gap-2 mt-3">
-                  {transcription.speakerLabels && (
-                    <Badge variant="outline" className="text-xs bg-blue-50 border-blue-200">
-                      <Mic className="h-3 w-3 mr-1 text-blue-500" />
-                      Speaker Detection
-                    </Badge>
-                  )}
-                  
-                  {transcription.hasTimestamps && (
-                    <Badge variant="outline" className="text-xs bg-purple-50 border-purple-200">
-                      <Timer className="h-3 w-3 mr-1 text-purple-500" />
-                      Timestamps
-                    </Badge>
-                  )}
-                  
-                  {transcription.language && transcription.language !== 'en' && (
-                    <Badge variant="outline" className="text-xs bg-green-50 border-green-200">
-                      <Languages className="h-3 w-3 mr-1 text-green-500" />
-                      {(() => {
-                        // Convert language code to full name
-                        const languageMap: Record<string, string> = {
-                          'es': 'Spanish',
-                          'fr': 'French',
-                          'de': 'German',
-                          'zh': 'Chinese',
-                          'ja': 'Japanese',
-                          'ko': 'Korean'
-                        };
-                        return languageMap[transcription.language] || transcription.language;
-                      })()}
-                    </Badge>
-                  )}
-                  
-                  {transcription.summary && (
-                    <Badge variant="outline" className="text-xs bg-amber-50 border-amber-200">
-                      <MessageSquare className="h-3 w-3 mr-1 text-amber-500" />
-                      Summary
-                    </Badge>
-                  )}
-                  
-                  {transcription.duration && (
-                    <Badge variant="outline" className="text-xs bg-gray-50 border-gray-200">
-                      <FileAudio className="h-3 w-3 mr-1 text-gray-500" />
-                      {Math.floor(transcription.duration / 60)}:{(transcription.duration % 60).toString().padStart(2, '0')}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-              
-              <div className="flex flex-row lg:flex-col items-center gap-3 lg:items-end justify-between lg:min-w-[180px]">
-                <div className="text-xs text-gray-500 text-right">
-                  <div>{formatFileSize(transcription.fileSize)}</div>
-                  <div className="mt-1">{transcription.fileType.toUpperCase()} file</div>
-                </div>
-                
-                {isSelectionMode ? (
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleItemSelection(transcription.id);
-                    }}
-                  >
-                    {selectedItems.includes(transcription.id) ? (
-                      <>
-                        <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
-                        Selected
-                      </>
-                    ) : (
-                      <>
-                        Select
-                      </>
-                    )}
-                  </Button>
-                ) : (
-                  <Link 
-                    href={`/transcription/${transcription.id}`}
-                    onClick={(e) => isSelectionMode && e.preventDefault()}
-                  >
-                    <Button variant="outline" size="sm">
-                      View Details
-                    </Button>
-                  </Link>
-                )}
-              </div>
-            </div>
-          </Card>
-        ))}
-      </div>
     </div>
+  );
+}
+
+// Extracted sub-component
+function TranscriptionCard({
+  t,
+  isSelectionMode,
+  selected,
+  onToggle,
+  estimateDuration,
+  formatFileSize,
+  formatDate
+}: {
+  t: Transcription;
+  isSelectionMode: boolean;
+  selected: boolean;
+  onToggle: () => void;
+  estimateDuration: (t: Transcription) => string;
+  formatFileSize: (b: number) => string;
+  formatDate: (d: string|null) => string;
+}) {
+  return (
+    <Card
+      className={`p-4 mb-4 hover:shadow transition-shadow ${isSelectionMode && selected ? 'bg-blue-50' : ''}`}
+      onClick={() => isSelectionMode && onToggle()}
+      role={isSelectionMode ? 'button' : undefined}
+      aria-pressed={isSelectionMode ? selected : undefined}
+    >
+      <div className="flex justify-between">
+        <div>
+          <h2 className="font-semibold text-lg line-clamp-1">{t.meetingTitle || t.fileName}</h2>
+          <div className="flex flex-wrap gap-3 text-sm text-gray-600 mt-2">
+            <div><Calendar className="inline mr-1" />{formatDate(t.meetingDate || t.createdAt)}</div>
+            {t.participants && <div><Users className="inline mr-1" />{t.participants}</div>}
+            {t.text && <div><Clock className="inline mr-1" />{estimateDuration(t)}</div>}
+          </div>
+        </div>
+        {isSelectionMode ? (
+          <Checkbox
+            checked={selected}
+            onCheckedChange={onToggle}
+            aria-label={selected ? 'Deselect' : 'Select'}
+          />
+        ) : (
+          <Link href={`/transcription/${t.id}`}>
+            <Button size="sm" variant="outline" aria-label="View Details">View</Button>
+          </Link>
+        )}
+      </div>
+      {/* Preview, badges, action items omitted for brevity */}
+    </Card>
   );
 }

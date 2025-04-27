@@ -1,27 +1,25 @@
-import { useState } from "react";
-import { useRoute, Link } from "wouter";
+import { useState, useCallback, useMemo } from "react";
+import { useRoute, useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { 
-  Loader2, 
-  ArrowLeft, 
-  Trash2, 
-  Clock, 
-  Calendar, 
-  Users, 
-  AlertTriangle, 
-  Languages, 
-  FileAudio, 
+import {
+  Loader2,
+  ArrowLeft,
+  Trash2,
+  Clock,
+  Calendar,
+  Users,
+  AlertTriangle,
+  Languages,
+  FileAudio,
   MessageSquareText,
-  Download,
   FileDown,
   CheckSquare
 } from "lucide-react";
-import { queryClient } from "@/lib/queryClient";
-import { apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
-import {
+import { 
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -34,23 +32,17 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import TranscriptEditor from "@/components/TranscriptEditor";
-import InteractiveTranscript from "@/components/InteractiveTranscript";
 import { StructuredTranscript } from "@shared/schema";
 
-// Type definition for transcription data from the API
 interface Transcription {
   id: number;
   fileName: string;
-  fileSize: number;
-  fileType: string;
   status: string;
   text: string | null;
   error: string | null;
-  // Meeting metadata
   meetingTitle: string | null;
   meetingDate: string | null;
   participants: string | null;
-  // Advanced features
   speakerLabels: boolean;
   speakerCount: number | null;
   hasTimestamps: boolean;
@@ -59,467 +51,267 @@ interface Transcription {
   summary: string | null;
   actionItems: string | null;
   keywords: string | null;
-  translatedText: string | null;
-  // Timestamps
   createdAt: string | null;
   updatedAt: string | null;
-  // Add structured transcript object
-  structuredTranscript: StructuredTranscript | null; 
+  structuredTranscript: StructuredTranscript | null;
 }
 
 export default function TranscriptionDetail() {
   const [, params] = useRoute("/transcription/:id");
-  const id = params?.id ? parseInt(params.id) : undefined;
+  const id = params?.id ? parseInt(params.id, 10) : undefined;
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<string>("view");
-  
-  // Query to get transcription data
-  const { 
-    data: transcription, 
-    isLoading,
-    error
-  } = useQuery<Transcription>({
-    queryKey: [`/api/transcriptions/${id}`],
+
+  // Fetch transcription
+  const { data: transcription, isLoading, error } = useQuery<Transcription>({
+    queryKey: ["/api/transcriptions", id],
+    queryFn: () => apiRequest("GET", `/api/transcriptions/${id}`),
     enabled: !!id,
   });
-  
-  // Delete transcription mutation
-  const { mutate: deleteTranscription, isPending: isDeleting } = useMutation({
-    mutationFn: async () => {
-      if (!id) return;
-      await apiRequest("DELETE", `/api/transcriptions/${id}`);
-    },
-    onSuccess: () => {
-      // Invalidate transcriptions list query to update the UI
-      queryClient.invalidateQueries({ queryKey: ['/api/transcriptions'] });
-      
-      toast({
-        title: "Transcription deleted",
-        description: "The transcription has been permanently deleted.",
-        variant: "default",
-      });
-      
-      // Redirect to history page
-      window.location.href = "/history";
-    },
-    onError: (error) => {
-      toast({
-        title: "Failed to delete",
-        description: "There was an error deleting the transcription. Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
-  
-  // Generate summary mutation
-  const { mutate: generateSummary, isPending: isGeneratingSummary } = useMutation({
-    mutationFn: async () => {
-      if (!id) return;
-      return await apiRequest("POST", `/api/transcriptions/${id}/summary`);
-    },
-    onSuccess: () => {
-      toast({
-        title: "Summary Generated",
-        description: "The summary has been successfully generated.",
-        variant: "default",
-      });
-      refreshTranscription();
-    },
-    onError: (error) => {
-      toast({
-        title: "Failed to Generate Summary",
-        description: "There was an error generating the summary. Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
-  
-  // Function to refresh transcription data
-  const refreshTranscription = () => {
-    queryClient.invalidateQueries({ queryKey: [`/api/transcriptions/${id}`] });
-  };
-  
-  // Format date for display
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return "Unknown date";
-    try {
-      return format(new Date(dateString), "MMMM d, yyyy 'at' h:mm a");
-    } catch (e) {
-      return "Invalid date";
-    }
-  };
-  
-  // Format file size for display
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return bytes + ' bytes';
-    else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    else return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  };
 
-  // Calculate duration display
-  const formatDuration = (seconds: number | null) => {
-    if (!seconds) return "Unknown duration";
-    
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    
-    let result = "";
-    if (hours > 0) {
-      result += `${hours} hour${hours > 1 ? "s" : ""} `;
+  // Delete mutation
+  const { mutate: deleteTranscription, isLoading: isDeleting } = useMutation({
+    mutationFn: () => apiRequest("DELETE", `/api/transcriptions/${id}`),
+    onSuccess: () => {
+      toast({ title: "Deleted", description: "Transcription removed.", variant: "default" });
+      setLocation("/history");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries(["/api/transcriptions"]);
     }
-    if (minutes > 0 || hours > 0) {
-      result += `${minutes} minute${minutes !== 1 ? "s" : ""} `;
-    }
-    if (secs > 0 || (hours === 0 && minutes === 0)) {
-      result += `${secs} second${secs !== 1 ? "s" : ""}`;
-    }
-    
-    return result.trim();
-  };
+  });
 
-  // Download transcript as PDF
-  const downloadPDF = async () => {
+  // Summary mutation
+  const { mutate: generateSummary, isLoading: isGeneratingSummary } = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/transcriptions/${id}/summary`),
+    onSuccess: () => toast({ title: "Summary ready", description: "Fetched summary.", variant: "default" }),
+    onSettled: () => queryClient.invalidateQueries(["/api/transcriptions", id])
+  });
+
+  // Callback handlers
+  const handleDelete = useCallback(() => deleteTranscription(), [deleteTranscription]);
+  const handleGenerateSummary = useCallback(() => generateSummary(), [generateSummary]);
+  const handleDownloadPDF = useCallback(async () => {
     if (!id) return;
-    
     try {
-      const response = await apiRequest("GET", `/api/transcriptions/${id}/pdf`, null, {
-        responseType: 'blob'
-      });
-      
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const resp = await apiRequest("GET", `/api/transcriptions/${id}/pdf`, null, { responseType: 'blob' });
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `${transcription?.meetingTitle || 'transcript'}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
-      window.URL.revokeObjectURL(url);
-      
-      toast({
-        title: "PDF Downloaded",
-        description: "The transcript PDF has been downloaded successfully.",
-      });
-    } catch (error) {
-      toast({
-        title: "Download Failed",
-        description: "There was an error generating the PDF. Please try again.",
-        variant: "destructive",
-      });
+      URL.revokeObjectURL(url);
+      toast({ title: "Downloaded", description: "PDF saved." });
+    } catch {
+      toast({ title: "Error", description: "Failed to download PDF.", variant: "destructive" });
     }
-  };
+  }, [id, transcription, toast]);
 
-  // If loading
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh]">
-        <Loader2 className="h-8 w-8 text-primary animate-spin mb-4" />
-        <p className="text-gray-500">Loading transcription...</p>
-      </div>
-    );
-  }
+  // Memoized arrays
+  const actionItems = useMemo(() => 
+    transcription?.actionItems?.split('\n').filter(Boolean) ?? [],
+    [transcription?.actionItems]
+  );
+  const keywords = useMemo(() => 
+    transcription?.keywords?.split(',').map(k => k.trim()) ?? [],
+    [transcription?.keywords]
+  );
 
-  // If error
-  if (error || !transcription) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh] p-6">
-        <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
-        <h2 className="text-xl font-bold text-gray-900 mb-2">Transcription Not Found</h2>
-        <p className="text-gray-500 mb-6 text-center">
-          The transcription you're looking for doesn't exist or couldn't be loaded.
-        </p>
-        <Link href="/history">
-          <Button variant="default">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to History
-          </Button>
-        </Link>
-      </div>
-    );
-  }
+  // Format helpers
+  const formatDate = useCallback((dateStr: string | null) => 
+    dateStr ? format(new Date(dateStr), "MMMM d, yyyy 'at' h:mm a") : "Unknown",
+    []
+  );
+  const formatDuration = useCallback((sec: number | null) => {
+    if (!sec) return "Unknown";
+    const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = Math.floor(sec%60);
+    return `${h? h+'h ':''}${m? m+'m ':''}${s}s`;
+  }, []);
+
+  // Early returns
+  if (isLoading) return <Loading />;
+  if (error || !transcription) return <NotFound />;
 
   return (
     <div className="space-y-6">
-      {/* Header with navigation */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <Link href="/history">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back
-            </Button>
-          </Link>
-        </div>
-        
-        {/* Delete button and dialog */}
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="outline" size="sm" className="text-red-500 border-red-200 hover:bg-red-50 hover:text-red-600">
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This will permanently delete the transcription. This action cannot be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction 
-                className="bg-red-500 hover:bg-red-600" 
-                onClick={() => deleteTranscription()}
-                disabled={isDeleting}
-              >
-                {isDeleting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Deleting...
-                  </>
-                ) : (
-                  <>Delete</>
-                )}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </div>
-      
-      {/* Transcription header */}
-      <div className="bg-white rounded-lg border p-4">
-        <h1 className="text-2xl font-bold text-gray-900 mb-4">
-          {transcription.meetingTitle || transcription.fileName}
-        </h1>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
-          <div className="flex items-center text-gray-500">
-            <FileAudio className="h-4 w-4 mr-2 text-gray-400" />
-            <span>{transcription.fileName}</span>
-          </div>
-          
-          {transcription.meetingDate && (
-            <div className="flex items-center text-gray-500">
-              <Calendar className="h-4 w-4 mr-2 text-gray-400" />
-              <span>{new Date(transcription.meetingDate).toLocaleDateString()}</span>
-            </div>
-          )}
-          
-          {transcription.participants && (
-            <div className="flex items-center text-gray-500">
-              <Users className="h-4 w-4 mr-2 text-gray-400" />
-              <span>{transcription.participants}</span>
-            </div>
-          )}
-          
-          {transcription.duration !== null && (
-            <div className="flex items-center text-gray-500">
-              <Clock className="h-4 w-4 mr-2 text-gray-400" />
-              <span>{formatDuration(transcription.duration)}</span>
-            </div>
-          )}
-        </div>
-        
-        {/* Creation/update timestamps */}
-        <div className="mt-4 pt-3 border-t border-gray-100 text-xs text-gray-500 flex flex-wrap gap-x-6 gap-y-1">
-          {transcription.createdAt && (
-            <div>
-              <span className="font-medium">Uploaded:</span> {formatDate(transcription.createdAt)}
-            </div>
-          )}
-          
-          {transcription.updatedAt && transcription.updatedAt !== transcription.createdAt && (
-            <div>
-              <span className="font-medium">Last modified:</span> {formatDate(transcription.updatedAt)}
-            </div>
-          )}
-        </div>
-      </div>
-      
-      {/* Action buttons */}
-      <div className="flex flex-wrap gap-2">
-        <Button variant="outline" onClick={downloadPDF}>
-          <FileDown className="mr-2 h-4 w-4" />
-          Download PDF
-        </Button>
-        
-        {!transcription.summary && (
-          <Button 
-            variant="secondary"
-            onClick={() => generateSummary()}
-            disabled={isGeneratingSummary}
-          >
-            {isGeneratingSummary ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Generating...
-              </>
-            ) : (
-              <>
-                <MessageSquareText className="mr-2 h-4 w-4" />
-                Generate Summary
-              </>
-            )}
+      <Header
+        onBack={() => setLocation('/history')}
+        onDelete={handleDelete}
+        deleting={isDeleting}
+      />
+      <Metadata transcription={transcription} formatDate={formatDate} formatDuration={formatDuration} />
+      <Actions
+        onDownload={handleDownloadPDF}
+        onGenerateSummary={handleGenerateSummary}
+        transcription={transcription}
+        generating={isGeneratingSummary}
+      />
+      <Tabs defaultValue="view" onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="view">View</TabsTrigger>
+          <TabsTrigger value="edit">Edit</TabsTrigger>
+          {transcription.summary && <TabsTrigger value="summary">Summary</TabsTrigger>}
+        </TabsList>
+
+        <TabsContent value="view">
+          <TranscriptView transcription={transcription} />
+        </TabsContent>
+        <TabsContent value="edit">
+          <TranscriptEditor
+            transcriptionId={transcription.id}
+            originalText={transcription.text || ''}
+            fileName={transcription.fileName}
+            hasTimestamps={transcription.hasTimestamps}
+            speakerLabels={transcription.speakerLabels}
+            structuredTranscript={transcription.structuredTranscript ?? undefined}
+            duration={transcription.duration}
+          />
+        </TabsContent>
+        {transcription.summary && (
+          <TabsContent value="summary">
+            <SummaryTab summary={transcription.summary} keywords={keywords} actionItems={actionItems} />
+          </TabsContent>
+        )}
+      </Tabs>
+    </div>
+  );
+}
+
+// --- Sub-components below ---
+
+function Loading() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[50vh]">
+      <Loader2 className="h-8 w-8 animate-spin" />
+      <p>Loading transcription...</p>
+    </div>
+  );
+}
+
+function NotFound() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[50vh] p-6">
+      <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
+      <h2 className="text-xl font-bold mb-2">Not Found</h2>
+      <p className="text-gray-500 text-center">Couldn't load transcript.</p>
+      <Link href="/history">
+        <Button size="sm">Back to History</Button>
+      </Link>
+    </div>
+  );
+}
+
+function Header({ onBack, onDelete, deleting }: { onBack: () => void; onDelete: () => void; deleting: boolean }) {
+  return (
+    <div className="flex justify-between items-center">
+      <Button variant="ghost" size="sm" onClick={onBack} aria-label="Back">
+        <ArrowLeft /> Back
+      </Button>
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button variant="outline" size="sm" onClick={onDelete} aria-label="Delete" disabled={deleting}>
+            <Trash2 /> {deleting ? 'Deleting...' : 'Delete'}
           </Button>
-        )}
-        
-        {transcription.language && (
-          <div className="flex items-center space-x-1 border px-3 py-1.5 rounded-md text-sm text-gray-600">
-            <Languages className="h-4 w-4 text-gray-500" />
-            <span>{transcription.language}</span>
-          </div>
-        )}
-        
-        {transcription.speakerLabels && (
-          <div className="flex items-center space-x-1 border px-3 py-1.5 rounded-md text-sm text-gray-600">
-            <Users className="h-4 w-4 text-gray-500" />
-            <span>Speaker Detection</span>
-            {transcription.speakerCount && (
-              <span className="ml-1 bg-gray-100 px-1.5 py-0.5 rounded-full text-xs">
-                {transcription.speakerCount}
-              </span>
-            )}
-          </div>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Delete</AlertDialogTitle>
+            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={onDelete}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function Metadata({ transcription, formatDate, formatDuration }: { transcription: Transcription; formatDate: (d: string|null)=>string; formatDuration: (s: number|null)=>string }) {
+  return (
+    <div className="bg-white rounded-lg border p-4">
+      <h1 className="text-2xl font-bold mb-4">{transcription.meetingTitle || transcription.fileName}</h1>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-sm text-gray-600">
+        <div><FileAudio className="inline-block mr-2"/>{transcription.fileName}</div>
+        <div><Calendar className="inline-block mr-2"/>{transcription.meetingDate ? formatDate(transcription.meetingDate) : 'Unknown'}</div>
+        {transcription.participants && <div><Users className="inline-block mr-2"/>{transcription.participants}</div>}
+        <div><Clock className="inline-block mr-2"/>{formatDuration(transcription.duration)}</div>
+      </div>
+      <div className="mt-4 text-xs text-gray-500">
+        <div>Uploaded: {transcription.createdAt ? formatDate(transcription.createdAt) : 'Unknown'}</div>
+        {transcription.updatedAt && transcription.updatedAt !== transcription.createdAt && (
+          <div>Modified: {formatDate(transcription.updatedAt)}</div>
         )}
       </div>
-      
-      {/* Transcript content */}
-      {transcription.text && (
-        <Tabs defaultValue="view" className="space-y-4" onValueChange={(value) => setActiveTab(value)}>
-          <TabsList>
-            <TabsTrigger value="view">View</TabsTrigger>
-            <TabsTrigger value="edit">Edit</TabsTrigger>
-            {transcription.summary && (
-              <TabsTrigger value="summary">Summary</TabsTrigger>
-            )}
-          </TabsList>
-          
-          <TabsContent value="view" className="prose max-w-none">
-            {transcription.text ? (
-              <div>
-                {transcription.hasTimestamps || transcription.speakerLabels ? (
-                  // Show with enhanced formatting for timestamped/speaker content
-                  <div className="space-y-3">
-                    {transcription.text.split('\n').map((line, index) => {
-                      // Check if line contains timestamp pattern [00:00]
-                      const hasTimestamp = line.match(/\[\d+:\d+\]/);
-                      // Check if line contains speaker pattern
-                      const hasSpeaker = line.match(/(?:\[\d+:\d+\]\s*([^:]+):|([^[]+)\s*\[\d+:\d+\]:)/);
-                      
-                      if (hasTimestamp) {
-                        // Extract the timestamp and speaker
-                        const timestampMatch = line.match(/\[\d+:\d+\]/);
-                        const timestamp = timestampMatch ? timestampMatch[0] : '';
-                        
-                        if (hasSpeaker) {
-                          // If we have a speaker format like "[00:00] Speaker 1: Text"
-                          const speakerEndIndex = line.indexOf(':', timestamp ? line.indexOf(timestamp) + timestamp.length : 0);
-                          
-                          if (speakerEndIndex > 0) {
-                            const speaker = line.substring(
-                              timestamp.length, 
-                              speakerEndIndex
-                            ).trim();
-                            const text = line.substring(speakerEndIndex + 1).trim();
-                            
-                            return (
-                              <div key={index} className="pb-3 border-b last:border-b-0">
-                                <div className="flex flex-wrap items-baseline gap-2 mb-1">
-                                  <span className="text-xs font-semibold text-gray-500">{timestamp}</span>
-                                  <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
-                                    {speaker}
-                                  </span>
-                                </div>
-                                <p className="text-gray-800 ml-12">{text}</p>
-                              </div>
-                            );
-                          }
-                        }
-                        
-                        // If no clear speaker but has timestamp
-                        return (
-                          <div key={index} className="pb-2">
-                            <span className="text-xs font-semibold text-gray-500 mr-2">{timestamp}</span>
-                            <span>{line.replace(timestamp, '').trim()}</span>
-                          </div>
-                        );
-                      }
-                      
-                      // Regular text line
-                      return <p key={index} className="text-gray-800">{line}</p>;
-                    })}
-                  </div>
-                ) : (
-                  // Regular text with proper line breaks
-                  <div className="whitespace-pre-wrap">
-                    {transcription.text}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-center py-12 bg-gray-50 rounded-md">
-                <MessageSquareText className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500">No transcript content available</p>
-              </div>
-            )}
-          </TabsContent>
-          
-          <TabsContent value="edit">
-            <TranscriptEditor 
-              transcriptionId={transcription.id}
-              originalText={transcription.text || ''}
-              fileName={transcription.fileName}
-              hasTimestamps={transcription.hasTimestamps}
-              speakerLabels={transcription.speakerLabels}
-              structuredTranscript={transcription.structuredTranscript || undefined}
-              duration={transcription.duration}
-            />
-          </TabsContent>
-          
-          {transcription.summary && (
-            <TabsContent value="summary">
-              <div className="space-y-6">
-                <div className="bg-white border rounded-md p-5">
-                  <h3 className="text-lg font-medium mb-3">Summary</h3>
-                  <p className="whitespace-pre-line">{transcription.summary}</p>
-                </div>
-                
-                {transcription.keywords && (
-                  <div className="bg-white border rounded-md p-5">
-                    <h3 className="text-lg font-medium mb-3">Keywords</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {transcription.keywords.split(',').map((keyword, index) => (
-                        <span 
-                          key={index}
-                          className="bg-blue-50 text-blue-700 px-2 py-1 rounded-md text-sm"
-                        >
-                          {keyword.trim()}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                
-                {transcription.actionItems && (
-                  <div className="bg-white border rounded-md p-5">
-                    <h3 className="text-lg font-medium mb-3">Action Items</h3>
-                    <ul className="space-y-2">
-                      {transcription.actionItems.split('\n').filter(Boolean).map((item, index) => (
-                        <li key={index} className="flex items-start">
-                          <CheckSquare className="h-5 w-5 text-green-500 mr-2 mt-0.5" />
-                          <span>{item.trim()}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </TabsContent>
-          )}
-        </Tabs>
+    </div>
+  );
+}
+
+function Actions({ onDownload, onGenerateSummary, transcription, generating }: { onDownload: ()=>void; onGenerateSummary: ()=>void; transcription: Transcription; generating: boolean }) {
+  return (
+    <div className="flex gap-2">
+      <Button onClick={onDownload} variant="outline" aria-label="Download PDF"><FileDown /> Download PDF</Button>
+      {!transcription.summary && (
+        <Button onClick={onGenerateSummary} disabled={generating} aria-label="Generate Summary">
+          {generating ? <Loader2 className="animate-spin"/> : <MessageSquareText />} Generate Summary
+        </Button>
       )}
+      {transcription.language && <span className="badge"><Languages /> {transcription.language}</span>}
+      {transcription.speakerLabels && (
+        <span className="badge"><Users /> Speakers: {transcription.speakerCount}</span>
+      )}
+    </div>
+  );
+}
+
+function TranscriptView({ transcription }: { transcription: Transcription }) {
+  const lines = transcription.text?.split('\n') ?? [];
+  if (!lines.length) return (
+    <div className="text-center py-12 bg-gray-50 rounded-md">
+      <MessageSquareText className="h-12 w-12 text-gray-300 mb-3" />
+      <p>No transcript available</p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-3">
+      {lines.map((line, idx) => {
+        const tsMatch = line.match(/\[\d+:\d+\]/);
+        if (tsMatch) {
+          const ts = tsMatch[0];
+          const rest = line.replace(ts, '').trim();
+          const speakerMatch = rest.match(/^([^:]+):\s*(.*)$/);
+          if (speakerMatch) {
+            const [, sp, txt] = speakerMatch;
+            return (
+              <div key={idx} className="pb-3 border-b last:border-b-0">
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <span>{ts}</span>
+                  <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full">{sp}</span>
+                </div>
+                <p className="ml-12 text-gray-800">{txt}</p>
+              </div>
+            );
+          }
+          return <p key={idx}><span className="text-xs text-gray-500">{ts}</span> {rest}</p>;
+        }
+        return <p key={idx}>{line}</p>;
+      })}
+    </div>
+  );
+}
+
+function SummaryTab({ summary, keywords, actionItems }: { summary: string; keywords: string[]; actionItems: string[] }) {
+  return (
+    <div className="space-y-6">
+      <div className="p-5 bg-white rounded-md border"><h3 className="text-lg mb-3">Summary</h3><p>{summary}</p></div>
+      {keywords.length > 0 && <div className="p-5 bg-white rounded-md border"><h3 className="text-lg mb-3">Keywords</h3><div className="flex flex-wrap gap-2">{keywords.map((k,i)=><span key={i} className="badge">{k}</span>)}</div></div>}
+      {actionItems.length > 0 && <div className="p-5 bg-white rounded-md border"><h3 className="text-lg mb-3">Action Items</h3><ul className="space-y-2">{actionItems.map((ai,i)=><li key={i} className="flex items-start"><CheckSquare className="mr-2"/>{ai}</li>)}</ul></div>}
     </div>
   );
 }
