@@ -329,6 +329,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get latest transcription
+  app.get('/api/transcriptions/latest', async (_req: Request, res: Response) => {
+    try {
+      const transcriptions = await storage.listTranscriptions();
+      
+      if (!transcriptions || transcriptions.length === 0) {
+        return res.status(404).json({ message: "No transcriptions found" });
+      }
+      
+      // Sort by creation date, newest first
+      const sorted = transcriptions.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      
+      // Get the latest transcription ID
+      const latestId = sorted[0].id;
+      
+      // Redirect to the specific transcription endpoint
+      return res.redirect(`/api/transcriptions/${latestId}`);
+    } catch (error) {
+      console.error('Error fetching latest transcription:', error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Get transcription status
   app.get('/api/transcriptions/:id', async (req: Request, res: Response) => {
     try {

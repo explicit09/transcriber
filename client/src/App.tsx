@@ -19,6 +19,57 @@ function Router() {
     return null; // Return null as this component handles redirection
   };
 
+  // Component to fetch the latest transcription and redirect to it
+  const LatestTranscription = () => {
+    const [, setLocation] = useLocation();
+    const [isLoading, setIsLoading] = React.useState(true);
+    
+    React.useEffect(() => {
+      const fetchLatest = async () => {
+        try {
+          const response = await fetch('/api/transcriptions');
+          if (!response.ok) throw new Error('Failed to fetch transcriptions');
+          const data = await response.json();
+          
+          if (data && data.length > 0) {
+            // Sort by creation date, newest first
+            const sorted = [...data].sort((a, b) => 
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            );
+            
+            // Redirect to the latest transcription
+            if (sorted.length > 0) {
+              setLocation(`/transcription/${sorted[0].id}`);
+            } else {
+              // No transcriptions found, redirect to history page
+              setLocation('/history');
+            }
+          } else {
+            // No transcriptions found, redirect to history page
+            setLocation('/history');
+          }
+        } catch (error) {
+          console.error("Error fetching latest transcription:", error);
+          setLocation('/history');
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      
+      fetchLatest();
+    }, [setLocation]);
+    
+    if (isLoading) {
+      return (
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+        </div>
+      );
+    }
+    
+    return null;
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Navbar />
@@ -27,6 +78,7 @@ function Router() {
           <Route path="/" component={RedirectToHome} />
           <Route path="/home" component={Home} />
           <Route path="/history" component={TranscriptionHistory} />
+          <Route path="/transcription/latest" component={LatestTranscription} />
           <Route path="/transcription/:id" component={TranscriptionDetail} />
           <Route component={NotFound} />
         </Switch>

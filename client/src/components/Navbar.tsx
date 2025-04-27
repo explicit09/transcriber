@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Headphones, History, FileText } from "lucide-react";
+import { Headphones, History, FileText, FileAudio } from "lucide-react";
 import learnXLogo from "../assets/learn-x-logo.png";
 import { Button } from "@/components/ui/button";
 
