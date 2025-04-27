@@ -141,6 +141,10 @@ export default function TranscriptionDetail() {
     const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = Math.floor(sec%60);
     return `${h? h+'h ':''}${m? m+'m ':''}${s}s`;
   }, []);
+  const formatTime = useCallback((sec: number) => {
+    const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = Math.floor(sec%60);
+    return `${h? h+':':''}${m? m+':':''}${s}`;
+  }, []);
 
   // Early returns
   if (isLoading) return <Loading />;
@@ -168,7 +172,7 @@ export default function TranscriptionDetail() {
         </TabsList>
 
         <TabsContent value="view">
-          <TranscriptView transcription={transcription} />
+          <TranscriptView transcription={transcription} formatTime={formatTime} />
         </TabsContent>
         <TabsContent value="edit">
           <TranscriptEditor
@@ -279,8 +283,32 @@ function Actions({ onDownload, onGenerateSummary, transcription, generating }: {
   );
 }
 
-function TranscriptView({ transcription }: { transcription: Transcription }) {
-  const lines = transcription.text?.split('\n') ?? [];
+function TranscriptView({ transcription, formatTime }: { transcription: Transcription; formatTime: (s: number)=>string }) {
+  // Display structured transcript segments if available
+  if (transcription.structuredTranscript && transcription.structuredTranscript.segments.length) {
+    return (
+      <div className="space-y-3">
+        {transcription.structuredTranscript.segments.map((segment, idx) => (
+          <div key={idx} className="pb-3 border-b last:border-b-0">
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              {/* Ensure start is a number before formatting */} 
+              {transcription.hasTimestamps && typeof segment.start === 'number' && <span>{formatTime(segment.start)}</span>}
+              {transcription.speakerLabels && segment.speaker && (
+                <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full">
+                  {segment.speaker}
+                </span>
+              )}
+            </div>
+            {/* Add margin only if there's timestamp/speaker info */} 
+            <p className={`${(transcription.hasTimestamps && typeof segment.start === 'number') || (transcription.speakerLabels && segment.speaker) ? 'ml-12' : ''} text-gray-800`}>{segment.text}</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // Fallback: Display plain text lines, filtering empty ones
+  const lines = transcription.text?.split('\n').filter(line => line.trim() !== '') ?? [];
   if (!lines.length) return (
     <div className="text-center py-12 bg-gray-50 rounded-md">
       <MessageSquareText className="h-12 w-12 text-gray-300 mb-3" />

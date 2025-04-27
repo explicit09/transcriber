@@ -84,15 +84,30 @@ export async function transcribeAudioWithFeatures(
     };
   }
 
-  const { text, duration, language } = await transcribeAudio(audioFilePath);
+  // Call Whisper API directly to get segments
+  const streamFactory = () => fs.createReadStream(audioFilePath);
+  const transcription = await limiter.schedule(() =>
+    withRetry(() => openai.audio.transcriptions.create({
+      file: streamFactory(),
+      model: 'whisper-1',
+      response_format: 'verbose_json',
+      timestamp_granularities: ['segment'],
+    }))
+  );
 
-  const segments: TranscriptSegment[] = text && Array.isArray((text as any).segments)
-    ? (text as any).segments.map((s: any) => ({ start: s.start, end: s.end, text: s.text, speaker: undefined }))
+  const text = transcription.text;
+  const duration = transcription.duration;
+  const language = transcription.language;
+
+  // Map the raw Whisper segments to our TranscriptSegment structure
+  let segments: TranscriptSegment[] = transcription.segments
+    ? transcription.segments.map((s: any) => ({ start: s.start, end: s.end, text: s.text, speaker: undefined }))
     : [];
 
   let speakerCount: number | undefined;
 
   if (options.enableSpeakerDiarization && segments.length) {
+    // Pass the original segments and the full text to the diarization process
     const { segments: diarizedSegments, speakerCount: count } = await processSpeakerDiarization(segments, text);
     speakerCount = count;
     segments.length = 0;

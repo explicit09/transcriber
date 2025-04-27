@@ -123,13 +123,12 @@ export default function TranscriptionHistory() {
       queryClient.invalidateQueries({ queryKey: ["/api/transcriptions"] });
       setIsSelectionMode(false);
       setSelectedItems([]);
-        setIsDeleteDialogOpen(false);
-      },
-      onSuccess: (_data, ids) => {
-        toast({ title: "Deleted", description: `Removed ${ids.length} items.` });
-      }
+      setIsDeleteDialogOpen(false);
+    },
+    onSuccess: (_data, ids) => {
+      toast({ title: "Deleted", description: `Removed ${ids.length} items.` });
     }
-  );
+  });
 
   // Handlers
   const toggleSelectionMode = useCallback(() => {
@@ -299,8 +298,9 @@ function TranscriptionCard({
       onClick={() => isSelectionMode && onToggle()}
       role={isSelectionMode ? 'button' : undefined}
       aria-pressed={isSelectionMode ? selected : undefined}
+      aria-label={`Transcription: ${t.meetingTitle || t.fileName}`}
     >
-      <div className="flex justify-between">
+      <div className="flex justify-between items-start">
         <div>
           <h2 className="font-semibold text-lg line-clamp-1">{t.meetingTitle || t.fileName}</h2>
           <div className="flex flex-wrap gap-3 text-sm text-gray-600 mt-2">
@@ -321,7 +321,28 @@ function TranscriptionCard({
           </Link>
         )}
       </div>
-      {/* Preview, badges, action items omitted for brevity */}
+      <div className="flex flex-wrap gap-2 mt-3 text-xs">
+        {t.summary && (
+          <Badge variant="secondary" className="flex items-center gap-1">
+            <MessageSquare className="h-3 w-3" /> Summary Available
+          </Badge>
+        )}
+        {t.speakerLabels && t.speakerCount && t.speakerCount > 1 && (
+          <Badge variant="secondary" className="flex items-center gap-1">
+            <Users className="h-3 w-3" /> {t.speakerCount} Speakers
+          </Badge>
+        )}
+        {t.language && (
+          <Badge variant="secondary" className="flex items-center gap-1">
+            <Languages className="h-3 w-3" /> {LANGUAGE_MAP[t.language] || t.language}
+          </Badge>
+        )}
+      </div>
+      {t.summary && (
+        <p className="text-sm text-gray-600 mt-2 line-clamp-2">
+          {t.summary}
+        </p>
+      )}
     </Card>
   );
 }
