@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 export default function Navbar() {
   return (
     <header className="bg-gradient-to-r from-slate-900 to-slate-800 shadow-lg">
-      <div className="container mx-auto py-4 sm:py-6 md:py-8 lg:py-10 px-4 flex items-center justify-between">
+      <div className="container mx-auto py-0 px-4 flex items-center justify-between">
         <div className="flex items-center">
           <Link href="/">
             <div className="flex items-center group cursor-pointer">
@@ -25,22 +25,22 @@ export default function Navbar() {
           </Link>
         </div>
         
-        <nav className="flex items-center space-x-2 md:space-x-4">
+        <nav className="flex items-center space-x-2 md:space-x-4 my-2">
           <Link href="/">
-            <Button variant="ghost" className="text-white hover:text-blue-400 hover:bg-slate-800/50 gap-2 text-base sm:text-lg md:text-xl p-4 sm:p-5 md:p-6 lg:p-7">
-              <Headphones className="h-4 sm:h-5 md:h-6 w-4 sm:w-5 md:w-6" />
+            <Button variant="ghost" className="text-white hover:text-blue-400 hover:bg-slate-800/50 gap-2 text-base sm:text-lg md:text-xl p-2">
+              <Headphones className="h-4 sm:h-5 w-4 sm:w-5" />
               <span className="hidden sm:inline font-medium">New Recording</span>
             </Button>
           </Link>
           <Link href="/history">
-            <Button variant="ghost" className="text-white hover:text-blue-400 hover:bg-slate-800/50 gap-2 text-base sm:text-lg md:text-xl p-4 sm:p-5 md:p-6 lg:p-7">
-              <History className="h-4 sm:h-5 md:h-6 w-4 sm:w-5 md:w-6" />
+            <Button variant="ghost" className="text-white hover:text-blue-400 hover:bg-slate-800/50 gap-2 text-base sm:text-lg md:text-xl p-2">
+              <History className="h-4 sm:h-5 w-4 sm:w-5" />
               <span className="hidden sm:inline font-medium">History</span>
             </Button>
           </Link>
           <Link href="/transcription/latest">
-            <Button variant="secondary" className="bg-blue-500 hover:bg-blue-600 text-white border-0 hidden md:flex gap-2 text-base sm:text-lg md:text-xl p-4 sm:p-5 md:p-6 lg:p-7">
-              <FileText className="h-4 sm:h-5 md:h-6 w-4 sm:w-5 md:w-6" />
+            <Button variant="secondary" className="bg-blue-500 hover:bg-blue-600 text-white border-0 hidden md:flex gap-2 text-base sm:text-lg md:text-xl p-2">
+              <FileText className="h-4 sm:h-5 w-4 sm:w-5" />
               <span className="font-medium">Latest Transcript</span>
             </Button>
           </Link>
