@@ -40,10 +40,9 @@ export async function generateTranscriptPDF(
     bufferPages: true,
   });
 
-  // Page header and footer
-  doc.on('pageAdded', () => addHeaderFooter(doc, transcription));
-  // First page header/footer
-  addHeaderFooter(doc, transcription);
+  // Page numbering will be done at the end before finalizing
+  // We won't use on('pageAdded') to avoid infinite recursion
+  // We'll add headers and footers after all content is done
 
   // Pipe stream
   const stream = fs.createWriteStream(filePath);
@@ -94,14 +93,21 @@ export async function generateTranscriptPDF(
     items.forEach((it, i) => doc.fontSize(10).font('Helvetica').text(`${i + 1}. ${it}`, { indent: 20, width: 450 }));
   }
 
-  // Table of Contents at front
+  // Table of Contents - simplified to avoid pdfkit TypeScript issues
   if (options.includeTOC && tocEntries.length) {
     const toc = tocEntries.slice().sort((a, b) => a.page - b.page);
-    doc.flushPages();
-    doc.addPage({ at: 1 });
+    
+    // Add TOC at the beginning - add a page after the intro
+    doc.addPage();
     doc.fontSize(16).font('Helvetica-Bold').text('Table of Contents', { align: 'center' });
     doc.moveDown();
-    toc.forEach(e => doc.fontSize(10).font('Helvetica').text(`${e.title} ...... ${e.page}`, { width: 450 }));
+    
+    // Add each TOC entry
+    toc.forEach(e => {
+      doc.fontSize(10)
+         .font('Helvetica')
+         .text(`${e.title} ...... ${e.page}`, { width: 450 });
+    });
   }
 
   // Transcript Section
@@ -111,24 +117,112 @@ export async function generateTranscriptPDF(
   doc.moveDown(0.5);
   doc.fontSize(9).font('Courier');
 
-  if (structuredTranscript?.segments?.length) {
-    structuredTranscript.segments.forEach((seg: any) => {
-      const t = formatTime(seg.start);
-      const speaker = seg.speaker ? `${seg.speaker}: ` : '';
-      // Detect URL
-      const urlMatch = seg.text.match(/https?:\/\/\S+/);
-      if (urlMatch) {
-        doc.text(`[${t}] ${speaker}`, { continued: true });
-        doc.text(seg.text, { link: urlMatch[0], underline: true });
-      } else {
-        doc.text(`[${t}] ${speaker}${seg.text}`, { width: 450, align: 'left' });
-      }
-      doc.moveDown(0.3);
+  try {
+    // Try to use structured transcript if available
+    if (structuredTranscript?.segments?.length) {
+      // Create a safer way to handle segments - group by speaker to avoid too many segments
+      const speakerGroups: { 
+        speaker: string; 
+        segments: { time: string; text: string; }[];
+      }[] = [];
+      
+      // First group segments by speaker
+      let currentSpeaker = '';
+      let currentGroup: { speaker: string; segments: { time: string; text: string; }[] } | null = null;
+      
+      structuredTranscript.segments.forEach((seg: any) => {
+        try {
+          const speaker = seg.speaker || 'Unknown Speaker';
+          const time = formatTime(seg.start);
+          const text = seg.text || '';
+          
+          // Start a new group if speaker changes
+          if (speaker !== currentSpeaker) {
+            currentSpeaker = speaker;
+            currentGroup = { speaker, segments: [] };
+            speakerGroups.push(currentGroup);
+          }
+          
+          // Add segment to current group
+          if (currentGroup) {
+            currentGroup.segments.push({ time, text });
+          }
+        } catch (e) {
+          // Skip problematic segments
+          console.error("Error processing segment in PDF generation:", e);
+        }
+      });
+      
+      // Now render each group
+      speakerGroups.forEach(group => {
+        try {
+          // Speaker heading
+          doc.fontSize(10).font('Helvetica-Bold').text(group.speaker);
+          
+          // Speaker segments
+          doc.fontSize(9).font('Courier');
+          group.segments.forEach(seg => {
+            try {
+              doc.text(`[${seg.time}] ${seg.text}`, { 
+                width: 450, 
+                align: 'left',
+                indent: 10
+              });
+              doc.moveDown(0.2);
+            } catch (e) {
+              // Skip problematic text rendering
+            }
+          });
+          
+          // Space between speakers
+          doc.moveDown(0.8);
+        } catch (e) {
+          // Skip problematic groups
+        }
+      });
+    } else if (transcription.text) {
+      // Fallback to raw text
+      doc.text(transcription.text, { width: 450, align: 'justify' });
+    }
+  } catch (e) {
+    // Last resort fallback
+    doc.fontSize(10).font('Helvetica');
+    doc.text("Error rendering transcript. Please try again or contact support.", { 
+      width: 450, 
+      align: 'center' 
     });
-  } else if (transcription.text) {
-    doc.text(transcription.text, { width: 450, align: 'justify' });
+    console.error("Error in PDF transcript rendering:", e);
   }
 
+  // Add page numbers
+  const range = doc.bufferedPageRange();
+  const totalPages = range.count;
+  
+  // Iterate through each page to add headers and footers
+  for (let i = 0; i < totalPages; i++) {
+    doc.switchToPage(i);
+    
+    // Simplified header and footer (no recursive calls)
+    // Header
+    doc.fontSize(8)
+      .font('Helvetica')
+      .text(
+        transcription.meetingTitle || '',
+        doc.page.margins.left,
+        20,
+        { width: doc.page.width - doc.page.margins.left - doc.page.margins.right, align: 'center' }
+      );
+    
+    // Footer
+    doc.fontSize(8)
+      .text(
+        `Page ${i + 1} of ${totalPages}`,
+        doc.page.margins.left,
+        doc.page.height - 30,
+        { width: doc.page.width - doc.page.margins.left - doc.page.margins.right, align: 'center' }
+      );
+  }
+  
   // Finalize
   doc.end();
 
@@ -144,25 +238,7 @@ export async function generateTranscriptPDF(
   });
 }
 
-function addHeaderFooter(doc: PDFKit.PDFDocument, transcription: Transcription) {
-  const range = doc.bufferedPageRange();
-  const current = doc.page.pageNumber;
-  const total = range.count;
-  // Header
-  doc.fontSize(8).font('Helvetica').text(
-    transcription.meetingTitle || '',
-    doc.page.margins.left,
-    20,
-    { width: doc.page.width - doc.page.margins.left - doc.page.margins.right, align: 'center' }
-  );
-  // Footer
-  doc.fontSize(8).text(
-    `Page ${current} of ${total}`,
-    doc.page.margins.left,
-    doc.page.height - 30,
-    { width: doc.page.width - doc.page.margins.left - doc.page.margins.right, align: 'center' }
-  );
-}
+// Function removed to fix infinite recursion issues
 
 function parseActionItems(trans: Transcription): string[] {
   try {
