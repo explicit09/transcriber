@@ -128,19 +128,18 @@ export async function generateTranscriptPDF(
        align: 'center'
      });
   
-  // ==================== SUMMARY and ACTION ITEMS ON SAME PAGE ====================
-  let startNewPage = true;
+  // ==================== CONTENT PAGES ====================
+  // We'll now add content immediately after the cover page without adding extra blank pages
   
-  // First check if we have a summary
+  // Add just one page after the cover for all content
+  doc.addPage();
+  doc.y = 40; // Start at the top of the first content page
+  
+  // Track if we need section separators
+  let needSeparator = false;
+  
+  // ==================== SUMMARY SECTION ====================
   if (transcription.summary) {
-    // Only start a new page if we're not on the first page
-    if (startNewPage) {
-      doc.addPage();
-      startNewPage = false;
-    }
-    
-    doc.y = 40; // Reset to top of page
-    
     // Section header
     doc.rect(margins.left, doc.y, doc.page.width - margins.left - margins.right, 40)
        .fill(styles.colors.secondary);
@@ -159,26 +158,23 @@ export async function generateTranscriptPDF(
          align: 'justify' 
        });
     
-    // Add some space before potential action items
-    doc.y += 20;
+    doc.y += 30;
+    needSeparator = true;
   }
   
   // ==================== ACTION ITEMS SECTION ====================
   const items = parseActionItems(transcription);
   if (items.length) {
     // Check if we need a new page based on remaining space
-    // If summary used more than 2/3 of the page, start a new page
-    if (doc.y > (doc.page.height * 0.66)) {
+    if (doc.y > (doc.page.height * 0.7)) {
       doc.addPage();
       doc.y = 40;
-      startNewPage = false;
-    } else if (startNewPage) {
-      // If we haven't added a page yet (no summary), add one now
-      doc.addPage();
-      doc.y = 40;
-      startNewPage = false;
-    } else {
-      // Just add some space after the summary
+      needSeparator = false;
+    } else if (needSeparator) {
+      // Add a separator line
+      doc.moveTo(margins.left, doc.y)
+         .lineTo(doc.page.width - margins.right, doc.y)
+         .stroke(styles.colors.lightGray);
       doc.y += 20;
     }
     
@@ -237,6 +233,9 @@ export async function generateTranscriptPDF(
          margins.left, doc.y + 10, {
            width: doc.page.width - margins.left - margins.right
          });
+    
+    doc.y += 20;
+    needSeparator = true;
   }
   
   // Check if we have keywords to display
@@ -245,8 +244,13 @@ export async function generateTranscriptPDF(
     if (doc.y > doc.page.height - 120) {
       doc.addPage();
       doc.y = 40;
-    } else {
-      doc.y += 30;
+      needSeparator = false;
+    } else if (needSeparator) {
+      // Add a separator line
+      doc.moveTo(margins.left, doc.y)
+         .lineTo(doc.page.width - margins.right, doc.y)
+         .stroke(styles.colors.lightGray);
+      doc.y += 20;
     }
     
     // Simple keywords section header
@@ -268,6 +272,7 @@ export async function generateTranscriptPDF(
   }
   
   // ==================== TRANSCRIPT PAGE ====================
+  // Always add a new page for the transcript
   doc.addPage();
   
   // Section header
@@ -405,30 +410,36 @@ export async function generateTranscriptPDF(
   }
   
   // ==================== ADD PAGE NUMBERS AND FOOTERS ====================
+  // Get the actual range of pages we've created - this should match the real content
   const range = doc.bufferedPageRange();
   const totalPages = range.count;
   
+  // Add footers only to pages we've actually added content to
   for (let i = 0; i < totalPages; i++) {
     doc.switchToPage(i);
     
-    // Skip the cover page for the footer line
-    if (i > 0) {
-      // Footer line
+    // Footer with page number and logo text - styled differently for different page types
+    if (i === 0) {
+      // Cover page - just the company name, no page numbers
+      doc.fontSize(styles.sizes.small)
+         .fillColor(styles.colors.text)
+         .font(styles.fonts.normal)
+         .text('LEARN-X Transcription', 
+           margins.left, doc.page.height - 30,
+           { width: doc.page.width - margins.left - margins.right, align: 'center' });
+    } else {
+      // Content pages - add footer line and page numbers
       doc.moveTo(margins.left, doc.page.height - 40)
          .lineTo(doc.page.width - margins.right, doc.page.height - 40)
          .stroke(styles.colors.lightGray);
+      
+      doc.fontSize(styles.sizes.small)
+         .fillColor(styles.colors.text)
+         .font(styles.fonts.normal)
+         .text(`Page ${i + 1} of ${totalPages}`,
+           margins.left, doc.page.height - 30,
+           { width: doc.page.width - margins.left - margins.right, align: 'center' });
     }
-    
-    // Footer with page number and logo text
-    doc.fontSize(styles.sizes.small)
-       .fillColor(styles.colors.text)
-       .font(styles.fonts.normal)
-       .text(
-         `LEARN-X Transcription | Page ${i + 1} of ${totalPages}`,
-         margins.left,
-         doc.page.height - 30,
-         { width: doc.page.width - margins.left - margins.right, align: 'center' }
-       );
   }
   
   // Finalize
