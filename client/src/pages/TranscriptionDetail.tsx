@@ -5,6 +5,7 @@ import { apiRequest, getQueryFn } from "@/lib/queryClient";
 import { TranscriptEditor } from '@/components/TranscriptEditor';
 import NavigableTranscript from '@/components/NavigableTranscript';
 import SpeakerLabels from '@/components/SpeakerLabels';
+import TranscriptView from '@/components/TranscriptView';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
