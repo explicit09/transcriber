@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Trash, Download } from 'lucide-react';
+import { Loader2, Trash, Download, FileText } from 'lucide-react';
 import { Transcription, StructuredTranscript } from '@shared/schema';
 import {
   AlertDialog,
@@ -184,6 +184,24 @@ export default function TranscriptionDetail() {
           </p>
         </div>
         <div className="flex space-x-3">
+          <Button 
+            variant="outline" 
+            onClick={() => generateSummaryMutation.mutate()}
+            disabled={isGeneratingSummary || !transcription.text}
+          >
+            {isGeneratingSummary ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <FileText className="mr-2 h-4 w-4" />
+                Generate Summary
+              </>
+            )}
+          </Button>
+          
           <Button variant="outline" onClick={handleDownload}>
             <Download className="mr-2 h-4 w-4" />
             Download
