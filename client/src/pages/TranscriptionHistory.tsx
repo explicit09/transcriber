@@ -13,7 +13,8 @@ import {
   Timer,
   FileAudio,
   Trash2,
-  CheckCircle
+  CheckCircle,
+  FileText
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardHeader, CardContent, CardTitle, CardDescription } from "@/components/ui/card";
@@ -577,7 +578,7 @@ function TranscriptionCard({
             ) : (
               <Link href={`/transcription/${t.id}`}>
                 <Button variant="outline" className="bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100">
-                  <FileText className="h-4 w-4 mr-2" />
+                  <FileAudio className="h-4 w-4 mr-2" />
                   View Details
                 </Button>
               </Link>

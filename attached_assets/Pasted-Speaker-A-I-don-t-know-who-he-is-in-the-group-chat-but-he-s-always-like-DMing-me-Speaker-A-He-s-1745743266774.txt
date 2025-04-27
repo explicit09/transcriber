@@ -1,0 +1,539 @@
+Speaker A: I don't know who he is in the group chat, but he's always like DMing me.
+
+Speaker A: He said...
+
+Speaker A: I don't see the chat anymore.
+
+Speaker A: Maybe he tweeted it or something.
+
+Speaker A: Maybe it was in the group chat.
+
+Speaker A: But, yeah, he's been working. It seems like he understands everything.
+
+Speaker A: And he's the back-end person.
+
+Speaker A: Carter seems like he understood.
+
+Speaker A: When he texted in the group chat, it felt like he understood what we were doing as well.
+
+Speaker A: Okay. Those two other ones are really giving feedback.
+
+Speaker A: Yeah.
+
+Speaker B: Morgan still hasn't said anything yet about the front-end.
+
+Speaker B: Yeah.
+
+Speaker B: I'm assuming she's okay.
+
+Speaker A: So, today is the 26th?
+
+Speaker A: Yeah. Yeah, he said 5 a.m. that... Sorry, I was busy yesterday. I'm pushing changes to the database. I'm back in today. You can review them. So, pretty good.
+
+Speaker C: If that's the case.
+
+Speaker B: The features are pretty... I think doable.
+
+Speaker B: I don't know if we'll be able to demo all of it. But, I think it was pretty fair.
+
+Speaker B: Okay. It just depends on what they're able to...
+
+Speaker B: I don't understand the PG vector stuff.
+
+Speaker B: So, Carter looks like he knows what he's doing with that stuff.
+
+Speaker B: But, the rest of the stuff, hopefully they can build off of what you guys said.
+
+Speaker B: And the Canvas stuff, the way you explained it was pretty good. Hopefully, she can just do it this way as well.
+
+Speaker A: We can always... That's a good start.
+
+Speaker A: Start as. I think that's pretty good.
+
+Speaker B: We just got to wait and see what they do.
+
+Speaker B: That's okay.
+
+Speaker B: Uh-huh.
+
+Speaker B: Hi.
+
+Speaker A: We'll just see on Monday what they come with.
+
+Speaker C: One of the other things that was major important things was looking at the KPIs. Because when we release the beta, not the beta, the MVP,
+
+Speaker C: at least we must have some things that we need to check for us to see where the progress is. Things actually doing what we want, our expectations being met,
+
+Speaker C: so that we have measurable endpoints that we can definitely use.
+
+Speaker C: So, probably things like retention, how people are returning to the platform, usage, and things like that. Also, some of the things might...
+
+Speaker C: Because outside feedback, some of the things might require some development on the platform.
+
+Speaker C: That was one of the things that we need to look into.
+
+Speaker C: We need to look into the KPIs that we actually need for us to know if the users are engaged,
+
+Speaker C: how the user experience is, and things like those.
+
+Speaker C: I don't know if anyone had any thoughts on the KPIs.
+
+Speaker B: I think that probably comes at a later stage, maybe.
+
+Speaker B: Once we have the platform, then we build that off of what we have.
+
+Speaker C: So, from the way I was seeing it,
+
+Speaker C: if we're going to put the MVP out there in May, as we plan,
+
+Speaker B: we must still be able to just see the engagement as well.
+
+Speaker B: Of the MVP?
+
+Speaker C: Yeah. So, who's going to be testing it? Isn't it just going to be a few beta testers? Yeah, a few beta testers.
+
+Speaker C: But still, you know, it's usually different between what someone might tell you, that, oh, I use this platform very much, it's lovely,
+
+Speaker C: versus actually using the platform kind of thing. So, it's just okay to be able to see maybe things such as,
+
+Speaker C: how is the amount of time that people are spending on the application and whatsoever.
+
+Speaker C: I'm not saying that we should focus on that right now, but at least kind of defining those,
+
+Speaker C: so that we can know the steps to implementation.
+
+Speaker C: Because right now we're working on the core functionality of the platform, right? Maybe once some of the core functionality is done,
+
+Speaker C: we start leaping into one or two of the KPIs that we need to know.
+
+Speaker C: Or even just so that people start thinking about how to put this into structuring as we go.
+
+Speaker A: Okay, another couple.
+
+Speaker A: Daily usage, like daily users.
+
+Speaker A: I think it can also be volatile prompts.
+
+Speaker C: Yeah, but some of them also will help us,
+
+Speaker C: because the MVP is going to help us make projections, like the financial projections.
+
+Speaker C: So, I think things such as volume of prompts will be very useful in making those as well.
+
+Speaker C: So, we need those.
+
+Speaker A: Once, assuming we do the Canvas integration next semester, it should be very daily because it will be part of,
+
+Speaker A: the assumption is like, if you have homework you have to study,
+
+Speaker A: at least then you can have a consistent usage.
+
+Speaker A: There might be peaks depending on when the homework is due or something like that. I think for now, yeah. Volume of prompts now is just daily users, and then we'll see from there.
+
+Speaker A: Of course, it can also be made, like, tethered.
+
+Speaker B: As long as I can think of it. So, are we just going to use SEO to just quantify this?
+
+Speaker B: So, just Google Analytics and stuff like that, pretty much?
+
+Speaker B: Or, what specifically, how are we going to quantify this data?
+
+Speaker A: Because the only way to see if someone's on your website is just through Google Analytics and see how much time they spend on there, and then also, maybe what they're clicking on. I can ask Ryan if he knows. I can look into it as well.
+
+Speaker A: On Firebase, we are using Firebase for the authentication, right? And Firebase too has an analytics part here.
+
+Speaker A: Okay. Personally, maybe I can learn how to do it because it would be helpful for my case as well,
+
+Speaker A: and the stuff that I'm working on.
+
+Speaker A: I know Peter, they're building like an AI fashion app.
+
+Speaker A: They're hosting it on, they're using Firebase as well, but he showed me his analytics dashboard through Firebase.
+
+Speaker A: He set it up, and it was beautiful.
+
+Speaker A: It shows everything.
+
+Speaker A: It's just like pages and pages of graphs and stuff.
+
+Speaker B: It's just something you have to set up once you watch a YouTube video. I just haven't done that yet, or integrated that part.
+
+Speaker A: Is that something you would do after the program is working, or do you do it before, or while you're making the program? When do you launch that?
+
+Speaker B: That's the thing, I don't really know.
+
+Speaker A: Maybe stuff like daily usage and stuff, he just knows.
+
+Speaker A: But I think some things might just have to add it manually.
+
+Speaker A: I think it's both.
+
+Speaker A: I can watch a YouTube video and then set it up to integrate it. I don't think Ryan knows how to do it because he mentioned that he wasn't familiar with Firebase.
+
+Speaker A: But maybe he knows something from the stuff he knows, from like Postgres or something, maybe he knows something. I can just ask him later if he knows, but then I'll do it. I'll start looking into it.
+
+Speaker C: Yeah.
+
+Speaker C: Not too much on that one. There's nothing much to discuss on that one. It's just something that we just have to keep on the lookout,
+
+Speaker C: because if at any point we were to raise funds or anything like that, people would be interested that, okay, you say you've released an MVP.
+
+Speaker C: How many daily active users do you have?
+
+Speaker C: What's the metrics?
+
+Speaker C: And it helps us as well to see that, okay, how many people are getting there and how many people are easily getting bored and just leave the platform and we can make those analytics.
+
+Speaker C: That would be also, okay.
+
+Speaker C: Those would be states that we can also use to improve internally and also needed by external investors if there are to be any.
+
+Speaker C: But how are we doing this?
+
+Speaker C: I don't know if there's anything that we need to discuss as for the MVP
+
+Speaker C: with our deadlines. I don't know how we're doing about that.
+
+Speaker A: Are we okay or are there any issues?
+
+Speaker A: I guess we just have to see on Monday what they have.
+
+Speaker A: If the intro revealed they're using Carcer or Windsor,
+
+Speaker A: if they were using that, then it would be really, really good.
+
+Speaker A: But we don't know. We just have to wait till Monday.
+
+Speaker A: One issue too was they had progress last week, but they're all working in different branches.
+
+Speaker A: So this was the integration part of whatever is done.
+
+Speaker A: Morgan's front end was beautiful, but everyone else's was still the old front end.
+
+Speaker A: I don't think they'll be done,
+
+Speaker B: but I was hoping that most of what was in the tasks for this week, I think that's the MVP.
+
+Speaker A: For the week or for?
+
+Speaker A: So I think if they're done, if they finish those tasks,
+
+Speaker A: it should just be next week just perfecting it and cleaning it.
+
+Speaker A: In terms of functionality, I feel like that's all the functionality.
+
+Speaker A: For the MVP, yeah.
+
+Speaker A: Because we'll see on Monday.
+
+Speaker C: If they haven't finished, then they should finish what we have given them.
+
+Speaker C: If someone has finished their tasks, of course we can throw them at them. Okay.
+
+Speaker C: Since you say that's pretty much the core functionality for the MVP
+
+Speaker C: and we'll still have another week, it means that even if they weren't able to finish that,
+
+Speaker A: they can use that week to put it perfectly.
+
+Speaker B: The time is getting closer.
+
+Speaker B: The days are coming by.
+
+Speaker B: So for the PDF documentation made before,
+
+Speaker A: that's the MVP you're going off of, right?
+
+Speaker C: Or are you going off of the tasks? The tasks.
+
+Speaker C: The tasks too.
+
+Speaker C: Which one are you going off?
+
+Speaker B: I'm going off the tasks that he sent recently.
+
+Speaker B: So when is the deadline for the one on the PDF?
+
+Speaker B: The original one?
+
+Speaker B: Remember you had made a PDF document?
+
+Speaker B: With like emojis and stuff? Yes.
+
+Speaker B: So that one, did you have a deadline for that?
+
+Speaker A: Is that what we're looking for, for May?
+
+Speaker A: Or are you thinking that's before Canvas integration, so like after the summer and then... No, that was for May. For May.
+
+Speaker C: For the next two weeks.
+
+Speaker C: Because the document doesn't have integration.
+
+Speaker B: It doesn't have integration. Yeah.
+
+Speaker B: I think it's in line with the tasks that he sent, right? Okay.
+
+Speaker C: Just want to make sure you're on the same page about that one.
+
+Speaker C: Okay.
+
+Speaker C: Yeah, outside that, I don't have anything in terms of development.
+
+Speaker B: I don't know if anyone has anything pertaining to development.
+
+Speaker B: For me, has Ryan deployed it yet or not yet?
+
+Speaker A: He hasn't said anything about deployment yet.
+
+Speaker A: Because I know that was a task for the last week, I think.
+
+Speaker A: He said he's been busy with doing the backend.
+
+Speaker B: At least he might not get it done, but we can make out, it seems like he's the one doing a lot of stuff.
+
+Speaker A: Yeah, he is. So it's not necessary to deploy it then?
+
+Speaker A: No, he was supposed to deploy it, but if he's not, if he hasn't yet, then it's because he's working on the backend and trying to get the courses stuff set up.
+
+Speaker B: Because he's the only one doing the backend.
+
+Speaker B: Okay.
+
+Speaker A: And then, are you running it, like, his code locally or not yet?
+
+Speaker B: I ran it. I last ran it two weeks ago.
+
+Speaker B: Okay.
+
+Speaker B: So my question is, I know you asked one of them to help with the professors, I think it was Adam, so he's doing the professor analytics, right?
+
+Speaker A: So for his side, do we want to see a UI, or do we just want to see the research part of it?
+
+Speaker A: What Ryan said, he already had an API that gets all the questions that have been asked, a course, and a PDF as well.
+
+Speaker A: He said that was already working,
+
+Speaker A: and I'm hoping that when he gives that to Adam,
+
+Speaker A: Adam can then just use that API to then make a summary
+
+Speaker A: for the professor to see the API.
+
+Speaker A: Maybe just showing all of them raw, the way it is, or maybe having another AI layer that tries to summarize and stuff. Or both.
+
+Speaker A: It seemed like Ryan understood it and said it was working. I don't know if Adam is on the same page.
+
+Speaker B: Because I'm worried it's only focusing on the students' side. Yeah.
+
+Speaker B: So we need Adam to focus on the professor's side,
+
+Speaker B: pertaining also to the UI of the professor's side, right?
+
+Speaker B: So just wanted to make sure that, okay, so when he does his code,
+
+Speaker B: he will make a UI that will show those analytics pretty much.
+
+Speaker B: Let me see.
+
+Speaker A: Maybe I didn't type that.
+
+Speaker A: I had it in my head, but maybe I didn't type it before.
+
+Speaker A: I was just going to... Yeah, I was afraid of overwhelming and just dumping everything in one go.
+
+Speaker B: So maybe after this Monday, we'll see what happens and build up from there.
+
+Speaker C: That's about it.
+
+Speaker C: That's about it.
+
+Speaker C: And then when you guys get some time, please just get into the ClickUp.
+
+Speaker C: And there's specifically this document.
+
+Speaker C: We need to look into it. It's just a brief of how we can talk about things from the research that I was just doing.
+
+Speaker C: It's not that long. It's very short.
+
+Speaker C: Just look into it.
+
+Speaker C: There are still things that we still need to look into,
+
+Speaker C: such as compliance to FERPA.
+
+Speaker C: I think it's Family Education. We also have some policies that make sure that your platform is usable by people who have accessibility needs, disabled, and things like that.
+
+Speaker C: So I'm still looking into that. Once I just get out the important data,
+
+Speaker C: I'll probably throw it in one of the documents and send it out
+
+Speaker C: if there's anything that we need to put on top of it.
+
+Speaker C: I think that accessibility thing that I can just read you the text on the website or something like that. I think there was FERPA.
+
+Speaker C: There was COPA if we're going to be targeting K-12, because COPA I think is for under-18 or something like that. It's under-19 or somewhere around 12, those kind of policies.
+
+Speaker C: Then there was WCAG-12, those kind of things that we're still looking into.
+
+Speaker C: So once I'm just done looking into them, I'll just send something which is summarized and what exactly implies to what we are making so that if we happen to get any questions pertaining those things, we know we got them covered. I saw one of our competitors, it was Nectus.
+
+Speaker C: Actually, that's their main thing that they always talk about,
+
+Speaker C: their compliance to FERPA and COPA.
+
+Speaker C: Those are just basic requirements that we'll have to get into
+
+Speaker C: despite whatever we do.
+
+Speaker C: Thank you for looking into it.
+
+Speaker A: That's pretty much it.
+
+Speaker C: I know you shared some good resources too, like the Alice.
+
+Speaker A: Oh, Alice.
+
+Speaker A: Hassler Plan.
+
+Speaker C: I haven't watched the video. Did you watch the video?
+
+Speaker A: It was a pretty short clip. Can you pull it up? Let me pull it up.
+
+Speaker A: I told you guys when we were about to watch the video, you guys were like, oh, is that the video?
+
+Speaker C: Oh, this was the UI, which was just nice.
+
+Speaker C: Jesus.
+
+Speaker C: This one makes steady plans.
+
+Speaker C: Goddamn.
+
+Speaker A: Was the other one done?
+
+Speaker A: Was it?
+
+Speaker C: Upload.
+
+Speaker C: Somebody.
+
+Speaker C: And the scores.
+
+Speaker C: Okay.
+
+Speaker C: I think it was done.
+
+Speaker C: So they have the side chat part too.
+
+Speaker A: Not so bad.
+
+Speaker A: Hi, I'm Kim from Alice. We help students by turning course materials into personalized learning and exam prep using AI.
+
+Speaker D: More than 2,000 students have already used Alice and their report, improved grades, reduced stress, and a deeper understanding of the course materials. With Alice, students have everything they need in just one platform. They upload what they want to learn and get instant access to insightful and structured notes and AI chat that understands the context and personalized flashcards and exercises.
+
+Speaker D: And they can even make learning fun by studying with or against their
+
+Speaker D: Our exam simulator is a game changer and students love it. Customize your exam format and get access to new exercise that you've never seen before but are within your curriculum.
+
+Speaker D: Simulate a full exam environment and get instant grading and detailed feedback so you know exactly where to improve.
+
+Speaker D: And the more you use Alice, the better she gets at spotting your weaknesses so you can be more targeted in your study.
+
+Speaker D: If you're a student, go try us today and level up your studies.
+
+Speaker D: Yeah, I'll bet.
+
+Speaker D: They're really good. This chance is just B to C, man. I mean, they're B to C.
+
+Speaker B: So it looks like they're targeting the actual students and the students uploading their information. So this is technically changing the team straight up.
+
+Speaker B: Because it is optimized for your learning material that you upload,
+
+Speaker B: which is pretty much the same with chatting team because you upload your material and you get personalized feedback.
+
+Speaker C: But, you know, sometimes the user, the UI and everything takes everything, such as, like, the fact that that one's keeping the grades and whatever. Cash cards.
+
+Speaker C: Cash cards as well. And it's just putting in the PDF once and it just breaks things down.
+
+Speaker C: No extra prompts.
+
+Speaker C: That is true, actually.
+
+Speaker B: Would you get it as a student? As a student?
+
+Speaker B: I thought I saw where you came from.
+
+Speaker B: The bottleneck is money.
+
+Speaker A: It's good.
+
+Speaker A: No, even if you had money, would you get this one specifically?
+
+Speaker A: Why would you use this instead of changing the team?
+
+Speaker B: Well, like I said, it spots your weaknesses.
+
+Speaker A: And the flashcards, the flashcard part,
+
+Speaker A: spots your weaknesses.
+
+Speaker C: Towards the end when you showed, like, what maybe your weaknesses are, that kind of grabbed my attention. Because especially before CharityBT was accessing all the charts at the same time, it would probably spot your weaknesses better than CharityBT at that point.
+
+Speaker C: Maybe now, because it can access, like, all your charts, it can definitely know your weaknesses.
+
+Speaker A: But CharityBT is not really caring about... It's doing your B2Bs, doing your homework.
+
+Speaker A: Asking you medical questions.
+
+Speaker C: Yeah, because sometimes, there was a time that I was having a conversation with CharityBT. I think I just took a prompt that I saw on Twitter and was saying, ah, your curiosity. I see you asking about PG Victors.
+
+Speaker C: Because I was looking into PG Victors the day that you said about PG Victors and how impactful it would be and things like that.
+
+Speaker C: So I was like, I look at it, I see you, you understand PG Victors.
+
+Speaker C: I just know the bare minimum of these things.
+
+Speaker C: The craziest shit I've done this week was I was walking home.
+
+Speaker A: I was almost towards UECC.
+
+Speaker A: I was like, ah, I need some new ideas for my app.
+
+Speaker A: And I'm tired of asking my CharityBT.
+
+Speaker A: And my CharityBT was like, oh, you're so innovative. You're the best, you're this and this.
+
+Speaker A: I was like, I'm going to go to the library and then find a random CharityBT and then ask it. Because I feel like mine's always gassing me up.
+
+Speaker A: Because it knows you.
+
+Speaker A: So that's what I did. I went to the library.
+
+Speaker A: I did a deep search on a different AI that wasn't mine.
+
+Speaker A: And just saw what it could see based on public knowledge.
+
+Speaker A: And it was cool. I did a 17-year report.
+
+Speaker C: It was still good. But it wasn't as... I could trust it more than my own. Because mine's just using my personal text.
+
+Speaker C: That's why I love Deep Research.
+
+Speaker C: Deep Research just does its job. I did more scenarios.
+
+Speaker C: How did you say it before?
+
+Speaker C: Deep Research is cool. I'm just glad that they added more prompts.
+
+Speaker C: Because I was maxing out my Deep Research. He's a power user, this guy.
+
+Speaker A: I remember when we got this. This UI before.
+
+Speaker A: Aslaplan!
+
+Speaker A: Yeah, Aslaplan is crazy.
+
+Speaker A: You can tell it's a Gen Z.
+
+Speaker A: During Ramadan, I went to...
