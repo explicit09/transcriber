@@ -95,29 +95,34 @@ export default function TranscriptionHistory() {
     data: transcriptions = [],
     isLoading,
     error
-  } = useQuery<Transcription[]>(["/api/transcriptions"],
-    () => apiRequest("GET", "/api/transcriptions")
-  );
+  } = useQuery({
+    queryKey: ["/api/transcriptions"],
+    queryFn: async () => {
+      const response = await apiRequest("GET", "/api/transcriptions");
+      const data = await response.json();
+      return data as Transcription[];
+    }
+  });
 
   // Mutations
-  const deleteMut = useMutation((ids: number[]) =>
-    Promise.all(ids.map(id => apiRequest("DELETE", `/api/transcriptions/${id}`))), {
-      onMutate: async (ids) => {
-        await queryClient.cancelQueries(["/api/transcriptions"]);
-        const previous = queryClient.getQueryData<Transcription[]>(["/api/transcriptions"]);
-        queryClient.setQueryData(["/api/transcriptions"], prev =>
-          prev?.filter(t => !ids.includes(t.id)) || []
-        );
-        return { previous };
-      },
-      onError: (_err, _ids, context) => {
-        queryClient.setQueryData(["/api/transcriptions"], context?.previous);
-        toast({ title: "Error deleting", description: "Could not delete items", variant: "destructive" });
-      },
-      onSettled: () => {
-        queryClient.invalidateQueries(["/api/transcriptions"]);
-        setIsSelectionMode(false);
-        setSelectedItems([]);
+  const deleteMut = useMutation({
+    mutationFn: (ids: number[]) => Promise.all(ids.map(id => apiRequest("DELETE", `/api/transcriptions/${id}`))),
+    onMutate: async (ids) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/transcriptions"] });
+      const previous = queryClient.getQueryData<Transcription[]>(["/api/transcriptions"]);
+      queryClient.setQueryData(["/api/transcriptions"], (prev: Transcription[] | undefined) =>
+        prev?.filter(t => !ids.includes(t.id)) || []
+      );
+      return { previous };
+    },
+    onError: (_err, _ids, context) => {
+      queryClient.setQueryData(["/api/transcriptions"], context?.previous);
+      toast({ title: "Error deleting", description: "Could not delete items", variant: "destructive" });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/transcriptions"] });
+      setIsSelectionMode(false);
+      setSelectedItems([]);
         setIsDeleteDialogOpen(false);
       },
       onSuccess: (_data, ids) => {
@@ -152,15 +157,20 @@ export default function TranscriptionHistory() {
   }, [deleteMut, selectedItems]);
 
   // Filters & sorting
-  const filtered = useMemo(() =>
-    transcriptions.filter(t => {
+  const filtered = useMemo(() => {
+    // Check if transcriptions is an array before filtering
+    if (!Array.isArray(transcriptions)) {
+      return [];
+    }
+    
+    return transcriptions.filter(t => {
       const term = debouncedSearch.toLowerCase();
       return t.meetingTitle?.toLowerCase().includes(term) ||
              t.fileName.toLowerCase().includes(term) ||
              t.participants?.toLowerCase().includes(term) ||
              t.text?.toLowerCase().includes(term);
-    }), [transcriptions, debouncedSearch]
-  , []);
+    });
+  }, [transcriptions, debouncedSearch]);
 
   const sorted = useMemo(() =>
     [...filtered].sort((a, b) =>
@@ -243,7 +253,7 @@ export default function TranscriptionHistory() {
           <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
             <AlertDialogTrigger asChild>
               <Button variant="destructive" disabled={selectedItems.length===0}>
-                {deleteMut.isLoading ? "Deleting..." : `Delete (${selectedItems.length})`}
+                {deleteMut.isPending ? "Deleting..." : `Delete (${selectedItems.length})`}
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
