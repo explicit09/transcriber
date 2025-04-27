@@ -285,6 +285,7 @@ export default function TranscriptionContainer() {
             
             <TranscriptionResult
               transcriptionText={transcription.text}
+              structuredTranscript={transcription.structuredTranscript?.segments}
               fileName={transcription.meetingTitle || currentFile?.name || "transcript"}
               onNewTranscription={handleTryAgain}
             />
