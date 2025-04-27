@@ -131,31 +131,6 @@ export default function TranscriptionHistory() {
     }
   });
 
-  // Handlers
-  const toggleSelectionMode = useCallback(() => {
-    setIsSelectionMode(s => !s);
-    setSelectedItems([]);
-  }, []);
-
-  const toggleItem = useCallback((id: number) => {
-    setSelectedItems(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
-  }, []);
-
-  const selectAll = useCallback(() => {
-    setSelectedItems(prev =>
-      prev.length === filtered.length ? [] : filtered.map(t => t.id)
-    );
-  }, [/* eslint-disable-line */]);
-
-  const confirmDelete = useCallback(() => {
-    setIsDeleteDialogOpen(true);
-  }, []);
-  const performDelete = useCallback(() => {
-    deleteMut.mutate(selectedItems);
-  }, [deleteMut, selectedItems]);
-
   // Filters & sorting
   const filtered = useMemo(() => {
     // Check if transcriptions is an array before filtering
@@ -178,6 +153,31 @@ export default function TranscriptionHistory() {
       (new Date(a.meetingDate || a.createdAt || "")).getTime()
     ), [filtered]
   );
+
+  // Handlers
+  const toggleSelectionMode = useCallback(() => {
+    setIsSelectionMode(s => !s);
+    setSelectedItems([]);
+  }, []);
+
+  const toggleItem = useCallback((id: number) => {
+    setSelectedItems(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  }, []);
+
+  const selectAll = useCallback(() => {
+    setSelectedItems(prev =>
+      prev.length === sorted.length ? [] : sorted.map(t => t.id)
+    );
+  }, [sorted]);
+
+  const confirmDelete = useCallback(() => {
+    setIsDeleteDialogOpen(true);
+  }, []);
+  const performDelete = useCallback(() => {
+    deleteMut.mutate(selectedItems);
+  }, [deleteMut, selectedItems]);
 
   // Utils
   const formatFileSize = useCallback((bytes: number) => {
@@ -247,8 +247,8 @@ export default function TranscriptionHistory() {
 
       {isSelectionMode && (
         <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 flex gap-2">
-          <Button onClick={selectAll} disabled={filtered.length===0}>
-            {selectedItems.length===filtered.length ? "Deselect All" : "Select All"}
+          <Button onClick={selectAll} disabled={sorted.length===0}>
+            {selectedItems.length===sorted.length ? "Deselect All" : "Select All"}
           </Button>
           <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
             <AlertDialogTrigger asChild>
