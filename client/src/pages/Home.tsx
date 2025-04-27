@@ -1,13 +1,8 @@
-import React, { useMemo } from 'react';
-import Head from 'next/head';
-import dynamic from 'next/dynamic';
+import React, { useMemo, lazy, Suspense } from 'react';
 import FeatureCard from '@/components/FeatureCard';
 import { Upload, MessageSquareText, Download } from 'lucide-react';
 
-const TranscriptionContainer = dynamic(
-  () => import('@/components/TranscriptionContainer'),
-  { ssr: false }
-);
+const TranscriptionContainer = lazy(() => import('@/components/TranscriptionContainer'));
 
 interface Feature {
   title: string;
@@ -37,19 +32,17 @@ export default function Home() {
     []
   );
 
+  // Set page title
+  React.useEffect(() => {
+    document.title = "LEARN-X Meeting Transcription";
+  }, []);
+  
   return (
     <>
-      <Head>
-        <title>Team Meeting Transcription</title>
-        <meta
-          name="description"
-          content="Upload meeting recordings and convert them to text for your team"
-        />
-      </Head>
       <div className="container mx-auto max-w-4xl px-4 py-6">
         <header className="mb-8">
           <h1 className="text-2xl sm:text-3xl font-semibold text-gray-900">
-            Team Meeting Transcription
+            LEARN-X Meeting Transcription
           </h1>
           <p className="mt-2 text-gray-600">
             Upload meeting recordings and convert them to text for your team
@@ -57,7 +50,9 @@ export default function Home() {
         </header>
 
         <main>
-          <TranscriptionContainer />
+          <Suspense fallback={<div>Loading transcription tools...</div>}>
+            <TranscriptionContainer />
+          </Suspense>
 
           {/* Features Section */}
           <section aria-labelledby="features-heading" className="mt-12">

@@ -74,10 +74,24 @@ export async function transcribeAudioWithFeatures(
         file: fs.createReadStream(audioFilePath),
         model: 'whisper-1',
         response_format: 'verbose_json',
-        language: options.targetLanguage,
       }))
     );
-    return { text: translation.text, translatedText: translation.text, language: translation.language };
+    // Create structured transcript for translated text
+    const structuredTranscript: StructuredTranscript = {
+      segments: [{
+        start: 0,
+        end: 0,
+        text: translation.text,
+      }],
+      metadata: {}
+    };
+    
+    return { 
+      text: translation.text, 
+      translatedText: translation.text, 
+      language: options.targetLanguage,
+      structuredTranscript 
+    };
   }
 
   // Standard transcription
@@ -130,7 +144,8 @@ async function processSpeakerDiarization(
 
   let result;
   try {
-    result = JSON.parse(response.choices[0].message.content);
+    const content = response.choices[0].message.content || '';
+    result = JSON.parse(content);
   } catch {
     // Fallback: majority-based assignment
     const primary = timestampedSegments[0];
@@ -145,13 +160,22 @@ async function processSpeakerDiarization(
 function enforceConsistentSpeakers(
   result: { segments: TranscriptSegment[]; speakerCount: number }
 ): { segments: TranscriptSegment[]; speakerCount: number } {
-  const labels = [...new Set(result.segments.map(s => s.speaker || 'Speaker 1'))];
+  // Get unique speaker labels without using Set spreading
+  const speakerSet = new Set<string>();
+  result.segments.forEach(s => {
+    speakerSet.add(s.speaker || 'Speaker 1');
+  });
+  
+  const labels: string[] = Array.from(speakerSet);
   const map = new Map<string, string>();
+  
   labels.forEach((lbl, i) => map.set(lbl, `Speaker ${i + 1}`));
+  
   const segments = result.segments.map(s => ({
     ...s,
     speaker: map.get(s.speaker || 'Speaker 1')!
   }));
+  
   return { segments, speakerCount: map.size };
 }
 
@@ -173,7 +197,8 @@ export async function generateTranscriptSummary(text: string) {
     }))
   );
 
-  return JSON.parse(response.choices[0].message.content);
+  const content = response.choices[0].message.content || '{"summary":"No summary available","actionItems":[],"keywords":[]}';
+  return JSON.parse(content);
 }
 
 // Helper: format seconds to MM:SS
@@ -181,4 +206,41 @@ function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60).toString().padStart(2, '0');
   const s = Math.floor(seconds % 60).toString().padStart(2, '0');
   return `${m}:${s}`;
+}
+
+// Translate transcript to another language
+export async function translateTranscript(
+  text: string, 
+  targetLanguage: string
+): Promise<{ translatedText: string }> {
+  try {
+    const response = await limiter.schedule(() => 
+      withRetry(() => openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: `Translate the following text accurately into ${targetLanguage}. 
+            Maintain the meaning, tone, and context of the original text.`
+          },
+          {
+            role: "user",
+            content: text
+          }
+        ]
+      }))
+    );
+
+    const content = response.choices[0].message.content;
+    if (!content) {
+      throw new Error("Empty response from OpenAI");
+    }
+
+    return {
+      translatedText: content
+    };
+  } catch (error: unknown) {
+    console.error("Translation Error:", error);
+    throw new Error(`Failed to translate text: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
