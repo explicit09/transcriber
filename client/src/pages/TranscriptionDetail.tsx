@@ -1,16 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useState } from 'react';
+import { useRoute, useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import axios from 'axios';
+import { apiRequest, getQueryFn } from "@/lib/queryClient";
 import { TranscriptEditor } from '@/components/TranscriptEditor';
-import TranscriptView from '@/components/TranscriptView';
+import NavigableTranscript from '@/components/NavigableTranscript';
 import SpeakerLabels from '@/components/SpeakerLabels';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useToast } from '@/components/ui/use-toast';
-import { Transcription } from '@/types/transcription';
-import { Loader2, Trash, FileDownload } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { Loader2, Trash, Download } from 'lucide-react';
+import { Transcription, StructuredTranscript } from '@shared/schema';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,30 +24,29 @@ import {
 } from "@/components/ui/alert-dialog";
 
 export default function TranscriptionDetail() {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+  const [match, params] = useRoute<{ id: string }>("/transcription/:id");
+  const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<string>('view');
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  const id = params?.id;
 
   // Fetch transcription details
   const { data: transcription, isLoading, error } = useQuery({
     queryKey: [`/api/transcriptions/${id}`],
-    queryFn: async () => {
-      const response = await axios.get(`/api/transcriptions/${id}`);
-      return response.data as Transcription;
-    },
+    queryFn: getQueryFn({ on401: "throw" }),
     enabled: !!id,
   });
 
   // Handle save transcript mutation
   const saveTranscriptMutation = useMutation({
     mutationFn: async (text: string) => {
-      const response = await axios.put(`/api/transcriptions/${id}`, {
+      const response = await apiRequest("PATCH", `/api/transcriptions/${id}`, {
         text
       });
-      return response.data;
+      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/transcriptions/${id}`] });
@@ -70,12 +69,12 @@ export default function TranscriptionDetail() {
   const deleteTranscription = async () => {
     setIsDeleting(true);
     try {
-      await axios.delete(`/api/transcriptions/${id}`);
+      await apiRequest("DELETE", `/api/transcriptions/${id}`);
       toast({
         title: "Transcription deleted",
         description: "The transcription has been deleted successfully.",
       });
-      navigate('/');
+      setLocation('/');
     } catch (error) {
       console.error('Error deleting transcription:', error);
       toast({
@@ -91,14 +90,13 @@ export default function TranscriptionDetail() {
   // Handle file download
   const handleDownload = async () => {
     try {
-      const response = await axios.get(`/api/transcriptions/${id}/download`, {
-        responseType: 'blob',
-      });
+      const response = await apiRequest("GET", `/api/transcriptions/${id}/pdf`);
+      const blob = await response.blob();
       
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `${transcription?.fileName || `transcription-${id}`}.txt`);
+      link.setAttribute('download', `${transcription?.fileName || `transcription-${id}`}.pdf`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -140,7 +138,7 @@ export default function TranscriptionDetail() {
             </p>
           </CardContent>
           <CardFooter>
-            <Button onClick={() => navigate('/')}>Return to Dashboard</Button>
+            <Button onClick={() => setLocation('/')}>Return to Dashboard</Button>
           </CardFooter>
         </Card>
       </div>

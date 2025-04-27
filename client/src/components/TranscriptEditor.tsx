@@ -546,6 +546,10 @@ export function TranscriptEditor({ transcription, onSave, readOnly = false }: Tr
             });
           })()}
         </div>
+      ) : (
+        <div className="min-h-[400px] border rounded-md p-3 overflow-auto font-mono whitespace-pre-wrap">
+          {watchText}
+        </div>
       )}
       
       <div className="flex flex-col sm:flex-row gap-3 pt-2">
