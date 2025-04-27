@@ -128,105 +128,61 @@ export async function generateTranscriptPDF(
        align: 'center'
      });
   
-  // ==================== SUMMARY PAGE ====================
+  // ==================== SUMMARY and ACTION ITEMS ON SAME PAGE ====================
+  let startNewPage = true;
+  
+  // First check if we have a summary
   if (transcription.summary) {
-    doc.addPage();
+    // Only start a new page if we're not on the first page
+    if (startNewPage) {
+      doc.addPage();
+      startNewPage = false;
+    }
+    
+    doc.y = 40; // Reset to top of page
     
     // Section header
-    doc.rect(margins.left, 40, doc.page.width - margins.left - margins.right, 40)
+    doc.rect(margins.left, doc.y, doc.page.width - margins.left - margins.right, 40)
        .fill(styles.colors.secondary);
     
     doc.fontSize(styles.sizes.heading)
        .fillColor('white')
        .font(styles.fonts.heading)
-       .text('Meeting Summary', margins.left + 20, 55);
+       .text('Meeting Summary', margins.left + 20, doc.y + 15);
     
     // Summary content
     doc.fontSize(styles.sizes.normal)
        .fillColor(styles.colors.text)
        .font(styles.fonts.normal)
-       .text(transcription.summary, margins.left, 100, { 
+       .text(transcription.summary, margins.left, doc.y + 60, { 
          width: doc.page.width - margins.left - margins.right, 
          align: 'justify' 
        });
     
-    // Keywords section if available
-    if (transcription.keywords) {
-      const keywordsY = Math.min(doc.y + 30, doc.page.height - 150);
-      
-      // Ensure we have enough space, otherwise go to next page
-      if (keywordsY > doc.page.height - 150) {
-        doc.addPage();
-        
-        doc.rect(margins.left, 40, doc.page.width - margins.left - margins.right, 40)
-           .fill(styles.colors.secondary);
-        
-        doc.fontSize(styles.sizes.heading)
-           .fillColor('white')
-           .font(styles.fonts.heading)
-           .text('Keywords', margins.left + 20, 55);
-           
-        doc.y = 100;
-      } else {
-        // Keywords header
-        doc.rect(margins.left, keywordsY, doc.page.width - margins.left - margins.right, 30)
-           .fill(styles.colors.accent);
-        
-        doc.fontSize(styles.sizes.subheading)
-           .fillColor('white')
-           .font(styles.fonts.subheading)
-           .text('Keywords', margins.left + 20, keywordsY + 8);
-        
-        doc.y = keywordsY + 50;
-      }
-      
-      // Display keywords as tags
-      const keywords = transcription.keywords.split(',').map(k => k.trim());
-      let tagX = margins.left;
-      let tagY = doc.y;
-      const tagHeight = 25;
-      const tagPadding = 10;
-      
-      keywords.forEach(keyword => {
-        if (keyword) {
-          // Calculate text width to determine tag width
-          const textWidth = doc.widthOfString(keyword);
-          const tagWidth = textWidth + (tagPadding * 2);
-          
-          // Check if we need to move to next line
-          if (tagX + tagWidth > doc.page.width - margins.right) {
-            tagX = margins.left;
-            tagY += tagHeight + 5;
-          }
-          
-          // Draw tag background
-          doc.roundedRect(tagX, tagY, tagWidth, tagHeight, 12)
-             .fillAndStroke('#ebf8ff', styles.colors.accent);
-          
-          // Draw tag text
-          doc.fontSize(styles.sizes.small)
-             .fillColor(styles.colors.secondary)
-             .font(styles.fonts.normal)
-             .text(keyword, tagX + tagPadding, tagY + 6);
-          
-          // Move to next tag position
-          tagX += tagWidth + 10;
-        }
-      });
-      
-      // Update y position for next section
-      doc.y = tagY + tagHeight + 20;
-    }
+    // Add some space before potential action items
+    doc.y += 20;
   }
   
-  // ==================== ACTION ITEMS PAGE ====================
+  // ==================== ACTION ITEMS SECTION ====================
   const items = parseActionItems(transcription);
   if (items.length) {
-    // Always start action items on a new page for consistency
-    doc.addPage();
-    doc.y = 40;
+    // Check if we need a new page based on remaining space
+    // If summary used more than 2/3 of the page, start a new page
+    if (doc.y > (doc.page.height * 0.66)) {
+      doc.addPage();
+      doc.y = 40;
+      startNewPage = false;
+    } else if (startNewPage) {
+      // If we haven't added a page yet (no summary), add one now
+      doc.addPage();
+      doc.y = 40;
+      startNewPage = false;
+    } else {
+      // Just add some space after the summary
+      doc.y += 20;
+    }
     
-    // Section header with gradient for visual appeal
+    // Section header 
     doc.rect(margins.left, doc.y, doc.page.width - margins.left - margins.right, 40)
        .fill(styles.colors.success);
     
@@ -237,96 +193,78 @@ export async function generateTranscriptPDF(
     
     doc.y += 60;
     
-    // Introduction text
-    doc.fontSize(styles.sizes.normal)
-       .fillColor(styles.colors.text)
-       .font(styles.fonts.normal)
-       .text('The following action items were identified from the meeting:', 
-         margins.left, doc.y, { 
-           width: doc.page.width - margins.left - margins.right,
-           align: 'left'
-         });
-    
-    doc.y += 30;
-    
-    // Action items in a cleaner checklist style
+    // Simplified action item list
     items.forEach((item, i) => {
-      if (doc.y > doc.page.height - 80) {
+      if (doc.y > doc.page.height - 60) {
         doc.addPage();
-        
-        // Repeat section header on continuation pages
-        doc.rect(margins.left, 40, doc.page.width - margins.left - margins.right, 40)
-           .fill(styles.colors.success);
-        
-        doc.fontSize(styles.sizes.heading)
-           .fillColor('white')
-           .font(styles.fonts.heading)
-           .text('Action Items (Continued)', margins.left + 20, 55);
-        
-        doc.y = 100;
+        doc.y = 40;
       }
       
-      // Background for item (alternating colors for better readability)
-      const bgColor = i % 2 === 0 ? '#f0fff4' : '#f7fdfa'; // Very light green tints
-      const boxHeight = Math.max(50, doc.heightOfString(item, { 
-        width: doc.page.width - margins.left - margins.right - 70
-      }) + 30);
+      // Cleaner, simpler action items design
+      const circleSize = 16;
+      const circleX = margins.left + 10;
+      const circleY = doc.y + 3;  // Align with first line of text
       
-      doc.roundedRect(margins.left, doc.y, doc.page.width - margins.left - margins.right, boxHeight, 8)
-         .fillAndStroke(bgColor, styles.colors.lightGray);
-      
-      // Checkbox-style indicator - align with the text baseline
-      const checkboxSize = 20;
-      const checkboxX = margins.left + 15;
-      const checkboxY = doc.y + 25;  // Align with text content, not center of box
-      
-      // Checkbox border
-      doc.roundedRect(checkboxX, checkboxY, checkboxSize, checkboxSize, 3)
+      // Draw numbered circle
+      doc.circle(circleX, circleY, circleSize/2)
          .fillAndStroke(styles.colors.success, styles.colors.success);
       
-      // Checkmark
-      doc.save()
-         .moveTo(checkboxX + 5, checkboxY + 10)
-         .lineTo(checkboxX + 8, checkboxY + 14)
-         .lineTo(checkboxX + 15, checkboxY + 6)
-         .strokeColor('white')
-         .lineWidth(2)
-         .stroke()
-         .restore();
-      
-      // Label and text in the same column for better alignment
-      const textStartX = margins.left + 50;
-      
-      // Item number as a label
+      // Number inside circle
       doc.fontSize(styles.sizes.small)
-         .fillColor(styles.colors.accent)
-         .font(styles.fonts.subheading)
-         .text(`ITEM ${i + 1}`, textStartX, doc.y + 10);
+         .fillColor('white')
+         .font(styles.fonts.normal)
+         .text((i + 1).toString(), 
+           circleX - (doc.widthOfString((i + 1).toString())/2), 
+           circleY - 4);
       
-      // Item text with better formatting
+      // Action item text - simple format
       doc.fontSize(styles.sizes.normal)
          .fillColor(styles.colors.text)
          .font(styles.fonts.normal)
-         .text(item, textStartX, doc.y + 26, { 
-           width: doc.page.width - margins.left - margins.right - 70,
-           lineGap: 2
-         });
+         .text(item, 
+           margins.left + 30, 
+           doc.y, { 
+             width: doc.page.width - margins.left - margins.right - 40
+           });
       
-      doc.y += boxHeight + 15;
+      doc.moveDown(1);
     });
     
-    // Note at the bottom
-    if (doc.y < doc.page.height - 100) {
-      doc.moveDown(2);
-      doc.fontSize(styles.sizes.small)
-         .fillColor(styles.colors.text)
-         .font(styles.fonts.normal)
-         .text('Note: Action items were automatically extracted from the meeting transcript using AI analysis.', 
-           margins.left, doc.y, {
-             width: doc.page.width - margins.left - margins.right,
-             align: 'center'
-           });
+    // Simple footnote
+    doc.fontSize(styles.sizes.small)
+       .fillColor(styles.colors.text)
+       .text('* Action items identified from meeting transcript using AI analysis', 
+         margins.left, doc.y + 10, {
+           width: doc.page.width - margins.left - margins.right
+         });
+  }
+  
+  // Check if we have keywords to display
+  if (transcription.keywords) {
+    // Only add new page if we need to
+    if (doc.y > doc.page.height - 120) {
+      doc.addPage();
+      doc.y = 40;
+    } else {
+      doc.y += 30;
     }
+    
+    // Simple keywords section header
+    doc.fontSize(styles.sizes.subheading)
+       .fillColor(styles.colors.secondary)
+       .font(styles.fonts.subheading)
+       .text('Keywords', margins.left, doc.y);
+    
+    doc.y += 15;
+    
+    // Display keywords in a simple comma-separated list
+    doc.fontSize(styles.sizes.normal)
+       .fillColor(styles.colors.text)
+       .font(styles.fonts.normal)
+       .text(transcription.keywords, 
+         margins.left, doc.y, { 
+           width: doc.page.width - margins.left - margins.right
+         });
   }
   
   // ==================== TRANSCRIPT PAGE ====================
