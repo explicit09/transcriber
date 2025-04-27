@@ -16,7 +16,7 @@ import {
   CheckCircle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Card } from "@/components/ui/card";
+import { Card, CardHeader, CardContent, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import { apiRequest } from "@/lib/queryClient";
 
 // Shared language map
@@ -90,6 +96,7 @@ export default function TranscriptionHistory() {
   const [selectedItems, setSelectedItems] = useState<number[]>([]);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("transcriptions"); // Default to transcriptions tab
 
   // Data fetch
   const {
@@ -218,32 +225,86 @@ export default function TranscriptionHistory() {
           aria-label="Search transcriptions"
         />
       </div>
-
-      {isLoading ? (
-        Array.from({ length: 3 }).map((_,i)=>(
-          <Card key={i} className="animate-pulse h-32 mb-4" />
-        ))
-      ) : error ? (
-        <div className="text-red-600">Failed to load. Try again.</div>
-      ) : sorted.length === 0 ? (
-        <div className="text-center py-20 text-gray-500">
-          <MessageSquare className="mx-auto mb-2 h-8 w-8" />
-          {debouncedSearch ? "No matches" : "No transcriptions yet"}
-        </div>
-      ) : (
-        sorted.map(t => (
-          <TranscriptionCard
-            key={t.id}
-            t={t}
-            isSelectionMode={isSelectionMode}
-            selected={selectedItems.includes(t.id)}
-            onToggle={() => toggleItem(t.id)}
-            estimateDuration={estimateDuration}
-            formatFileSize={formatFileSize}
-            formatDate={formatDateStr}
-          />
-        ))
-      )}
+      
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full mb-6">
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="transcriptions">Transcriptions</TabsTrigger>
+          <TabsTrigger value="speakers">Speaker Analysis</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="transcriptions" className="mt-4">
+          {isLoading ? (
+            Array.from({ length: 3 }).map((_,i)=>(
+              <Card key={i} className="animate-pulse h-32 mb-4" />
+            ))
+          ) : error ? (
+            <div className="text-red-600">Failed to load. Try again.</div>
+          ) : sorted.length === 0 ? (
+            <div className="text-center py-20 text-gray-500">
+              <MessageSquare className="mx-auto mb-2 h-8 w-8" />
+              {debouncedSearch ? "No matches" : "No transcriptions yet"}
+            </div>
+          ) : (
+            sorted.map(t => (
+              <TranscriptionCard
+                key={t.id}
+                t={t}
+                isSelectionMode={isSelectionMode}
+                selected={selectedItems.includes(t.id)}
+                onToggle={() => toggleItem(t.id)}
+                estimateDuration={estimateDuration}
+                formatFileSize={formatFileSize}
+                formatDate={formatDateStr}
+              />
+            ))
+          )}
+        </TabsContent>
+        
+        <TabsContent value="speakers" className="mt-4">
+          {sorted.some(t => t.speakerLabels && t.speakerCount && t.speakerCount > 1) ? (
+            <div className="grid grid-cols-1 gap-6">
+              {sorted
+                .filter(t => t.speakerLabels && t.speakerCount && t.speakerCount > 1)
+                .slice(0, 3) // Only show the 3 most recent ones for simplicity
+                .map(t => (
+                  <Card key={t.id} className="shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-lg">{t.meetingTitle || t.fileName}</CardTitle>
+                      <CardDescription>
+                        {formatDateStr(t.meetingDate || t.createdAt)} • {t.speakerCount} speakers detected
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex justify-between items-center">
+                        <Badge className="mb-4">Speaker Analysis</Badge>
+                        <Link href={`/transcription/${t.id}`}>
+                          <Button size="sm" variant="outline">View Details</Button>
+                        </Link>
+                      </div>
+                      <p className="text-sm text-muted-foreground pb-3">
+                        View detailed analysis of speaking patterns and speaker similarities.
+                      </p>
+                    </CardContent>
+                  </Card>
+                ))
+            }
+            </div>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Speaker Analysis</CardTitle>
+                <CardDescription>No transcriptions with multiple speakers found</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
+                  <Users className="h-16 w-16 mb-4 opacity-30" />
+                  <p>Upload a transcription with multiple speakers to see speaker analysis here.</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
 
       {isSelectionMode && (
         <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 flex gap-2">

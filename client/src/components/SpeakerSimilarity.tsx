@@ -47,12 +47,20 @@ export default function SpeakerSimilarity({ transcriptionId, onMergeSpeakers }: 
     
     setIsLoading(true);
     try {
-      const response = await apiRequest(`/api/transcriptions/${transcriptionId}/speaker-similarity`);
-      setSpeakers(response.speakers || []);
-      setSpeakerStats(response.speakerStats || {});
-      setSpeakerPairs(response.speakerPairs || []);
-      setCurrentSpeakerCount(response.currentSpeakerCount || 0);
-      setTargetSpeakerCount(Math.max(2, Math.min(Math.floor(response.currentSpeakerCount / 2), response.currentSpeakerCount - 1)));
+      const response = await apiRequest("GET", `/api/transcriptions/${transcriptionId}/speaker-similarity`);
+      const data = await response.json();
+      
+      console.log('Speaker similarity data:', data);
+      
+      setSpeakers(data.speakers || []);
+      setSpeakerStats(data.speakerStats || {});
+      setSpeakerPairs(data.speakerPairs || []);
+      setCurrentSpeakerCount(data.currentSpeakerCount || 0);
+      
+      // Only set target speaker count if we have more than one speaker
+      if (data.currentSpeakerCount > 1) {
+        setTargetSpeakerCount(Math.max(2, Math.min(Math.floor(data.currentSpeakerCount / 2), data.currentSpeakerCount - 1)));
+      }
     } catch (error) {
       console.error('Error fetching speaker similarity:', error);
       toast({
