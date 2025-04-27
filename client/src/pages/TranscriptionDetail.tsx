@@ -66,27 +66,37 @@ export default function TranscriptionDetail() {
   // Fetch transcription
   const { data: transcription, isLoading, error } = useQuery<Transcription>({
     queryKey: ["/api/transcriptions", id],
-    queryFn: () => apiRequest("GET", `/api/transcriptions/${id}`),
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/transcriptions/${id}`);
+      const data = await response.json();
+      return data as Transcription;
+    },
     enabled: !!id,
   });
 
   // Delete mutation
-  const { mutate: deleteTranscription, isLoading: isDeleting } = useMutation({
-    mutationFn: () => apiRequest("DELETE", `/api/transcriptions/${id}`),
+  const { mutate: deleteTranscription, isPending: isDeleting } = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/transcriptions/${id}`);
+      return true;
+    },
     onSuccess: () => {
       toast({ title: "Deleted", description: "Transcription removed.", variant: "default" });
       setLocation("/history");
     },
     onSettled: () => {
-      queryClient.invalidateQueries(["/api/transcriptions"]);
+      queryClient.invalidateQueries({ queryKey: ["/api/transcriptions"] });
     }
   });
 
   // Summary mutation
-  const { mutate: generateSummary, isLoading: isGeneratingSummary } = useMutation({
-    mutationFn: () => apiRequest("POST", `/api/transcriptions/${id}/summary`),
+  const { mutate: generateSummary, isPending: isGeneratingSummary } = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", `/api/transcriptions/${id}/summary`);
+      return response.json();
+    },
     onSuccess: () => toast({ title: "Summary ready", description: "Fetched summary.", variant: "default" }),
-    onSettled: () => queryClient.invalidateQueries(["/api/transcriptions", id])
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["/api/transcriptions", id] })
   });
 
   // Callback handlers
