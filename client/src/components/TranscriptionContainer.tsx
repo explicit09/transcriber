@@ -105,111 +105,72 @@ export default function TranscriptionContainer() {
       // Reset progress at start of upload
       setProgress(0);
       
-      // Check if the file is small enough for direct upload
-      if (file.size <= 20 * 1024 * 1024) { // 20MB
-        try {
+      try {
+        // Use XMLHttpRequest for better progress tracking
+        return new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
           const formData = new FormData();
-          formData.append("file", file);
           
-          // Add meeting metadata
+          // Append file and metadata
+          formData.append("file", file);
           formData.append("meetingTitle", metadata.meetingTitle);
           formData.append("meetingDate", metadata.meetingDate.toISOString());
           formData.append("participants", metadata.participants);
-          
-          // Add advanced options
           formData.append("enableSpeakerLabels", metadata.enableSpeakerLabels.toString());
           formData.append("enableTimestamps", metadata.enableTimestamps.toString());
+          formData.append("generateSummary", metadata.generateSummary.toString());
+          
           if (metadata.language) {
             formData.append("language", metadata.language);
           }
-          formData.append("generateSummary", metadata.generateSummary.toString());
           
-          // Add number of speakers if specified
           if (metadata.numSpeakers !== null) {
             formData.append("numSpeakers", metadata.numSpeakers.toString());
           }
-
-          const response = await apiRequest("POST", "/api/transcribe", formData);
-          return response.json();
-        } catch (error) {
-          console.error("Upload error:", error);
-          throw new Error("Failed to upload file. Please try again.");
-        }
-      } else {
-        // For larger files, use chunked upload
-        const chunks = [];
-        const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
-        let start = 0;
-        
-        try {
-          // Create metadata-only request to initialize the transcription
-          const metadataPayload = {
-            fileName: file.name,
-            fileSize: file.size.toString(),
-            fileType: file.type,
-            meetingTitle: metadata.meetingTitle,
-            meetingDate: metadata.meetingDate.toISOString(),
-            participants: metadata.participants,
-            enableSpeakerLabels: metadata.enableSpeakerLabels.toString(),
-            enableTimestamps: metadata.enableTimestamps.toString(),
-            language: metadata.language || null,
-            generateSummary: metadata.generateSummary.toString(),
-            numSpeakers: metadata.numSpeakers !== null ? metadata.numSpeakers.toString() : null
+          
+          // Track upload progress
+          xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+              const percentComplete = Math.floor((event.loaded / event.total) * 90);
+              setProgress(percentComplete);
+            }
           };
           
-          // Initialize the transcription and get a transcription ID
-          const initResponse = await apiRequest("POST", "/api/transcribe-init", metadataPayload);
-          const { transcriptionId } = await initResponse.json();
-          
-          // Split file into chunks
-          while (start < file.size) {
-            const end = Math.min(start + CHUNK_SIZE, file.size);
-            chunks.push(file.slice(start, end));
-            start = end;
-          }
-          
-          // Upload each chunk with retry logic
-          const totalChunks = chunks.length;
-          for (let i = 0; i < totalChunks; i++) {
-            let retries = 3;
-            let lastError;
-            
-            while (retries > 0) {
+          // Handle response
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
               try {
-                const chunkForm = new FormData();
-                chunkForm.append("chunk", chunks[i], `chunk-${i}`);
-                chunkForm.append("chunkIndex", i.toString());
-                chunkForm.append("totalChunks", totalChunks.toString());
-                chunkForm.append("transcriptionId", transcriptionId.toString());
-                
-                // Update progress based on chunks uploaded
-                const progressPercent = Math.floor((i / totalChunks) * 90);
-                setProgress(progressPercent);
-                
-                await apiRequest("POST", "/api/transcribe-chunk", chunkForm);
-                break; // Success, exit retry loop
-              } catch (error) {
-                lastError = error;
-                retries--;
-                if (retries === 0) {
-                  throw new Error(`Failed to upload chunk ${i}. Please try again.`);
-                }
-                // Wait before retrying
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                const response = JSON.parse(xhr.responseText);
+                resolve(response);
+              } catch (err) {
+                reject(new Error("Invalid server response"));
               }
+            } else {
+              reject(new Error(`Upload failed with status ${xhr.status}: ${xhr.statusText}`));
             }
-          }
+          };
           
-          // Complete the upload and start processing
-          const completeResponse = await apiRequest("POST", `/api/transcribe-complete/${transcriptionId}`);
-          setProgress(95); // Show high progress after successful upload
-          return completeResponse.json();
-        } catch (error) {
-          console.error("Chunked upload error:", error);
-          // Reset progress on error
-          setProgress(0);
-          throw new Error(error instanceof Error ? error.message : "Failed to upload file. Please try again.");
-        }
+          // Handle errors
+          xhr.onerror = () => {
+            reject(new Error("Network error during upload"));
+          };
+          
+          // Handle timeouts
+          xhr.ontimeout = () => {
+            reject(new Error("Upload timed out"));
+          };
+          
+          // Set request 
+          xhr.open("POST", "/api/transcribe", true);
+          xhr.withCredentials = true;
+          xhr.timeout = 3600000; // 1 hour timeout
+          
+          // Send the form data
+          xhr.send(formData);
+        });
+      } catch (error) {
+        console.error("Upload error:", error);
+        throw error;
       }
     },
     onSuccess: (data) => {
