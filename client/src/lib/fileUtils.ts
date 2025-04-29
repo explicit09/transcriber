@@ -1,9 +1,19 @@
 // Utility functions for handling file uploads with chunking
 
 /**
- * Maximum chunk size in bytes - staying well under Replit's 25MB limit
+ * Maximum chunk size in bytes for file uploads
+ * - Files larger than this will be automatically split into chunks
+ * - Using 20MB chunks for reliable uploads while supporting files up to 100MB total
+ * - Small enough to avoid timeouts and memory issues
+ * - Large enough to minimize the number of round trips
  */
 export const MAX_CHUNK_SIZE = 20 * 1024 * 1024; // 20MB
+
+/**
+ * Maximum total file size in bytes
+ * - Must match server-side limit in routes.ts and schema.ts
+ */
+export const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 
 /**
  * Checks if file needs to be uploaded in chunks

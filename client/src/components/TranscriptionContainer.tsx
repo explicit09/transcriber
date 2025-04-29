@@ -192,9 +192,10 @@ export default function TranscriptionContainer() {
 
   const handleFileSelected = (file: File) => {
     if (file) {
-      // Validate file size
-      if (file.size > 100 * 1024 * 1024) {
-        setErrorMessage("File size exceeds 100MB limit. Please upload a smaller file.");
+      // Validate file size (100MB limit)
+      const MAX_FILE_SIZE = 100 * 1024 * 1024;
+      if (file.size > MAX_FILE_SIZE) {
+        setErrorMessage(`File size exceeds 100MB limit. Please upload a smaller file or split your audio into smaller segments.`);
         setView("error");
         return;
       }
