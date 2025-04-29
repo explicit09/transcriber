@@ -125,11 +125,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { fileName, fileSize, fileType, meetingTitle, meetingDate, participants, 
               enableSpeakerLabels, enableTimestamps, language, generateSummary, numSpeakers } = req.body;
       
+      // Get file extension from filename
+      const fileExt = path.extname(fileName).substring(1) || 'mp3';
+      
       // Create transcription record
       const transcription = await storage.createTranscription({
         fileName,
         fileSize: parseInt(fileSize),
-        fileType: fileType.split('/').pop() || path.extname(fileName).substring(1),
+        fileType: fileExt,
         status: "uploading", // Status will be updated to "processing" once all chunks are received
         meetingTitle,
         meetingDate: new Date(meetingDate),
