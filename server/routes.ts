@@ -45,7 +45,7 @@ const upload = multer({
     }
   }),
   limits: {
-    fileSize: 25 * 1024 * 1024, // 25MB limit
+    fileSize: 100 * 1024 * 1024, // 100MB limit
   },
   fileFilter: (req, file, cb) => {
     const allowedTypes = ['.mp3', '.wav', '.m4a'];

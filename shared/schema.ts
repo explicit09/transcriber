@@ -71,8 +71,8 @@ export const audioFileSchema = z.object({
       "Only MP3, WAV, and M4A files are supported"
     )
     .refine(
-      file => !file || file.size <= 25 * 1024 * 1024,
-      "File size must be less than 25MB"
+      file => !file || file.size <= 100 * 1024 * 1024,
+      "File size must be less than 100MB"
     ),
 });
 
