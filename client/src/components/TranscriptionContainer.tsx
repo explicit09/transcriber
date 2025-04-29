@@ -102,91 +102,135 @@ export default function TranscriptionContainer() {
   // Mutation to upload and transcribe file with metadata
   const { mutate: uploadFile, isPending } = useMutation({
     mutationFn: async ({ file, metadata }: { file: File, metadata: MeetingMetadata }) => {
+      // Reset progress at start of upload
+      setProgress(0);
+      
       // Check if the file is small enough for direct upload
-      if (file.size <= 20 * 1024 * 1024) { // 20MB (below Replit's 25MB limit)
-        // Standard upload for smaller files
-        const formData = new FormData();
-        formData.append("file", file);
-        
-        // Add meeting metadata
-        formData.append("meetingTitle", metadata.meetingTitle);
-        formData.append("meetingDate", metadata.meetingDate.toISOString());
-        formData.append("participants", metadata.participants);
-        
-        // Add advanced options
-        formData.append("enableSpeakerLabels", metadata.enableSpeakerLabels.toString());
-        formData.append("enableTimestamps", metadata.enableTimestamps.toString());
-        if (metadata.language) {
-          formData.append("language", metadata.language);
-        }
-        formData.append("generateSummary", metadata.generateSummary.toString());
-        
-        // Add number of speakers if specified
-        if (metadata.numSpeakers !== null) {
-          formData.append("numSpeakers", metadata.numSpeakers.toString());
-        }
+      if (file.size <= 20 * 1024 * 1024) { // 20MB
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
+          
+          // Add meeting metadata
+          formData.append("meetingTitle", metadata.meetingTitle);
+          formData.append("meetingDate", metadata.meetingDate.toISOString());
+          formData.append("participants", metadata.participants);
+          
+          // Add advanced options
+          formData.append("enableSpeakerLabels", metadata.enableSpeakerLabels.toString());
+          formData.append("enableTimestamps", metadata.enableTimestamps.toString());
+          if (metadata.language) {
+            formData.append("language", metadata.language);
+          }
+          formData.append("generateSummary", metadata.generateSummary.toString());
+          
+          // Add number of speakers if specified
+          if (metadata.numSpeakers !== null) {
+            formData.append("numSpeakers", metadata.numSpeakers.toString());
+          }
 
-        const response = await apiRequest("POST", "/api/transcribe", formData);
-        return response.json();
+          const response = await apiRequest("POST", "/api/transcribe", formData);
+          return response.json();
+        } catch (error) {
+          console.error("Upload error:", error);
+          throw new Error("Failed to upload file. Please try again.");
+        }
       } else {
-        // For larger files, we need to use chunked upload
+        // For larger files, use chunked upload
         const chunks = [];
         const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
         let start = 0;
         
-        // Create metadata-only request to initialize the transcription
-        const metadataPayload = {
-          fileName: file.name,
-          fileSize: file.size.toString(),
-          fileType: file.type,
-          meetingTitle: metadata.meetingTitle,
-          meetingDate: metadata.meetingDate.toISOString(),
-          participants: metadata.participants,
-          enableSpeakerLabels: metadata.enableSpeakerLabels.toString(),
-          enableTimestamps: metadata.enableTimestamps.toString(),
-          language: metadata.language || null,
-          generateSummary: metadata.generateSummary.toString(),
-          numSpeakers: metadata.numSpeakers !== null ? metadata.numSpeakers.toString() : null
-        };
-        
-        // Initialize the transcription and get a transcription ID
-        const initResponse = await apiRequest("POST", "/api/transcribe-init", metadataPayload);
-        const { transcriptionId } = await initResponse.json();
-        
-        // Split file into chunks
-        while (start < file.size) {
-          const end = Math.min(start + CHUNK_SIZE, file.size);
-          chunks.push(file.slice(start, end));
-          start = end;
-        }
-        
-        // Upload each chunk
-        const totalChunks = chunks.length;
-        for (let i = 0; i < totalChunks; i++) {
-          const chunkForm = new FormData();
-          chunkForm.append("chunk", chunks[i], `chunk-${i}`);
-          chunkForm.append("chunkIndex", i.toString());
-          chunkForm.append("totalChunks", totalChunks.toString());
-          chunkForm.append("transcriptionId", transcriptionId.toString());
+        try {
+          // Create metadata-only request to initialize the transcription
+          const metadataPayload = {
+            fileName: file.name,
+            fileSize: file.size.toString(),
+            fileType: file.type,
+            meetingTitle: metadata.meetingTitle,
+            meetingDate: metadata.meetingDate.toISOString(),
+            participants: metadata.participants,
+            enableSpeakerLabels: metadata.enableSpeakerLabels.toString(),
+            enableTimestamps: metadata.enableTimestamps.toString(),
+            language: metadata.language || null,
+            generateSummary: metadata.generateSummary.toString(),
+            numSpeakers: metadata.numSpeakers !== null ? metadata.numSpeakers.toString() : null
+          };
           
-          // Update progress based on chunks uploaded
-          setProgress(Math.floor((i / totalChunks) * 90)); // Leave some room for processing
+          // Initialize the transcription and get a transcription ID
+          const initResponse = await apiRequest("POST", "/api/transcribe-init", metadataPayload);
+          const { transcriptionId } = await initResponse.json();
           
-          await apiRequest("POST", "/api/transcribe-chunk", chunkForm);
+          // Split file into chunks
+          while (start < file.size) {
+            const end = Math.min(start + CHUNK_SIZE, file.size);
+            chunks.push(file.slice(start, end));
+            start = end;
+          }
+          
+          // Upload each chunk with retry logic
+          const totalChunks = chunks.length;
+          for (let i = 0; i < totalChunks; i++) {
+            let retries = 3;
+            let lastError;
+            
+            while (retries > 0) {
+              try {
+                const chunkForm = new FormData();
+                chunkForm.append("chunk", chunks[i], `chunk-${i}`);
+                chunkForm.append("chunkIndex", i.toString());
+                chunkForm.append("totalChunks", totalChunks.toString());
+                chunkForm.append("transcriptionId", transcriptionId.toString());
+                
+                // Update progress based on chunks uploaded
+                const progressPercent = Math.floor((i / totalChunks) * 90);
+                setProgress(progressPercent);
+                
+                await apiRequest("POST", "/api/transcribe-chunk", chunkForm);
+                break; // Success, exit retry loop
+              } catch (error) {
+                lastError = error;
+                retries--;
+                if (retries === 0) {
+                  throw new Error(`Failed to upload chunk ${i}. Please try again.`);
+                }
+                // Wait before retrying
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+            }
+          }
+          
+          // Complete the upload and start processing
+          const completeResponse = await apiRequest("POST", `/api/transcribe-complete/${transcriptionId}`);
+          setProgress(95); // Show high progress after successful upload
+          return completeResponse.json();
+        } catch (error) {
+          console.error("Chunked upload error:", error);
+          // Reset progress on error
+          setProgress(0);
+          throw new Error(error instanceof Error ? error.message : "Failed to upload file. Please try again.");
         }
-        
-        // Complete the upload and start processing
-        const completeResponse = await apiRequest("POST", `/api/transcribe-complete/${transcriptionId}`);
-        return completeResponse.json();
       }
     },
     onSuccess: (data) => {
       setTranscriptionId(data.id);
       setView("processing");
+      toast({
+        title: "Upload successful",
+        description: "Your file is now being processed...",
+        duration: 5000,
+      });
     },
     onError: (error: Error) => {
       setErrorMessage(error.message || "Failed to upload file");
       setView("error");
+      setProgress(0); // Reset progress on error
+      toast({
+        title: "Upload failed",
+        description: error.message || "Failed to upload file. Please try again.",
+        variant: "destructive",
+        duration: 5000,
+      });
     },
   });
 
