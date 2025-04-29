@@ -70,7 +70,7 @@ export default function UploadArea({ onFileSelected, isUploading }: UploadAreaPr
           Select file
         </Button>
         
-        <p className="mt-3 text-xs text-muted-foreground">Supports MP3, WAV, M4A (Max 25MB)</p>
+        <p className="mt-3 text-xs text-muted-foreground">Supports MP3, WAV, M4A (Max 100MB)</p>
       </div>
       
       <input 
