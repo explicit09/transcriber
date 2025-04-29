@@ -135,25 +135,22 @@ export default function TranscriptionContainer() {
         let start = 0;
         
         // Create metadata-only request to initialize the transcription
-        const metadataForm = new FormData();
-        metadataForm.append("fileName", file.name);
-        metadataForm.append("fileSize", file.size.toString());
-        metadataForm.append("fileType", file.type);
-        metadataForm.append("meetingTitle", metadata.meetingTitle);
-        metadataForm.append("meetingDate", metadata.meetingDate.toISOString());
-        metadataForm.append("participants", metadata.participants);
-        metadataForm.append("enableSpeakerLabels", metadata.enableSpeakerLabels.toString());
-        metadataForm.append("enableTimestamps", metadata.enableTimestamps.toString());
-        if (metadata.language) {
-          metadataForm.append("language", metadata.language);
-        }
-        metadataForm.append("generateSummary", metadata.generateSummary.toString());
-        if (metadata.numSpeakers !== null) {
-          metadataForm.append("numSpeakers", metadata.numSpeakers.toString());
-        }
+        const metadataPayload = {
+          fileName: file.name,
+          fileSize: file.size.toString(),
+          fileType: file.type,
+          meetingTitle: metadata.meetingTitle,
+          meetingDate: metadata.meetingDate.toISOString(),
+          participants: metadata.participants,
+          enableSpeakerLabels: metadata.enableSpeakerLabels.toString(),
+          enableTimestamps: metadata.enableTimestamps.toString(),
+          language: metadata.language || null,
+          generateSummary: metadata.generateSummary.toString(),
+          numSpeakers: metadata.numSpeakers !== null ? metadata.numSpeakers.toString() : null
+        };
         
         // Initialize the transcription and get a transcription ID
-        const initResponse = await apiRequest("POST", "/api/transcribe-init", metadataForm);
+        const initResponse = await apiRequest("POST", "/api/transcribe-init", metadataPayload);
         const { transcriptionId } = await initResponse.json();
         
         // Split file into chunks

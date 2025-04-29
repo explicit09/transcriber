@@ -11,6 +11,7 @@ export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
+  options?: RequestInit
 ): Promise<Response> {
   // Check if data is FormData and don't set Content-Type
   // Let the browser set it automatically with the boundary
@@ -21,6 +22,7 @@ export async function apiRequest(
     headers: data && !isFormData ? { "Content-Type": "application/json" } : {},
     body: isFormData ? data : data ? JSON.stringify(data) : undefined,
     credentials: "include",
+    ...options
   });
 
   await throwIfResNotOk(res);
