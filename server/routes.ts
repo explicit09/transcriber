@@ -97,9 +97,343 @@ async function checkDiarizationAvailability() {
   }
 }
 
+// Create a directory to store temporary file chunks during uploads
+const tempChunkDir = path.join(os.tmpdir(), 'chunk-uploads');
+if (!fs.existsSync(tempChunkDir)) {
+  fs.mkdirSync(tempChunkDir, { recursive: true });
+}
+
+// Map to track in-progress chunked uploads
+const chunkedUploads = new Map<number, {
+  filePath: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  receivedChunks: number;
+  totalChunks: number;
+  metadata: any;
+}>();
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Check for pyannote diarization availability at startup
   await checkDiarizationAvailability();
+  
+  // Initialize a chunked upload - metadata only
+  app.post('/api/transcribe-init', async (req: Request, res: Response) => {
+    try {
+      // Extract metadata from request
+      const { fileName, fileSize, fileType, meetingTitle, meetingDate, participants, 
+              enableSpeakerLabels, enableTimestamps, language, generateSummary, numSpeakers } = req.body;
+      
+      // Create transcription record
+      const transcription = await storage.createTranscription({
+        fileName,
+        fileSize: parseInt(fileSize),
+        fileType: fileType.split('/').pop() || path.extname(fileName).substring(1),
+        status: "uploading", // Status will be updated to "processing" once all chunks are received
+        meetingTitle,
+        meetingDate: new Date(meetingDate),
+        participants,
+        speakerLabels: enableSpeakerLabels === 'true',
+        hasTimestamps: enableTimestamps === 'true',
+        language: language || null,
+      });
+      
+      // Create temp file path for chunks
+      const tempFilePath = path.join(tempChunkDir, `upload-${transcription.id}`);
+      
+      // Store upload information
+      chunkedUploads.set(transcription.id, {
+        filePath: tempFilePath,
+        fileName,
+        fileType,
+        fileSize: parseInt(fileSize),
+        receivedChunks: 0,
+        totalChunks: 0,
+        metadata: {
+          meetingTitle,
+          meetingDate: new Date(meetingDate),
+          participants,
+          enableSpeakerLabels: enableSpeakerLabels === 'true',
+          enableTimestamps: enableTimestamps === 'true',
+          language: language || null,
+          generateSummary: generateSummary === 'true',
+          numSpeakers: numSpeakers ? parseInt(numSpeakers) : null
+        }
+      });
+      
+      // Return transcription ID for subsequent chunk uploads
+      res.status(201).json({ transcriptionId: transcription.id });
+    } catch (error) {
+      console.error("Error initializing chunked upload:", error);
+      res.status(500).json({ message: "Failed to initialize upload" });
+    }
+  });
+  
+  // Receive a chunk of a large file
+  app.post('/api/transcribe-chunk', upload.single('chunk'), async (req: Request, res: Response) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No chunk uploaded" });
+      }
+      
+      const transcriptionId = parseInt(req.body.transcriptionId);
+      const chunkIndex = parseInt(req.body.chunkIndex);
+      const totalChunks = parseInt(req.body.totalChunks);
+      
+      // Make sure the upload exists
+      const uploadInfo = chunkedUploads.get(transcriptionId);
+      if (!uploadInfo) {
+        return res.status(404).json({ message: "Upload not found" });
+      }
+      
+      // Update total chunks if this is the first chunk
+      if (uploadInfo.receivedChunks === 0) {
+        uploadInfo.totalChunks = totalChunks;
+      }
+      
+      // Store the chunk data
+      const chunkDir = path.join(tempChunkDir, `upload-${transcriptionId}-chunks`);
+      if (!fs.existsSync(chunkDir)) {
+        fs.mkdirSync(chunkDir, { recursive: true });
+      }
+      
+      // Copy the chunk to its destination
+      const chunkPath = path.join(chunkDir, `chunk-${chunkIndex}`);
+      fs.copyFileSync(req.file.path, chunkPath);
+      
+      // Clean up the temporary file created by multer
+      fs.unlinkSync(req.file.path);
+      
+      // Update received chunks count
+      uploadInfo.receivedChunks++;
+      
+      // Response
+      res.status(200).json({ 
+        received: uploadInfo.receivedChunks,
+        total: uploadInfo.totalChunks
+      });
+    } catch (error) {
+      console.error("Error processing chunk:", error);
+      res.status(500).json({ message: "Failed to process chunk" });
+    }
+  });
+  
+  // Complete a chunked upload and start processing
+  app.post('/api/transcribe-complete/:id', async (req: Request, res: Response) => {
+    try {
+      const transcriptionId = parseInt(req.params.id);
+      const uploadInfo = chunkedUploads.get(transcriptionId);
+      
+      if (!uploadInfo) {
+        return res.status(404).json({ message: "Upload not found" });
+      }
+      
+      // Verify all chunks have been received
+      if (uploadInfo.receivedChunks !== uploadInfo.totalChunks) {
+        return res.status(400).json({ 
+          message: `Upload incomplete. Received ${uploadInfo.receivedChunks} of ${uploadInfo.totalChunks} chunks.` 
+        });
+      }
+      
+      // Reassemble the file from chunks
+      const chunkDir = path.join(tempChunkDir, `upload-${transcriptionId}-chunks`);
+      const outputFilePath = path.join(tempChunkDir, `upload-${transcriptionId}`);
+      const outputStream = fs.createWriteStream(outputFilePath);
+      
+      for (let i = 0; i < uploadInfo.totalChunks; i++) {
+        const chunkPath = path.join(chunkDir, `chunk-${i}`);
+        const chunkData = fs.readFileSync(chunkPath);
+        outputStream.write(chunkData);
+        
+        // Clean up the chunk
+        fs.unlinkSync(chunkPath);
+      }
+      
+      // Close the output stream and finish writing
+      outputStream.end();
+      
+      // Wait for the stream to finish
+      await new Promise<void>((resolve) => {
+        outputStream.on('finish', () => resolve());
+      });
+      
+      // Update transcription status to processing
+      await storage.updateTranscription(transcriptionId, {
+        status: "processing",
+        updatedAt: new Date()
+      });
+      
+      // Store the audio file
+      const fileBuffer = fs.readFileSync(outputFilePath);
+      await storage.storeAudioFile(
+        transcriptionId,
+        fileBuffer,
+        path.extname(uploadInfo.fileName)
+      );
+      
+      // Process the file in the background
+      const metadata = uploadInfo.metadata;
+      
+      (async () => {
+        try {
+          // Transcribe the audio file
+          const filePath = outputFilePath;
+          
+          // Determine which transcription method to use
+          const useHybrid = isAssemblyAIAvailable && metadata.enableSpeakerLabels;
+          const usePyannote = !useHybrid && isPyannoteDiarizationAvailable && metadata.enableSpeakerLabels;
+          const useAssemblyAI = !useHybrid && !usePyannote && isAssemblyAIAvailable && metadata.enableSpeakerLabels;
+          
+          // Calculate expected speaker count
+          const expectedSpeakers = metadata.numSpeakers || (metadata.participants ? metadata.participants.split(',').length : undefined);
+          
+          let result;
+          if (useHybrid) {
+            console.log("Using hybrid approach (OpenAI + AssemblyAI) for best transcription and diarization");
+            result = await transcribeWithHybridApproach(filePath, {
+              enableTimestamps: metadata.enableTimestamps,
+              language: metadata.language || undefined,
+              numSpeakers: expectedSpeakers
+            });
+          } else if (useAssemblyAI) {
+            console.log("Using AssemblyAI for advanced speaker diarization");
+            result = await transcribeWithAssemblyAI(filePath, {
+              speakerLabels: metadata.enableSpeakerLabels,
+              numSpeakers: expectedSpeakers,
+              language: metadata.language || undefined
+            });
+          } else if (usePyannote) {
+            console.log("Using pyannote.audio for advanced speaker diarization");
+            result = await transcribeWithPyannote(filePath, {
+              enableTimestamps: metadata.enableTimestamps,
+              language: metadata.language || undefined,
+              numSpeakers: expectedSpeakers
+            });
+          } else {
+            console.log("Using standard OpenAI transcription" + (metadata.enableSpeakerLabels ? " with text-based speaker detection" : ""));
+            result = await transcribeAudioWithFeatures(filePath, {
+              enableTimestamps: metadata.enableTimestamps,
+              language: metadata.language || undefined,
+            });
+          }
+          
+          // Format the transcript
+          let formattedText = result.text;
+          if (metadata.enableSpeakerLabels && result.structuredTranscript.segments.length > 0) {
+            // Format transcript with timestamps and speaker labels
+            console.log(`Formatting transcript with ${result.structuredTranscript.segments.length} segments and ${result.structuredTranscript.metadata?.speakerCount || 0} speakers`);
+            
+            // Group segments by speaker for cleaner output
+            let speakerGroups: { 
+              speaker: string; 
+              texts: string[]; 
+              start: number; 
+              end: number;
+            }[] = [];
+            
+            // Iterate through all segments to build speaker groups
+            result.structuredTranscript.segments.forEach(segment => {
+              const speaker = segment.speaker || 'Unknown Speaker';
+              
+              // If we have a current group for this speaker, add to it
+              if (speakerGroups.length > 0 && speakerGroups[speakerGroups.length - 1].speaker === speaker) {
+                const currentGroup = speakerGroups[speakerGroups.length - 1];
+                currentGroup.texts.push(segment.text);
+                currentGroup.end = segment.end;
+              } else {
+                // Start a new group for this speaker
+                speakerGroups.push({
+                  speaker,
+                  texts: [segment.text],
+                  start: segment.start,
+                  end: segment.end
+                });
+              }
+            });
+            
+            // Now format each group
+            const formattedSegments: string[] = [];
+            speakerGroups.forEach(group => {
+              const timePrefix = metadata.enableTimestamps ? `[${formatTime(group.start)}] ` : '';
+              formattedSegments.push(`${timePrefix}${group.speaker}: ${group.texts.join(' ')}`);
+            });
+            
+            formattedText = formattedSegments.join('\n\n');
+          }
+          
+          // Generate a summary if requested
+          let summary = null;
+          let keywords = null;
+          let actionItems = null;
+          
+          if (metadata.generateSummary && result.text) {
+            try {
+              // Apply threshold checks
+              const wordCount = result.text.split(/\s+/).filter(Boolean).length;
+              
+              // Only generate summaries for substantial content
+              if (result.text.length >= 100 && wordCount >= 15) {
+                const summaryResult = await generateTranscriptSummary(result.text);
+                summary = summaryResult.summary;
+                actionItems = summaryResult.actionItems?.length 
+                  ? summaryResult.actionItems.join('\n') 
+                  : null;
+                keywords = summaryResult.keywords.join(', ');
+              } else {
+                summary = "The transcript is too brief for a meaningful summary.";
+              }
+            } catch (summaryError) {
+              console.error("Error generating summary:", summaryError);
+            }
+          }
+          
+          // Update the transcription record
+          await storage.updateTranscription(transcriptionId, {
+            text: formattedText,
+            status: "completed",
+            updatedAt: new Date(),
+            speakerCount: result.structuredTranscript.metadata?.speakerCount || null,
+            duration: result.duration || null,
+            language: result.language || null,
+            summary,
+            keywords,
+            actionItems,
+            speakerLabels: metadata.enableSpeakerLabels && result.structuredTranscript.segments.some(s => s.speaker),
+            hasTimestamps: metadata.enableTimestamps,
+            structuredTranscript: JSON.stringify(result.structuredTranscript)
+          });
+          
+        } catch (error) {
+          console.error("Error during chunked file transcription:", error);
+          await storage.updateTranscription(transcriptionId, {
+            error: error instanceof Error ? error.message : String(error),
+            status: "error",
+            updatedAt: new Date(),
+            structuredTranscript: null
+          });
+        } finally {
+          // Clean up temporary files
+          try {
+            fs.unlinkSync(outputFilePath);
+            // Remove the chunk directory
+            fs.rmdirSync(path.join(tempChunkDir, `upload-${transcriptionId}-chunks`), { recursive: true });
+            // Remove from tracking map
+            chunkedUploads.delete(transcriptionId);
+          } catch (cleanupError) {
+            console.error("Error cleaning up temporary files:", cleanupError);
+          }
+        }
+      })();
+      
+      // Return the transcription ID to the client
+      res.status(200).json({ id: transcriptionId });
+      
+    } catch (error) {
+      console.error("Error completing chunked upload:", error);
+      res.status(500).json({ message: "Failed to complete upload" });
+    }
+  });
   
   // Upload and transcribe audio file
   app.post('/api/transcribe', upload.single('file'), async (req: Request, res: Response) => {
