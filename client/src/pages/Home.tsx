@@ -123,7 +123,7 @@ export default function Home() {
             <div className="text-sm text-gray-500 flex flex-wrap justify-center gap-x-4 gap-y-2">
               <span className="inline-flex items-center">
                 <Upload className="h-4 w-4 mr-1 text-blue-500" />
-                Max file size: 25MB
+                Max file size: 100MB
               </span>
               <span className="inline-flex items-center">
                 <FileText className="h-4 w-4 mr-1 text-blue-500" />
