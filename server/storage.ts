@@ -1,6 +1,7 @@
 import {
   transcriptions,
   transcriptionRevisions,
+  collabTranscriptRevisions,
   comments,
   type Transcription,
   type InsertTranscription,
@@ -31,7 +32,7 @@ export interface IStorage {
   deleteComment(id: number): Promise<void>;
 
   // Collaborative Editing Snapshot (if using Yjs)
-  saveRevision(transcriptionId: number, snapshot: string, ops: number[]): Promise<void>;
+  saveRevision(transcriptionId: number, snapshot: string, ops: number): Promise<void>;
 
   // Transcription Revision History
   addRevision(transcriptionId: number, text: string): Promise<void>;
@@ -122,6 +123,44 @@ export class DatabaseStorage implements IStorage {
     }
     
     return path.join(audioDir, audioFile);
+  }
+
+  // Comment operations -----------------------------------------------------
+  async createComment(comment: InsertComment): Promise<Comment> {
+    const [row] = await db
+      .insert(comments)
+      .values(comment)
+      .returning();
+    return row;
+  }
+
+  async getComments(transcriptionId: number): Promise<Comment[]> {
+    return db
+      .select()
+      .from(comments)
+      .where(eq(comments.transcriptId, transcriptionId));
+  }
+
+  async updateComment(id: number, updates: Partial<Comment>): Promise<Comment | undefined> {
+    const [row] = await db
+      .update(comments)
+      .set(updates)
+      .where(eq(comments.id, id))
+      .returning();
+    return row || undefined;
+  }
+
+  async deleteComment(id: number): Promise<void> {
+    await db.delete(comments).where(eq(comments.id, id));
+  }
+
+  async saveRevision(transcriptionId: number, snapshot: string, ops: number[]): Promise<void> {
+
+    await db.insert(collabTranscriptRevisions).values({
+      transcriptId: transcriptionId,
+      snapshot,
+      ops,
+    });
   }
 // DATABASE STORAGE METHODS FOR TRANSCRIPTION HISTORY
 async addRevision(transcriptionId: number, text: string): Promise<void> {
@@ -315,7 +354,7 @@ export class MemStorage implements IStorage {
     }
   }
 
-  async saveRevision(transcriptionId: number, _snapshot: string, _ops: number[]): Promise<void> {
+  async saveRevision(transcriptionId: number, _snapshot: string, _ops: number): Promise<void> {
     // no-op in memory
   }
 

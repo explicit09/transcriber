@@ -14,25 +14,30 @@ import { embedText } from './openai';
 import { TranscriptSegment } from '@shared/schema';
 import { chunkTranscriptSegments } from './chunker';
 
+import { chunkTranscript } from './chunking';
+
+
 export async function indexTranscript(
   transcriptId: number,
   segments: TranscriptSegment[]
 ): Promise<void> {
-  const chunks = chunkTranscriptSegments(segments);
+const chunks = chunkTranscript(segments);
 
-  for (const chunk of chunks) {
-    const embedding = await embedText(chunk.text);
-    await db.insert(transcriptVectors).values({
-      transcriptId,
-      chunkId: chunk.chunkId,
-      speaker: chunk.speaker ?? null,
-      text: chunk.text,
-      tsStart: chunk.tsStart,
-      tsEnd: chunk.tsEnd,
-      tokenStart: chunk.tokenStart,
-      tokenEnd: chunk.tokenEnd,
-      embedding,
-    });
+for (let i = 0; i < chunks.length; i++) {
+  const chunk = chunks[i];
+  const embedding = await embedText(chunk.text);
+
+  await db.insert(transcriptVectors).values({
+    transcriptId,
+    chunkId: i,
+    speaker: chunk.speaker,
+    text: chunk.text,
+    tsStart: chunk.tsStart,
+    tsEnd: chunk.tsEnd,
+    tokenStart: chunk.tokenStart,
+    tokenEnd: chunk.tokenEnd,
+    embedding,
+   });
   }
 }
 
