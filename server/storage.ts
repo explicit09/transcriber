@@ -32,7 +32,7 @@ export interface IStorage {
   deleteComment(id: number): Promise<void>;
 
   // Collaborative Editing Snapshot (if using Yjs)
-  saveRevision(transcriptionId: number, snapshot: string, ops: number[]): Promise<void>;
+  saveRevision(transcriptionId: number, snapshot: string, ops: number): Promise<void>;
 
   // Transcription Revision History
   addRevision(transcriptionId: number, text: string): Promise<void>;
@@ -155,6 +155,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async saveRevision(transcriptionId: number, snapshot: string, ops: number[]): Promise<void> {
+
     await db.insert(collabTranscriptRevisions).values({
       transcriptId: transcriptionId,
       snapshot,
@@ -353,7 +354,7 @@ export class MemStorage implements IStorage {
     }
   }
 
-  async saveRevision(transcriptionId: number, _snapshot: string, _ops: number[]): Promise<void> {
+  async saveRevision(transcriptionId: number, _snapshot: string, _ops: number): Promise<void> {
     // no-op in memory
   }
 
