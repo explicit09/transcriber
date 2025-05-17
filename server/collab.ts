@@ -6,6 +6,7 @@ import { RedisPersistence } from 'y-redis';
 import * as Y from 'yjs';
 import { storage } from './storage';
 import { scheduleReindex } from './search';
+import { extractPlainText } from './yjsHelpers';
 
 interface DocInfo {
   doc: Y.Doc;
@@ -25,13 +26,20 @@ function trackDoc(name: string, doc: Y.Doc) {
   if (docs.has(name)) return docs.get(name)!;
 
   let info: DocInfo;
-  const save = () => {
+  const save = async () => {
     if (info.ops === 0) return;
     const snapshot = Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64');
     const id = Number(name.replace(/^transcription-/, ''));
     if (!Number.isNaN(id)) {
-      storage.saveRevision(id, snapshot, info.ops).catch(console.error);
-      scheduleReindex(id);
+      try {
+        const text = extractPlainText(doc);
+        await storage.saveRevision(id, snapshot, info.ops);
+        await storage.updateTranscription(id, { text, updatedAt: new Date() });
+        await storage.addRevision(id, text);
+        scheduleReindex(id);
+      } catch (err) {
+        console.error('collab autosave failed', err);
+      }
     }
     info.ops = 0;
     info.lastSave = Date.now();
@@ -43,7 +51,7 @@ function trackDoc(name: string, doc: Y.Doc) {
     lastSave: Date.now(),
     timer: setInterval(() => {
       if (Date.now() - info.lastSave >= 5 * 60 * 1000) {
-        save();
+        void save();
       }
     }, 60 * 1000),
   };
@@ -51,7 +59,7 @@ function trackDoc(name: string, doc: Y.Doc) {
   doc.on('update', () => {
     info.ops++;
     if (info.ops >= 500) {
-      save();
+      void save();
     }
   });
 
@@ -69,7 +77,18 @@ export function startCollabGateway(server: Server) {
       url.searchParams.get('token') ||
       (req.headers['sec-websocket-protocol']?.split(',')[0] ?? '');
     try {
-      verify(token, process.env.JWT_SECRET || 'secret');
+      const payload = verify(
+        token,
+        process.env.COLLAB_TOKEN_SECRET || process.env.JWT_SECRET || 'secret'
+      ) as { transcriptionId?: number; scopes?: string[] };
+      const idMatch = url.pathname.match(/transcription-(\d+)/);
+      const docId = idMatch ? Number(idMatch[1]) : NaN;
+      if (!payload.transcriptionId || payload.transcriptionId !== docId) {
+        throw new Error('Invalid transcriptionId');
+      }
+      (req as any).collabScopes = Array.isArray(payload.scopes)
+        ? payload.scopes
+        : [];
     } catch (err) {
       socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
       socket.destroy();

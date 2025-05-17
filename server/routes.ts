@@ -35,6 +35,9 @@ import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { checkDiarizationSetup } from "./diarization";
 import * as Y from "yjs";
+import { commentsRouter } from './routes/comments';
+import { transcriptionsRouter } from './routes/transcriptions';
+import { searchRouter } from './routes/search';
 
 // Setup multer for file uploads
 const upload = multer({
@@ -152,6 +155,10 @@ const chunkedUploads = new Map<number, {
 export async function registerRoutes(app: Express): Promise<Server> {
   // Check for pyannote diarization availability at startup
   await checkDiarizationAvailability();
+
+  app.use('/api/transcriptions', commentsRouter);
+  app.use('/api/transcriptions', transcriptionsRouter);
+  app.use('/api/search', searchRouter);
   
   // Initialize a chunked upload - metadata only
   app.post('/api/transcribe-init', async (req: Request, res: Response) => {
@@ -1096,45 +1103,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Create a comment for a transcription
-  app.post('/api/transcriptions/:id/comments', async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-      if (isNaN(id)) {
-        return res.status(400).json({ message: 'Invalid transcription ID' });
-      }
-
-      const transcription = await storage.getTranscription(id);
-      if (!transcription) {
-        return res.status(404).json({ message: 'Transcription not found' });
-      }
-
-      const { dueDate, ...commentInput } = req.body;
-      const data = insertCommentSchema.parse({
-        ...commentInput,
-        transcriptId: id,
-        dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
-      });
-      const comment = await storage.createComment(data);
-
-      if (data.kind === 'action-item') {
-        await sendActionItemWebhook({
-          transcriptionId: id,
-          body: data.body,
-          dueDate: typeof dueDate === 'string' ? dueDate : undefined,
-        });
-      }
-
-      return res.status(201).json(comment);
-    } catch (error) {
-      if (error instanceof ZodError) {
-        const validationError = fromZodError(error);
-        return res.status(400).json({ message: validationError.message });
-      }
-      console.error('Error creating comment:', error);
-      return res.status(500).json({ message: 'Internal server error' });
-    }
-  });
   
   // Download a transcription as PDF
   app.get('/api/transcriptions/:id/pdf', async (req: Request, res: Response) => {
@@ -1328,162 +1296,7 @@ app.get('/api/transcriptions/:id/revisions/:rev_no', async (req: Request, res: R
   }
 });
 
-// Get comments for a transcription
-app.get('/api/transcriptions/:id/comments', async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id);
-  if (isNaN(id)) {
-    return res.status(400).json({ message: 'Invalid transcription ID' });
-  }
 
-  const transcription = await storage.getTranscription(id);
-  if (!transcription) {
-    return res.status(404).json({ message: 'Transcription not found' });
-  }
-
-  const comments = await storage.getComments(id);
-  return res.json(comments);
-});
-
-// Create a new comment
-app.post('/api/transcriptions/:id/comments', async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id);
-  if (isNaN(id)) {
-    return res.status(400).json({ message: 'Invalid transcription ID' });
-  }
-
-  const transcription = await storage.getTranscription(id);
-  if (!transcription) {
-    return res.status(404).json({ message: 'Transcription not found' });
-  }
-
-  try {
-    const { dueDate, ...commentInput } = req.body;
-    const data = insertCommentSchema.parse({
-      ...commentInput,
-      transcriptId: id,
-      dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
-    });
-    const comment = await storage.createComment(data);
-
-    if (data.kind === 'action-item') {
-      await sendActionItemWebhook({
-        transcriptionId: id,
-        body: data.body,
-        dueDate: typeof dueDate === 'string' ? dueDate : undefined,
-      });
-    }
-
-    return res.status(201).json(comment);
-  } catch (error) {
-    if (error instanceof ZodError) {
-      const validationError = fromZodError(error);
-      return res.status(400).json({ message: validationError.message });
-    }
-    return res.status(400).json({ message: error instanceof Error ? error.message : String(error) });
-  }
-});
-
-// Update a comment
-app.patch('/api/transcriptions/:id/comments/:commentId', async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id);
-  const commentId = parseInt(req.params.commentId);
-  if (isNaN(id) || isNaN(commentId)) {
-    return res.status(400).json({ message: 'Invalid ID' });
-  }
-
-  const transcription = await storage.getTranscription(id);
-  if (!transcription) {
-    return res.status(404).json({ message: 'Transcription not found' });
-  }
-
-  const updates: Partial<Comment> = {
-    yjsPos: req.body.yjsPos,
-    body: req.body.body,
-    kind: req.body.kind,
-    status: req.body.status,
-    assignee: req.body.assignee,
-    createdBy: req.body.createdBy,
-    dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
-    metadata: req.body.metadata,
-    absolutePosition: req.body.absolutePosition,
-  };
-
-  const updated = await storage.updateComment(commentId, updates);
-  if (!updated) {
-    return res.status(404).json({ message: 'Comment not found' });
-  }
-  return res.json(updated);
-});
-
-// Delete a comment
-app.delete('/api/transcriptions/:id/comments/:commentId', async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id);
-  const commentId = parseInt(req.params.commentId);
-  if (isNaN(id) || isNaN(commentId)) {
-    return res.status(400).json({ message: 'Invalid ID' });
-  }
-
-  const transcription = await storage.getTranscription(id);
-  if (!transcription) {
-    return res.status(404).json({ message: 'Transcription not found' });
-  }
-
-  await storage.deleteComment(commentId);
-  return res.status(204).send();
-});
-
-// Generate a collaboration token for a transcription
-app.get('/api/transcriptions/:id/collab-token', async (req: Request, res: Response) => {
-  try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) {
-      return res.status(400).json({ message: 'Invalid transcription ID' });
-    }
-
-    const transcription = await storage.getTranscription(id);
-    if (!transcription) {
-      return res.status(404).json({ message: 'Transcription not found' });
-    }
-
-    const scopesParam = req.query.scopes;
-    let scopes: string[] = [];
-    if (typeof scopesParam === 'string') {
-      scopes = scopesParam.split(',').map(s => s.trim()).filter(s => s === 'read' || s === 'write');
-    }
-    if (scopes.length === 0) {
-      scopes = ['read'];
-    }
-
-    const secret = process.env.COLLAB_TOKEN_SECRET;
-    if (!secret) {
-      return res.status(500).json({ message: 'Collaboration token secret is not configured' });
-    }
-
-    const token = jwt.sign({ transcriptionId: id, scopes }, secret, { expiresIn: '2h' });
-    return res.status(200).json({ token });
-  } catch (error) {
-    console.error('Error generating collaboration token:', error);
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-});
-
-// Manually save a collaboration snapshot
-app.post('/api/transcriptions/:id/save-collab', async (req: Request, res: Response) => {
-  try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) {
-      return res.status(400).json({ message: 'Invalid transcription ID' });
-    }
-    const doc = redis.getYDoc(`transcription-${id}`);
-    const snapshot = Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64');
-    await storage.saveRevision(id, snapshot, 0);
-    scheduleReindex(id);
-    return res.status(204).end();
-  } catch (error) {
-    console.error('Error saving collaboration snapshot:', error);
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-});
 
   // Batch process multiple files
   app.post('/api/batch-transcribe', upload.array('files', 10), async (req: Request, res: Response) => {
@@ -1824,27 +1637,6 @@ app.post('/api/transcriptions/:id/save-collab', async (req: Request, res: Respon
     }
   });
 
-  // Semantic search across a transcription
-  app.get('/api/search', async (req: Request, res: Response) => {
-    try {
-      const query = z.string().min(1).parse(req.query.q);
-      const transcriptId = z.coerce.number().parse(req.query.transcript_id);
-      const top = req.query.top ? z.coerce.number().parse(req.query.top) : 10;
-      const tags = typeof req.query.tags === 'string'
-        ? req.query.tags.split(',').map(t => t.trim()).filter(Boolean)
-        : [];
-
-      const results = await searchTranscript(transcriptId, query, top, tags);
-      return res.json(results);
-    } catch (err) {
-      if (err instanceof ZodError) {
-        const message = fromZodError(err).message;
-        return res.status(400).json({ message });
-      }
-      console.error('search error', err);
-      return res.status(500).json({ message: 'search failed' });
-    }
-  });
 
   // Get speaker similarity data for a transcription
   app.get('/api/transcriptions/:id/speaker-similarity', async (req: Request, res: Response) => {
