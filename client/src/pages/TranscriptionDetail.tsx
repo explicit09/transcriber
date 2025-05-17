@@ -9,6 +9,7 @@ import TranscriptView from '@/components/TranscriptView';
 import TranscriptSearch from '@/components/TranscriptSearch';
 import SpeakerSimilarity from '@/components/SpeakerSimilarity';
 import CommentList from '@/components/CommentList';
+import CommentForm from '@/components/CommentForm';
 import VersionHistory from '@/components/VersionHistory';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -401,6 +402,9 @@ export default function TranscriptionDetail() {
           </TabsContent>
 
           <TabsContent value="comments" className="mt-4">
+            <div className="mb-4">
+              <CommentForm transcriptId={transcription.id} />
+            </div>
             <CommentList transcriptId={transcription.id} onJump={(t) => setSearchTime(t)} />
           </TabsContent>
 
