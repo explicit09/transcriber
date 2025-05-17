@@ -1,4 +1,5 @@
-import { pgTable, text, serial, integer, boolean, timestamp, real } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, real, numeric, varchar } from "drizzle-orm/pg-core";
+import { vector } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -100,3 +101,20 @@ export const structuredTranscriptSchema = z.object({
 });
 
 export type StructuredTranscript = z.infer<typeof structuredTranscriptSchema>;
+
+export const transcriptVectors = pgTable("transcript_vectors", {
+  id: serial("id").primaryKey(),
+  transcriptId: integer("transcript_id").notNull().references(() => transcriptions.id),
+  chunkId: integer("chunk_id").notNull(),
+  speaker: varchar("speaker", { length: 64 }),
+  text: text("text"),
+  tsStart: numeric("ts_start", { precision: 8, scale: 2 }),
+  tsEnd: numeric("ts_end", { precision: 8, scale: 2 }),
+  tokenStart: integer("token_start"),
+  tokenEnd: integer("token_end"),
+  embedding: vector("embedding", { dimensions: 1536 }),
+});
+
+export const insertVectorSchema = createInsertSchema(transcriptVectors);
+export type InsertVector = z.infer<typeof insertVectorSchema>;
+export type TranscriptVector = typeof transcriptVectors.$inferSelect;
