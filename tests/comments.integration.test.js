@@ -49,10 +49,16 @@ test('comment CRUD operations', async () => {
     yjsPos: {},
     body: 'test',
     kind: 'comment',
-    status: 'open'
+    status: 'open',
+    createdBy: 'u1',
+    absolutePosition: 0,
+    dueDate: new Date(),
+    metadata: { foo: 'bar' }
   });
   let list = await storage.getComments(t.id);
   assert.equal(list.length, 1);
+  assert.equal(list[0].createdBy, 'u1');
+  assert.equal(list[0].absolutePosition, 0);
 
   await storage.updateComment(c.id, { body: 'updated' });
   list = await storage.getComments(t.id);
