@@ -12,7 +12,9 @@ export async function ensureVectorIndex() {
 }
 import { embedText } from './openai';
 import { TranscriptSegment } from '@shared/schema';
-import { chunkTranscript } from './chunk';
+
+import { chunkTranscript } from './chunking';
+
 
 export async function indexTranscript(
   transcriptId: number,
@@ -20,17 +22,19 @@ export async function indexTranscript(
 ): Promise<void> {
   const chunks = chunkTranscript(segments);
   for (let i = 0; i < chunks.length; i++) {
-    const seg = chunks[i];
-    const embedding = await embedText(seg.text);
+
+    const chunk = chunks[i];
+    const embedding = await embedText(chunk.text);
+
     await db.insert(transcriptVectors).values({
       transcriptId,
       chunkId: i,
-      speaker: seg.speaker ?? null,
-      text: seg.text,
-      tsStart: seg.start,
-      tsEnd: seg.end,
-      tokenStart: 0,
-      tokenEnd: seg.text.split(/\s+/).length,
+      speaker: chunk.speaker,
+      text: chunk.text,
+      tsStart: chunk.tsStart,
+      tsEnd: chunk.tsEnd,
+      tokenStart: chunk.tokenStart,
+      tokenEnd: chunk.tokenEnd,
       embedding,
     });
   }
