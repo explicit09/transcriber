@@ -106,15 +106,37 @@ export function CollaborativeEditor({ docId, token, wsUrl }: CollaborativeEditor
   });
 
   useEffect(() => {
-    const persistence = new IndexeddbPersistence(docId, ydoc);
-    persistence.on("synced", () => {});
-    provider.awareness.setLocalStateField("user", user);
-    return () => {
-      provider.destroy();
-      persistence.destroy();
-      ydoc.destroy();
-    };
-  }, [docId, provider, user, ydoc]);
+  const persistence = new IndexeddbPersistence(docId, ydoc);
+  persistence.on("synced", () => {});
+
+  const provider = new WebsocketProvider(wsUrl, docId, doc, {
+    params: { token },
+  });
+  provider.awareness.setLocalStateField("user", user);
+  providerRef.current = provider;
+
+  const saveHandler = (e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      const match = docId.match(/transcription-(\d+)/);
+      if (match) {
+        fetch(`/api/transcriptions/${match[1]}/save-collab`, {
+          method: 'POST',
+          credentials: 'include',
+        });
+      }
+    }
+  };
+  window.addEventListener('keydown', saveHandler);
+
+  return () => {
+    provider.destroy();
+    persistence.destroy();
+    doc.destroy();
+    window.removeEventListener('keydown', saveHandler);
+    ydoc.destroy();
+  };
+}, [docId, provider, user, ydoc]);
 
   return <EditorContent editor={editor} />;
 }

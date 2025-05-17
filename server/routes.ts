@@ -27,11 +27,13 @@ import { sendActionItemWebhook } from "./integrations";
 import { transcribeWithAssemblyAI, formatTranscriptText } from "./assemblyai";
 import { transcribeWithHybridApproach } from "./hybrid";
 import { generateTranscriptPDF } from "./pdf";
+import { redis } from "./collab";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { checkDiarizationSetup } from "./diarization";
+import * as Y from "yjs";
 
 // Setup multer for file uploads
 const upload = multer({
@@ -1458,6 +1460,23 @@ app.get('/api/transcriptions/:id/collab-token', async (req: Request, res: Respon
     return res.status(200).json({ token });
   } catch (error) {
     console.error('Error generating collaboration token:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// Manually save a collaboration snapshot
+app.post('/api/transcriptions/:id/save-collab', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return res.status(400).json({ message: 'Invalid transcription ID' });
+    }
+    const doc = redis.getYDoc(`transcription-${id}`);
+    const snapshot = Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64');
+    await storage.saveRevision(id, snapshot, 0);
+    return res.status(204).end();
+  } catch (error) {
+    console.error('Error saving collaboration snapshot:', error);
     return res.status(500).json({ message: 'Internal server error' });
   }
 });
