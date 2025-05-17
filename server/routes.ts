@@ -1107,6 +1107,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const data = insertCommentSchema.parse({
         ...req.body,
         transcriptId: id,
+        dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
       });
       const comment = await storage.createComment(data);
 
@@ -1349,6 +1350,7 @@ app.post('/api/transcriptions/:id/comments', async (req: Request, res: Response)
     const data = insertCommentSchema.parse({
       ...req.body,
       transcriptId: id,
+      dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
     });
     const comment = await storage.createComment(data);
     return res.status(201).json(comment);
@@ -1380,6 +1382,10 @@ app.patch('/api/transcriptions/:id/comments/:commentId', async (req: Request, re
     kind: req.body.kind,
     status: req.body.status,
     assignee: req.body.assignee,
+    createdBy: req.body.createdBy,
+    dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
+    metadata: req.body.metadata,
+    absolutePosition: req.body.absolutePosition,
   };
 
   const updated = await storage.updateComment(commentId, updates);
