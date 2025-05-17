@@ -62,7 +62,7 @@ pip install -r requirements.txt
 
 2. Get a HuggingFace token with access to pyannote.audio models:
    - Create an account on [HuggingFace](https://huggingface.co/)
-   - Visit [pyannote/speaker-diarization-3.0](https://huggingface.co/pyannote/speaker-diarization-3.0)
+   - Visit [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
    - Accept the license agreement
    - Create an access token in your [HuggingFace settings](https://huggingface.co/settings/tokens)
 

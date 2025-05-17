@@ -81,7 +81,7 @@ async function checkDiarizationAvailability() {
       console.log('For multi-speaker transcription with Pyannote, please install pyannote.audio:');
       console.log('1. cd python');
       console.log('2. pip install -r requirements.txt');
-      console.log('3. Get a HuggingFace token with access to pyannote/speaker-diarization-3.0');
+      console.log('3. Get a HuggingFace token with access to pyannote/speaker-diarization-3.1');
       console.log('4. Set HUGGINGFACE_TOKEN environment variable');
     }
     
