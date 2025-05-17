@@ -1,27 +1,41 @@
 import * as Y from 'yjs';
 
-export function extractPlainText(doc: Y.Doc): string {
-  const frag = doc.getXmlFragment('prosemirror');
-  let text = '';
+/**
+ * Extract plain text from a Y.Doc object.
+ * Handles XmlText and XmlElement (e.g. from ProseMirror),
+ * preserves block structure via line breaks.
+ */
+export function yDocToPlainText(doc: Y.Doc): string {
+  const fragments = Array.from((doc as any).share.values()) as any[];
+  let result = '';
 
-  const walk = (node: any) => {
-    if (node instanceof Y.XmlText) {
-      text += node.toString();
-    } else if (node instanceof Y.XmlElement || node instanceof Y.XmlFragment) {
-      const children = (node as any).toArray();
-      for (const child of children) {
-        walk(child);
-      }
-      if (node instanceof Y.XmlElement && node.nodeName === 'p') {
-        text += '\n';
+  const traverse = (node: any) => {
+    if (!node) return;
+
+    if (typeof node.toString === 'function' && node.constructor?.name === 'Text') {
+      result += node.toString();
+    } else if (node.constructor?.name === 'XmlText') {
+      result += node.toString();
+    } else if (node.toArray) {
+      for (const child of node.toArray()) {
+        traverse(child);
+        if (child.nodeName === 'p') {
+          result += '\n';
+        }
       }
     }
   };
 
-  (frag as any).toArray().forEach(walk);
-  return text;
+  for (const frag of fragments) {
+    traverse(frag);
+  }
+
+  return result;
 }
 
+/**
+ * Inserts a comment anchor into the Y.Doc at a specific text position.
+ */
 export function insertCommentAnchor(doc: Y.Doc, absolutePos: number, id: number) {
   const root = doc.getXmlFragment('prosemirror');
   let index = 0;
