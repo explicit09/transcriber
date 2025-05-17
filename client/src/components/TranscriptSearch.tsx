@@ -14,11 +14,14 @@ interface SearchResult {
 
 interface TranscriptSearchProps {
   transcriptId: number;
-  onJump: (time: number) => void;
+  onJump: (time: number, text: string) => void;
 }
 
-export default function TranscriptSearch({ transcriptId, onJump }: TranscriptSearchProps) {
-  const [q, setQ] = useState('');
+export default function TranscriptSearch({
+  transcriptId,
+  onJump,
+}: TranscriptSearchProps) {
+  const [q, setQ] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -29,18 +32,39 @@ export default function TranscriptSearch({ transcriptId, onJump }: TranscriptSea
     );
   };
 
-  const handleSearch = async () => {
-    if (!q.trim()) return;
-    setLoading(true);
-    try {
-      const tagParam = selectedTags.length > 0 ? `&tags=${selectedTags.join(',')}` : '';
-      const resp = await apiRequest('GET', `/api/search?q=${encodeURIComponent(q)}&transcript_id=${transcriptId}${tagParam}`);
-      const data = await resp.json();
-      setResults(data as SearchResult[]);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+  const persistence = new IndexeddbPersistence(docId, ydoc);
+  persistence.on("synced", () => {});
+
+  const provider = new WebsocketProvider(wsUrl, docId, doc, {
+    params: { token },
+  });
+  provider.awareness.setLocalStateField("user", user);
+  providerRef.current = provider;
+
+  const saveHandler = (e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      const match = docId.match(/transcription-(\d+)/);
+      if (match) {
+        fetch(`/api/transcriptions/${match[1]}/save-collab`, {
+          method: 'POST',
+          credentials: 'include',
+        });
+      }
     }
   };
+    
+  window.addEventListener('keydown', saveHandler);
+
+  return () => {
+    provider.destroy();
+    persistence.destroy();
+    doc.destroy();
+    window.removeEventListener('keydown', saveHandler);
+    ydoc.destroy();
+  };
+}, [docId, provider, user, ydoc]);
 
   return (
     <div className="space-y-2">
@@ -48,7 +72,7 @@ export default function TranscriptSearch({ transcriptId, onJump }: TranscriptSea
         <input
           type="text"
           value={q}
-          onChange={e => setQ(e.target.value)}
+          onChange={(e) => setQ(e.target.value)}
           placeholder="Search transcript..."
           className="flex-1 border rounded p-2 text-sm"
         />
@@ -69,12 +93,18 @@ export default function TranscriptSearch({ transcriptId, onJump }: TranscriptSea
       </div>
       {results.length > 0 && (
         <ul className="border rounded p-2 max-h-60 overflow-y-auto space-y-1 text-sm bg-white">
-          {results.map(r => (
-            <li key={r.chunk_id} className="cursor-pointer hover:bg-blue-50 p-1 rounded" onClick={() => r.ts_start !== null && onJump(r.ts_start)}>
+          {results.map((r) => (
+            <li
+              key={r.chunk_id}
+              className="cursor-pointer hover:bg-blue-50 p-1 rounded"
+              onClick={() =>
+                r.ts_start !== null && onJump(r.ts_start, r.text ?? "")
+              }
+            >
               <div className="font-medium">{r.text}</div>
               <div className="text-gray-500 text-xs">
-                {r.speaker ? `${r.speaker} · ` : ''}
-                {r.ts_start !== null ? r.ts_start.toFixed(2) + 's' : ''}
+                {r.speaker ? `${r.speaker} · ` : ""}
+                {r.ts_start !== null ? r.ts_start.toFixed(2) + "s" : ""}
               </div>
             </li>
           ))}
