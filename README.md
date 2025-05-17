@@ -102,7 +102,7 @@ Results contain chunk text, timestamps and a relevance score.
 
 ## Action Item Webhooks
 
-When a comment of type `action-item` is created, the server forwards the item to the URLs defined in `ACTION_ITEM_WEBHOOK_URLS` (comma separated). Use this to integrate with ClickUp or Notion.
+When a comment of type `action-item` is created, the server forwards the item to configured webhook URLs. Define endpoints using `CLICKUP_WEBHOOK_URL`, `NOTION_WEBHOOK_URL`, or a comma separated list in `ACTION_ITEM_WEBHOOK_URLS`. The payload includes the comment text and optional `dueDate`.
 
 ## Tests
 
