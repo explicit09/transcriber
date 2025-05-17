@@ -1104,15 +1104,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Transcription not found' });
       }
 
+      const { dueDate, ...commentInput } = req.body;
       const data = insertCommentSchema.parse({
-        ...req.body,
+        ...commentInput,
         transcriptId: id,
         dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
       });
       const comment = await storage.createComment(data);
 
       if (data.kind === 'action-item') {
-        await sendActionItemWebhook({ transcriptionId: id, body: data.body });
+        await sendActionItemWebhook({
+          transcriptionId: id,
+          body: data.body,
+          dueDate: typeof dueDate === 'string' ? dueDate : undefined,
+        });
       }
 
       return res.status(201).json(comment);
@@ -1347,12 +1352,22 @@ app.post('/api/transcriptions/:id/comments', async (req: Request, res: Response)
   }
 
   try {
+    const { dueDate, ...commentInput } = req.body;
     const data = insertCommentSchema.parse({
-      ...req.body,
+      ...commentInput,
       transcriptId: id,
       dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
     });
     const comment = await storage.createComment(data);
+
+    if (data.kind === 'action-item') {
+      await sendActionItemWebhook({
+        transcriptionId: id,
+        body: data.body,
+        dueDate: typeof dueDate === 'string' ? dueDate : undefined,
+      });
+    }
+
     return res.status(201).json(comment);
   } catch (error) {
     if (error instanceof ZodError) {
