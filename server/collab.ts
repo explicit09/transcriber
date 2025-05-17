@@ -69,7 +69,18 @@ export function startCollabGateway(server: Server) {
       url.searchParams.get('token') ||
       (req.headers['sec-websocket-protocol']?.split(',')[0] ?? '');
     try {
-      verify(token, process.env.JWT_SECRET || 'secret');
+      const payload = verify(
+        token,
+        process.env.COLLAB_TOKEN_SECRET || process.env.JWT_SECRET || 'secret'
+      ) as { transcriptionId?: number; scopes?: string[] };
+      const idMatch = url.pathname.match(/transcription-(\d+)/);
+      const docId = idMatch ? Number(idMatch[1]) : NaN;
+      if (!payload.transcriptionId || payload.transcriptionId !== docId) {
+        throw new Error('Invalid transcriptionId');
+      }
+      (req as any).collabScopes = Array.isArray(payload.scopes)
+        ? payload.scopes
+        : [];
     } catch (err) {
       socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
       socket.destroy();
