@@ -1,4 +1,11 @@
-import { transcriptions, type Transcription, type InsertTranscription } from "@shared/schema";
+import {
+  transcriptions,
+  transcriptionComments,
+  type Transcription,
+  type InsertTranscription,
+  type TranscriptionComment,
+  type InsertTranscriptionComment,
+} from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import fs from 'fs';
@@ -12,6 +19,11 @@ export interface IStorage {
   deleteTranscription(id: number): Promise<void>;
   storeAudioFile(id: number, audioBuffer: Buffer, fileType: string): Promise<string>;
   getAudioFilePath(id: number): Promise<string | null>;
+
+  createComment(comment: InsertTranscriptionComment): Promise<TranscriptionComment>;
+  getComments(transcriptionId: number): Promise<TranscriptionComment[]>;
+  updateComment(id: number, updates: Partial<TranscriptionComment>): Promise<TranscriptionComment | undefined>;
+  deleteComment(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -98,16 +110,53 @@ export class DatabaseStorage implements IStorage {
     
     return path.join(audioDir, audioFile);
   }
+
+  async createComment(
+    comment: InsertTranscriptionComment,
+  ): Promise<TranscriptionComment> {
+    const [row] = await db
+      .insert(transcriptionComments)
+      .values(comment)
+      .returning();
+    return row;
+  }
+
+  async getComments(transcriptionId: number): Promise<TranscriptionComment[]> {
+    return await db
+      .select()
+      .from(transcriptionComments)
+      .where(eq(transcriptionComments.transcriptionId, transcriptionId));
+  }
+
+  async updateComment(
+    id: number,
+    updates: Partial<TranscriptionComment>,
+  ): Promise<TranscriptionComment | undefined> {
+    const [row] = await db
+      .update(transcriptionComments)
+      .set(updates)
+      .where(eq(transcriptionComments.id, id))
+      .returning();
+    return row || undefined;
+  }
+
+  async deleteComment(id: number): Promise<void> {
+    await db.delete(transcriptionComments).where(eq(transcriptionComments.id, id));
+  }
 }
 
 // For backwards compatibility, we can keep this class
 export class MemStorage implements IStorage {
   private transcriptions: Map<number, Transcription>;
+  private comments: Map<number, TranscriptionComment>;
   currentId: number;
+  currentCommentId: number;
 
   constructor() {
     this.transcriptions = new Map();
     this.currentId = 1;
+    this.comments = new Map();
+    this.currentCommentId = 1;
   }
 
   async createTranscription(insertTranscription: InsertTranscription): Promise<Transcription> {
@@ -221,6 +270,42 @@ export class MemStorage implements IStorage {
     }
     
     return path.join(audioDir, audioFile);
+  }
+
+  async createComment(
+    comment: InsertTranscriptionComment,
+  ): Promise<TranscriptionComment> {
+    const id = this.currentCommentId++;
+    const now = new Date();
+    const newComment: TranscriptionComment = {
+      ...comment,
+      id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.comments.set(id, newComment);
+    return newComment;
+  }
+
+  async getComments(transcriptionId: number): Promise<TranscriptionComment[]> {
+    return Array.from(this.comments.values()).filter(
+      (c) => c.transcriptionId === transcriptionId,
+    );
+  }
+
+  async updateComment(
+    id: number,
+    updates: Partial<TranscriptionComment>,
+  ): Promise<TranscriptionComment | undefined> {
+    const existing = this.comments.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, ...updates, updatedAt: new Date() };
+    this.comments.set(id, updated);
+    return updated;
+  }
+
+  async deleteComment(id: number): Promise<void> {
+    this.comments.delete(id);
   }
 }
 

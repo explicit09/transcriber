@@ -100,3 +100,33 @@ export const structuredTranscriptSchema = z.object({
 });
 
 export type StructuredTranscript = z.infer<typeof structuredTranscriptSchema>;
+
+export const transcriptionComments = pgTable("transcription_comments", {
+  id: serial("id").primaryKey(),
+  transcriptionId: integer("transcription_id")
+    .references(() => transcriptions.id)
+    .notNull(),
+  relativePos: text("relative_pos").notNull(),
+  body: text("body").notNull(),
+  kind: text("kind").notNull(),
+  status: text("status").notNull().default("open"),
+  assignee: text("assignee"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertTranscriptionCommentSchema = createInsertSchema(
+  transcriptionComments,
+).pick({
+  transcriptionId: true,
+  relativePos: true,
+  body: true,
+  kind: true,
+  status: true,
+  assignee: true,
+});
+
+export type InsertTranscriptionComment = z.infer<
+  typeof insertTranscriptionCommentSchema
+>;
+export type TranscriptionComment = typeof transcriptionComments.$inferSelect;
