@@ -77,6 +77,16 @@ export default function TranscriptionDetail() {
     return '';
   }, [revisionText, transcription?.text]);
 
+  const { data: collabToken } = useQuery({
+    queryKey: [`/api/transcriptions/${id}/collab-token`],
+    queryFn: async () => {
+      const res = await apiRequest('GET', `/api/transcriptions/${id}/collab-token?scopes=read,write`);
+      const json = await res.json();
+      return json.token as string;
+    },
+    enabled: !!id && activeTab === 'edit',
+  });
+
   // Handle save transcript mutation
   const saveTranscriptMutation = useMutation({
     mutationFn: async (text: string) => {
@@ -396,11 +406,16 @@ export default function TranscriptionDetail() {
           </TabsContent>
 
           <TabsContent value="edit" className="mt-4">
-            <CollaborativeEditor
-              docId={`transcription-${transcription.id}`}
-              token={"demo-token"}
-              wsUrl="wss://collab.example.com"
-            />
+            {collabToken && (
+              <CollaborativeEditor
+                docId={`transcription-${transcription.id}`}
+                token={collabToken}
+                wsUrl={
+                  (import.meta.env.VITE_COLLAB_URL as string) ||
+                  `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/collab`
+                }
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="speakers" className="mt-4">
