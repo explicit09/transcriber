@@ -1,4 +1,6 @@
-import { pgTable, text, serial, integer, boolean, timestamp, real } from "drizzle-orm/pg-core";
+
+import { pgTable, text, serial, integer, boolean, timestamp, real, numeric, varchar, bytea, jsonb } from "drizzle-orm/pg-core";
+import { vector } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -101,15 +103,69 @@ export const structuredTranscriptSchema = z.object({
 
 export type StructuredTranscript = z.infer<typeof structuredTranscriptSchema>;
 
-// Table for storing collaborative document revisions
-export const transcriptRevisions = pgTable('transcript_revisions', {
-  id: serial('id').primaryKey(),
-  transcriptionId: integer('transcription_id')
-    .notNull()
-    .references(() => transcriptions.id),
-  snapshot: text('snapshot').notNull(),
-  ops: integer('ops').notNull().default(0),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
+// Collaborative Revisions Table
+export const collabTranscriptRevisions = pgTable("collab_transcript_revisions", {
+  id: serial("id").primaryKey(),
+  transcriptId: integer("transcription_id")
+    .references(() => transcriptions.id)
+    .notNull(),
+  snapshot: text("snapshot").notNull(),
+  ops: jsonb("ops").notNull().default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export type CollabTranscriptRevision = typeof collabTranscriptRevisions.$inferSelect;
+
+// Versioned Document Revisions Table
+export const transcriptRevisions = pgTable("transcript_revisions", {
+  id: serial("id").primaryKey(),
+  transcriptId: integer("transcript_id")
+    .references(() => transcriptions.id)
+    .notNull(),
+  revNo: integer("rev_no").notNull(),
+  doc: bytea("doc").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertTranscriptRevisionSchema = createInsertSchema(transcriptRevisions);
+export type InsertTranscriptRevision = z.infer<typeof insertTranscriptRevisionSchema>;
 export type TranscriptRevision = typeof transcriptRevisions.$inferSelect;
+
+// Comments Table
+export const comments = pgTable("comments", {
+  id: serial("id").primaryKey(),
+  transcriptId: integer("transcript_id")
+    .references(() => transcriptions.id)
+    .notNull(),
+  yjsPos: jsonb("yjs_pos").notNull(),
+  body: text("body").notNull(),
+  kind: text("kind").notNull(),
+  status: text("status").notNull(),
+  assignee: text("assignee"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCommentSchema = createInsertSchema(comments);
+export type InsertComment = z.infer<typeof insertCommentSchema>;
+export type Comment = typeof comments.$inferSelect;
+
+// Transcript Vectors Table
+export const transcriptVectors = pgTable("transcript_vectors", {
+  id: serial("id").primaryKey(),
+  transcriptId: integer("transcript_id")
+    .notNull()
+    .references(() => transcriptions.id),
+  chunkId: integer("chunk_id").notNull(),
+  speaker: varchar("speaker", { length: 64 }),
+  text: text("text"),
+  tsStart: numeric("ts_start", { precision: 8, scale: 2 }),
+  tsEnd: numeric("ts_end", { precision: 8, scale: 2 }),
+  tokenStart: integer("token_start"),
+  tokenEnd: integer("token_end"),
+  embedding: vector("embedding", { dimensions: 1536 }),
+});
+
+export const insertVectorSchema = createInsertSchema(transcriptVectors);
+export type InsertVector = z.infer<typeof insertVectorSchema>;
+export type TranscriptVector = typeof transcriptVectors.$inferSelect;
