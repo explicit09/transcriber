@@ -103,7 +103,20 @@ export const structuredTranscriptSchema = z.object({
 
 export type StructuredTranscript = z.infer<typeof structuredTranscriptSchema>;
 
+// Collaborative Revisions Table
+export const collabTranscriptRevisions = pgTable("collab_transcript_revisions", {
+  id: serial("id").primaryKey(),
+  transcriptId: integer("transcription_id")
+    .references(() => transcriptions.id)
+    .notNull(),
+  snapshot: text("snapshot").notNull(),
+  ops: jsonb("ops").notNull().default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
+export type CollabTranscriptRevision = typeof collabTranscriptRevisions.$inferSelect;
+
+// Versioned Document Revisions Table
 export const transcriptRevisions = pgTable("transcript_revisions", {
   id: serial("id").primaryKey(),
   transcriptId: integer("transcript_id")
@@ -118,6 +131,7 @@ export const insertTranscriptRevisionSchema = createInsertSchema(transcriptRevis
 export type InsertTranscriptRevision = z.infer<typeof insertTranscriptRevisionSchema>;
 export type TranscriptRevision = typeof transcriptRevisions.$inferSelect;
 
+// Comments Table
 export const comments = pgTable("comments", {
   id: serial("id").primaryKey(),
   transcriptId: integer("transcript_id")
@@ -136,9 +150,12 @@ export const insertCommentSchema = createInsertSchema(comments);
 export type InsertComment = z.infer<typeof insertCommentSchema>;
 export type Comment = typeof comments.$inferSelect;
 
+// Transcript Vectors Table
 export const transcriptVectors = pgTable("transcript_vectors", {
   id: serial("id").primaryKey(),
-  transcriptId: integer("transcript_id").notNull().references(() => transcriptions.id),
+  transcriptId: integer("transcript_id")
+    .notNull()
+    .references(() => transcriptions.id),
   chunkId: integer("chunk_id").notNull(),
   speaker: varchar("speaker", { length: 64 }),
   text: text("text"),
@@ -152,4 +169,3 @@ export const transcriptVectors = pgTable("transcript_vectors", {
 export const insertVectorSchema = createInsertSchema(transcriptVectors);
 export type InsertVector = z.infer<typeof insertVectorSchema>;
 export type TranscriptVector = typeof transcriptVectors.$inferSelect;
-

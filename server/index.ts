@@ -3,6 +3,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import rateLimit from 'express-rate-limit';
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { startCollabGateway } from './collab';
 import dotenv from 'dotenv';
 
 // Load environment variables from .env file
@@ -51,6 +52,7 @@ app.use((req, res, next) => {
 
 (async () => {
   const server = await registerRoutes(app);
+  startCollabGateway(server);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
