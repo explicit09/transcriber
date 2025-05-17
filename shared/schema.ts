@@ -1,38 +1,48 @@
-import { pgTable, text, serial, integer, boolean, timestamp, real } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  serial,
+  integer,
+  boolean,
+  timestamp,
+  real,
+  numeric,
+  varchar,
+  bytea,
+  jsonb,
+  vector
+} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+
+// ─────────────────────────────────────────────
+// TRANSCRIPTIONS TABLE
+// ─────────────────────────────────────────────
+
 export const transcriptions = pgTable("transcriptions", {
   id: serial("id").primaryKey(),
-  // File metadata
   fileName: text("file_name").notNull(),
   fileSize: integer("file_size").notNull(),
   fileType: text("file_type").notNull(),
-  // Transcription status and content
   status: text("status").notNull().default("pending"),
   text: text("text"),
   error: text("error"),
-  // Speaker diarization
   speakerLabels: boolean("speaker_labels").default(false),
   speakerCount: integer("speaker_count"),
-  // Transcript timestamps
   hasTimestamps: boolean("has_timestamps").default(false),
-  duration: real("duration"), // Audio duration in seconds (floating point)
-  // Advanced features
-  language: text("language"), // Detected language
-  translatedText: text("translated_text"), // Translated version
-  summary: text("summary"), // AI generated summary
-  actionItems: text("action_items"), // Extracted action items
-  keywords: text("keywords"), // Extracted keywords
-  // Meeting metadata
+  duration: real("duration"),
+  language: text("language"),
+  translatedText: text("translated_text"),
+  summary: text("summary"),
+  actionItems: text("action_items"),
+  keywords: text("keywords"),
   meetingTitle: text("meeting_title"),
   meetingDate: timestamp("meeting_date").defaultNow(),
   participants: text("participants"),
-  // Created/updated timestamps
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-  // Add structured transcript data
-  structuredTranscript: text("structured_transcript"), // Store as JSON string for now
+  structuredTranscript: text("structured_transcript"),
 });
 
 export const insertTranscriptionSchema = createInsertSchema(transcriptions).pick({
@@ -46,11 +56,9 @@ export const insertTranscriptionSchema = createInsertSchema(transcriptions).pick
   speakerLabels: true,
   hasTimestamps: true,
   language: true,
-  // Add structured transcript to schema
   structuredTranscript: true,
 });
 
-// Explicitly add optional/nullable for zod type inference
 export const insertTranscriptionSchemaTyped = insertTranscriptionSchema.extend({
   structuredTranscript: z.string().optional().nullable(),
 });
@@ -58,75 +66,125 @@ export const insertTranscriptionSchemaTyped = insertTranscriptionSchema.extend({
 export type InsertTranscription = z.infer<typeof insertTranscriptionSchemaTyped>;
 export type Transcription = typeof transcriptions.$inferSelect;
 
-// Schema for file upload
+
+// ─────────────────────────────────────────────
+// AUDIO FILE VALIDATION
+// ─────────────────────────────────────────────
+
 export const audioFileSchema = z.object({
   file: z.any()
     .refine(file => file !== undefined, "File is required")
-    .refine(
-      file => {
-        if (!file || !file.originalname) return false;
-        const ext = file.originalname.split('.').pop()?.toLowerCase();
-        return ['mp3', 'wav', 'm4a'].includes(ext);
-      },
-      "Only MP3, WAV, and M4A files are supported"
-    )
-    .refine(
-      file => !file || file.size <= 200 * 1024 * 1024,
-      "File size must be less than 200MB"
-    ),
+    .refine(file => {
+      if (!file || !file.originalname) return false;
+      const ext = file.originalname.split('.').pop()?.toLowerCase();
+      return ['mp3', 'wav', 'm4a'].includes(ext);
+    }, "Only MP3, WAV, and M4A files are supported")
+    .refine(file => !file || file.size <= 200 * 1024 * 1024, "File size must be less than 200MB"),
 });
 
 export type AudioFile = z.infer<typeof audioFileSchema>;
 
-// Types for timestamps and speaker diarization
+
+// ─────────────────────────────────────────────
+// STRUCTURED TRANSCRIPT TYPES
+// ─────────────────────────────────────────────
+
 export const transcriptSegmentSchema = z.object({
-  start: z.number(), // Start time in seconds
-  end: z.number(), // End time in seconds
-  text: z.string(), // Text for this segment
-  speaker: z.string().optional(), // Speaker identifier (e.g., "Speaker 1")
-  confidence: z.number().optional(), // Confidence score 0-1
+  start: z.number(),
+  end: z.number(),
+  text: z.string(),
+  speaker: z.string().optional(),
+  confidence: z.number().optional(),
 });
 
 export type TranscriptSegment = z.infer<typeof transcriptSegmentSchema>;
 
-// Schema for structured transcript with timestamps and speakers
 export const structuredTranscriptSchema = z.object({
   segments: z.array(transcriptSegmentSchema),
   metadata: z.object({
     speakerCount: z.number().optional(),
-    duration: z.number().optional(), // Total duration in seconds
-    language: z.string().optional(), // Detected language
+    duration: z.number().optional(),
+    language: z.string().optional(),
   }).optional(),
 });
 
 export type StructuredTranscript = z.infer<typeof structuredTranscriptSchema>;
 
-export const transcriptionComments = pgTable("transcription_comments", {
+// ─────────────────────────────────────────────
+// COMMENTS TABLE (CANONICAL VERSION)
+// ─────────────────────────────────────────────
+
+export const comments = pgTable("comments", {
   id: serial("id").primaryKey(),
-  transcriptionId: integer("transcription_id")
+  transcriptId: integer("transcript_id")
     .references(() => transcriptions.id)
     .notNull(),
-  relativePos: text("relative_pos").notNull(),
+  yjsPos: jsonb("yjs_pos").notNull(),
   body: text("body").notNull(),
   kind: text("kind").notNull(),
-  status: text("status").notNull().default("open"),
+  status: text("status").notNull(),
   assignee: text("assignee"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const insertTranscriptionCommentSchema = createInsertSchema(
-  transcriptionComments,
-).pick({
-  transcriptionId: true,
-  relativePos: true,
-  body: true,
-  kind: true,
-  status: true,
-  assignee: true,
+export const insertCommentSchema = createInsertSchema(comments);
+export type InsertComment = z.infer<typeof insertCommentSchema>;
+export type Comment = typeof comments.$inferSelect;
+
+// ─────────────────────────────────────────────
+// COLLABORATIVE REVISIONS TABLE
+// ─────────────────────────────────────────────
+
+export const collabTranscriptRevisions = pgTable("collab_transcript_revisions", {
+  id: serial("id").primaryKey(),
+  transcriptId: integer("transcription_id")
+    .references(() => transcriptions.id)
+    .notNull(),
+  snapshot: text("snapshot").notNull(),
+  ops: jsonb("ops").notNull().default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export type InsertTranscriptionComment = z.infer<
-  typeof insertTranscriptionCommentSchema
->;
-export type TranscriptionComment = typeof transcriptionComments.$inferSelect;
+export type CollabTranscriptRevision = typeof collabTranscriptRevisions.$inferSelect;
+
+// ─────────────────────────────────────────────
+// VERSIONED DOCUMENT REVISIONS TABLE
+// ─────────────────────────────────────────────
+
+export const transcriptRevisions = pgTable("transcript_revisions", {
+  id: serial("id").primaryKey(),
+  transcriptId: integer("transcript_id")
+    .references(() => transcriptions.id)
+    .notNull(),
+  revNo: integer("rev_no").notNull(),
+  doc: bytea("doc").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertTranscriptRevisionSchema = createInsertSchema(transcriptRevisions);
+export type InsertTranscriptRevision = z.infer<typeof insertTranscriptRevisionSchema>;
+export type TranscriptRevision = typeof transcriptRevisions.$inferSelect;
+
+// ─────────────────────────────────────────────
+// TRANSCRIPT VECTORS TABLE
+// ─────────────────────────────────────────────
+
+export const transcriptVectors = pgTable("transcript_vectors", {
+  id: serial("id").primaryKey(),
+  transcriptId: integer("transcript_id")
+    .notNull()
+    .references(() => transcriptions.id),
+  chunkId: integer("chunk_id").notNull(),
+  speaker: varchar("speaker", { length: 64 }),
+  text: text("text"),
+  tsStart: numeric("ts_start", { precision: 8, scale: 2 }),
+  tsEnd: numeric("ts_end", { precision: 8, scale: 2 }),
+  tokenStart: integer("token_start"),
+  tokenEnd: integer("token_end"),
+  embedding: vector("embedding", { dimensions: 1536 }),
+});
+
+export const insertVectorSchema = createInsertSchema(transcriptVectors);
+export type InsertVector = z.infer<typeof insertVectorSchema>;
+export type TranscriptVector = typeof transcriptVectors.$inferSelect;
