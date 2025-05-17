@@ -48,6 +48,7 @@ export async function indexTranscript(transcriptId, segments, options = {}) {
       tokenStart: 0,
       tokenEnd: seg.text.split(/\s+/).length,
       embedding,
+      tags: seg.tags ?? null,
     });
   }
 }
@@ -62,18 +63,24 @@ export async function indexTranscript(transcriptId, segments, options = {}) {
 export async function searchTranscript(transcriptId, query, top, options = {}) {
   const database = options.db ?? defaultDb;
   const embed = options.embedFn ?? defaultEmbed;
+  const tags = options.tags ?? [];
   const embedding = await embed(query);
   if (database.execute.length === 1) {
     // custom mock database
-    return (await database.execute({ transcriptId, embedding, top })).rows;
+    return (await database.execute({ transcriptId, embedding, top, tags })).rows;
   }
+  const limit = tags.length > 0 ? top * 10 : top;
   const result = await database.execute(sql`
-    SELECT chunk_id, speaker, ts_start, ts_end, text,
+    SELECT chunk_id, speaker, ts_start, ts_end, text, tags,
       1 - (embedding <#> ${embedding}) AS score
     FROM transcript_vectors
     WHERE transcript_id = ${transcriptId}
     ORDER BY embedding <#> ${embedding}
-    LIMIT ${top}
+    LIMIT ${limit}
   `);
-  return result.rows;
+  let rows = result.rows;
+  if (tags.length > 0) {
+    rows = rows.filter(r => Array.isArray(r.tags) && r.tags.some(t => tags.includes(t))).slice(0, top);
+  }
+  return rows;
 }

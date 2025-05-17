@@ -19,7 +19,7 @@ import { chunkTranscript } from './chunking';
 
 export async function indexTranscript(
   transcriptId: number,
-  segments: TranscriptSegment[]
+  segments: (TranscriptSegment & { tags?: string[] })[]
 ): Promise<void> {
 const chunks = chunkTranscript(segments);
 
@@ -37,6 +37,7 @@ for (let i = 0; i < chunks.length; i++) {
     tokenStart: chunk.tokenStart,
     tokenEnd: chunk.tokenEnd,
     embedding,
+    tags: (segments[i] as any).tags ?? null,
    });
   }
 }
@@ -44,7 +45,8 @@ for (let i = 0; i < chunks.length; i++) {
 export async function searchTranscript(
   transcriptId: number,
   query: string,
-  top: number
+  top: number,
+  tags: string[] = []
 ): Promise<{
   chunk_id: number;
   speaker: string | null;
@@ -54,13 +56,19 @@ export async function searchTranscript(
   score: number;
 }[]> {
   const embedding = await embedText(query);
+  const limit = tags.length > 0 ? top * 10 : top;
   const result = await db.execute(sql`
-    SELECT chunk_id, speaker, ts_start, ts_end, text,
+    SELECT chunk_id, speaker, ts_start, ts_end, text, tags,
       1 - (embedding <#> ${embedding}) AS score
     FROM transcript_vectors
     WHERE transcript_id = ${transcriptId}
     ORDER BY embedding <#> ${embedding}
-    LIMIT ${top}
+    LIMIT ${limit}
   `);
-  return result.rows as any;
+  let rows = result.rows as any[];
+  if (tags.length > 0) {
+    rows = rows.filter(r => Array.isArray(r.tags) && r.tags.some((t: string) => tags.includes(t)));
+    rows = rows.slice(0, top);
+  }
+  return rows as any;
 }

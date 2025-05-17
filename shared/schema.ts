@@ -144,6 +144,10 @@ export const comments = pgTable("comments", {
   kind: text("kind").notNull(),
   status: text("status").notNull(),
   assignee: text("assignee"),
+  createdBy: text("created_by").notNull(),
+  dueDate: timestamp("due_date"),
+  metadata: jsonb("metadata"),
+  absolutePosition: integer("absolute_position").notNull().default(0),
   speaker: varchar("speaker", { length: 64 }),
   timestamp: numeric("timestamp", { precision: 8, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -205,6 +209,7 @@ export const transcriptVectors = pgTable("transcript_vectors", {
   tokenStart: integer("token_start"),
   tokenEnd: integer("token_end"),
   embedding: vector("embedding", { dimensions: 1536 }),
+  tags: text("tags").array(),
 });
 
 export const insertVectorSchema = createInsertSchema(transcriptVectors);

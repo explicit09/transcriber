@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useMemo } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Collaboration from "@tiptap/extension-collaboration";
@@ -87,14 +87,41 @@ interface CollaborativeEditorProps {
   highlightText?: string;
 }
 
-export function CollaborativeEditor({
-  docId,
-  token,
-  wsUrl,
-  highlightText,
-}: CollaborativeEditorProps) {
-  const ydocRef = useRef<Y.Doc>();
-  const providerRef = useRef<WebsocketProvider>();
+export function CollaborativeEditor({ docId, token, wsUrl }: CollaborativeEditorProps) {
+  const user = useMemo(() => {
+    let name = localStorage.getItem("lx-user-name") || "";
+    if (!name) {
+      name = prompt("Enter your name") || "Anonymous";
+      localStorage.setItem("lx-user-name", name);
+    }
+    let color = localStorage.getItem("lx-user-color") || "";
+    if (!color) {
+      const palette = [
+        "#958DF1",
+        "#F48FB1",
+        "#80CBC4",
+        "#FFB74D",
+        "#A1887F",
+        "#81C784",
+        "#B39DDB",
+        "#4FC3F7",
+        "#FF8A65",
+        "#E1BEE7",
+      ];
+      color = palette[Math.floor(Math.random() * palette.length)];
+      localStorage.setItem("lx-user-color", color);
+    }
+    return { name, color };
+  }, []);
+
+  const ydoc = useMemo(() => new Y.Doc(), []);
+
+  const provider = useMemo(() => {
+    const p = new WebsocketProvider(wsUrl, docId, ydoc, {
+      params: { token },
+    });
+    return p;
+  }, [wsUrl, docId, token, ydoc]);
 
   const editor = useEditor({
     extensions: [
@@ -103,11 +130,11 @@ export function CollaborativeEditor({
       CommentAnchor,
       SearchHighlight,
       Collaboration.configure({
-        document: (ydocRef.current ||= new Y.Doc()),
+        document: ydoc,
       }),
       CollaborationCursor.configure({
-        provider: providerRef.current,
-        user: { name: "Anonymous", color: "#958DF1" },
+        provider,
+        user,
       }),
     ],
   });
@@ -149,22 +176,37 @@ export function CollaborativeEditor({
   }, [highlightText, editor]);
 
   useEffect(() => {
-    const doc = (ydocRef.current ||= new Y.Doc());
-    // Offline persistence
-    const persistence = new IndexeddbPersistence(docId, doc);
-    persistence.on("synced", () => {});
+  const persistence = new IndexeddbPersistence(docId, ydoc);
+  persistence.on("synced", () => {});
 
-    const provider = new WebsocketProvider(wsUrl, docId, doc, {
-      params: { token },
-    });
-    providerRef.current = provider;
+  const provider = new WebsocketProvider(wsUrl, docId, doc, {
+    params: { token },
+  });
+  provider.awareness.setLocalStateField("user", user);
+  providerRef.current = provider;
 
-    return () => {
-      provider.destroy();
-      persistence.destroy();
-      doc.destroy();
-    };
-  }, [docId, token, wsUrl]);
+  const saveHandler = (e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      const match = docId.match(/transcription-(\d+)/);
+      if (match) {
+        fetch(`/api/transcriptions/${match[1]}/save-collab`, {
+          method: 'POST',
+          credentials: 'include',
+        });
+      }
+    }
+  };
+  window.addEventListener('keydown', saveHandler);
+
+  return () => {
+    provider.destroy();
+    persistence.destroy();
+    doc.destroy();
+    window.removeEventListener('keydown', saveHandler);
+    ydoc.destroy();
+  };
+}, [docId, provider, user, ydoc]);
 
   return <EditorContent editor={editor} />;
 }

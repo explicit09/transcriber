@@ -559,6 +559,36 @@ export async function translateTranscript(text: string | null, targetLanguage: s
   }
 }
 
+export async function tagText(text: string): Promise<string[]> {
+  const response = await limiter.schedule(() =>
+    withRetry(() =>
+      openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content:
+              "You label transcript excerpts with the tags 'Decision', 'Risk', or 'Date'. Respond as JSON {\"tags\": string[]}. Return an empty array if no tags apply.",
+          },
+          { role: "user", content: text },
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0,
+        max_tokens: 20,
+      })
+    )
+  );
+
+  try {
+    const content = response.choices[0].message.content || "";
+    const parsed = JSON.parse(content);
+    return Array.isArray(parsed.tags) ? parsed.tags : [];
+  } catch (err) {
+    console.error("Failed to parse tag response", err);
+    return [];
+  }
+}
+
 /**
  * Transcribe audio with advanced speaker diarization using pyannote.audio
  * This function uses the more accurate pyannote diarization instead of the text-based approach
