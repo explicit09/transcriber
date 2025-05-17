@@ -43,7 +43,7 @@ This document lists tasks required to bring the implementation up to the require
    - Add a caching layer for frequent search queries.
    - Implement incremental reindexing of transcripts when edits occur, using background workers.
 
-10. **Testing & Monitoring**
+10. **Testing & Monitoring** ✅
     - Add unit tests for new schema validations, comment features, and search filters.
     - Implement performance tests for WebSocket latency and search query latency as described in AGENTS.md.
 
