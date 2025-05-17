@@ -1,15 +1,17 @@
 import {
   transcriptions,
   comments,
+  transcriptRevisions,
   type Transcription,
   type InsertTranscription,
-  type Comment,
   type InsertComment,
-} from "@shared/schema";
+  type Comment,
+} from "@/shared/schema";
+
 import { db } from "./db";
 import { eq } from "drizzle-orm";
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
 
 export interface IStorage {
   createTranscription(transcription: InsertTranscription): Promise<Transcription>;
@@ -19,8 +21,12 @@ export interface IStorage {
   deleteTranscription(id: number): Promise<void>;
   storeAudioFile(id: number, audioBuffer: Buffer, fileType: string): Promise<string>;
   getAudioFilePath(id: number): Promise<string | null>;
+
+  // 🚀 Keep both new methods
   createComment(comment: InsertComment): Promise<Comment>;
-  listComments(transcriptionId: number): Promise<Comment[]>;
+  ListComments(transcriptionId: number): Promise<Comment[]>;
+
+  saveRevision(transcriptionId: number, snapshot: string, ops: number[]): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -108,16 +114,26 @@ export class DatabaseStorage implements IStorage {
     return path.join(audioDir, audioFile);
   }
 
-  async createComment(comment: InsertComment): Promise<Comment> {
-    const [created] = await db.insert(comments).values(comment).returning();
-    return created;
-  }
+// Handle comments and revisions
+async createComment(comment: InsertComment): Promise<Comment> {
+  const [created] = await db.insert(comments).values(comment).returning();
+  return created;
+}
 
-  async listComments(transcriptionId: number): Promise<Comment[]> {
-    return await db
-      .select()
-      .from(comments)
-      .where(eq(comments.transcriptionId, transcriptionId));
+async ListComments(transcriptionId: number): Promise<Comment[]> {
+  return await db
+    .select()
+    .from(comments)
+    .where(comments.transcriptionId, transcriptionId);
+}
+
+async saveRevision(transcriptionId: number, snapshot: string, ops: number[]): Promise<void> {
+  await db.insert(transcriptRevisions).values({
+    transcriptionId,
+    snapshot,
+    ops,
+  });
+}
   }
 }
 
@@ -248,20 +264,30 @@ export class MemStorage implements IStorage {
     return path.join(audioDir, audioFile);
   }
 
-  async createComment(comment: InsertComment): Promise<Comment> {
-    const newComment: Comment = {
-      id: this.commentId++,
-      createdAt: new Date(),
-      ...comment,
-    } as Comment;
-    const arr = this.comments.get(comment.transcriptionId) || [];
-    arr.push(newComment);
-    this.comments.set(comment.transcriptionId, arr);
-    return newComment;
-  }
+async createComment(comment: InsertComment): Promise<Comment> {
+  const newComment: Comment = {
+    id: this.commentId++,
+    createdAt: new Date(),
+    ...comment,
+  } as Comment;
 
-  async listComments(transcriptionId: number): Promise<Comment[]> {
-    return this.comments.get(transcriptionId) || [];
+  const arr = this.comments.get(comment.transcriptionId) || [];
+  arr.push(newComment);
+  this.comments.set(comment.transcriptionId, arr);
+
+  return newComment;
+}
+
+async ListComments(transcriptionId: number): Promise<Comment[]> {
+  return this.comments.get(transcriptionId) || [];
+}
+
+async saveRevision(
+  transcriptionId: number,
+  _snapshot: string,
+  _ops: number[]
+): Promise<void> {
+  // no-op for in-memory storage
   }
 }
 

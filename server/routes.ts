@@ -12,14 +12,15 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import os from "os";
-import { 
-  transcribeAudio, 
+import {
+  transcribeAudio,
   transcribeAudioWithFeatures,
   transcribeWithPyannote,
-  generateTranscriptSummary, 
+  generateTranscriptSummary,
   translateTranscript,
   autoMergeSpeakers
 } from "./openai";
+import { indexTranscript, searchTranscript } from "./search";
 import { transcribeWithAssemblyAI, formatTranscriptText } from "./assemblyai";
 import { transcribeWithHybridApproach } from "./hybrid";
 import { generateTranscriptPDF } from "./pdf";
@@ -407,6 +408,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             hasTimestamps: metadata.enableTimestamps,
             structuredTranscript: JSON.stringify(result.structuredTranscript)
           });
+          await indexTranscript(transcriptionId, result.structuredTranscript.segments);
           
         } catch (error) {
           console.error("Error during chunked file transcription:", error);
@@ -635,8 +637,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             speakerLabels: enableSpeakerLabels && result.structuredTranscript.segments.some(s => s.speaker),
             hasTimestamps: enableTimestamps,
             // Store structured transcript as JSON string
-            structuredTranscript: JSON.stringify(result.structuredTranscript) 
+            structuredTranscript: JSON.stringify(result.structuredTranscript)
           });
+          await indexTranscript(transcription.id, result.structuredTranscript.segments);
         } catch (error) {
           // Handle errors and update the record (Original simpler error handling)
           const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1414,8 +1417,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   speakerLabels: enableSpeakerLabels && result.structuredTranscript.segments.some(s => s.speaker),
                   hasTimestamps: enableTimestamps,
                   // Store structured transcript as JSON string
-                  structuredTranscript: JSON.stringify(result.structuredTranscript) 
+                  structuredTranscript: JSON.stringify(result.structuredTranscript)
                 });
+                await indexTranscript(id, result.structuredTranscript.segments);
               } else {
                 // Use basic transcription for simple cases
                 const result = await transcribeAudio(file.path);
@@ -1588,6 +1592,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error merging speakers:", error);
       return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Semantic search across a transcription
+  app.get('/api/search', async (req: Request, res: Response) => {
+    try {
+      const query = z.string().min(1).parse(req.query.q);
+      const transcriptId = z.coerce.number().parse(req.query.transcript_id);
+      const top = req.query.top ? z.coerce.number().parse(req.query.top) : 10;
+
+      const results = await searchTranscript(transcriptId, query, top);
+      return res.json(results);
+    } catch (err) {
+      if (err instanceof ZodError) {
+        const message = fromZodError(err).message;
+        return res.status(400).json({ message });
+      }
+      console.error('search error', err);
+      return res.status(500).json({ message: 'search failed' });
     }
   });
 
