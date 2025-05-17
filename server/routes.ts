@@ -1056,6 +1056,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(500).json({ message: "Error translating transcription" });
     }
   });
+
+  // Create a comment for a transcription
+  app.post('/api/transcriptions/:id/comments', async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: 'Invalid transcription ID' });
+      }
+
+      const { text, kind } = req.body;
+      if (!text || typeof text !== 'string') {
+        return res.status(400).json({ message: 'Comment text is required' });
+      }
+      if (!kind || typeof kind !== 'string') {
+        return res.status(400).json({ message: 'Comment kind is required' });
+      }
+
+      const transcription = await storage.getTranscription(id);
+      if (!transcription) {
+        return res.status(404).json({ message: 'Transcription not found' });
+      }
+
+      const comment = await storage.createComment({
+        transcriptionId: id,
+        text,
+        kind,
+      });
+
+      if (kind === 'action-item' && process.env.ACTION_ITEM_WEBHOOK_URL) {
+        try {
+          await fetch(process.env.ACTION_ITEM_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ transcriptionId: id, text }),
+          });
+        } catch (err) {
+          console.error('Failed to forward action item:', err);
+        }
+      }
+
+      return res.status(201).json(comment);
+    } catch (error) {
+      console.error('Error creating comment:', error);
+      return res.status(500).json({ message: 'Internal server error' });
+    }
+  });
   
   // Download a transcription as PDF
   app.get('/api/transcriptions/:id/pdf', async (req: Request, res: Response) => {
