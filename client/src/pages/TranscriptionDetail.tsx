@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useRoute, useLocation } from "wouter";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useUser, useUserToken, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, getQueryFn } from "@/lib/queryClient";
+
 import { TranscriptEditor } from "@/components/TranscriptEditor";
 import CollaborativeEditor from "@/components/CollaborativeEditor";
 import SpeakerLabels from "@/components/SpeakerLabels";
@@ -11,18 +12,28 @@ import SpeakerSimilarity from "@/components/SpeakerSimilarity";
 import CommentList from "@/components/CommentList";
 import VersionHistory from "@/components/VersionHistory";
 import { Button } from "@/components/ui/button";
+
 import {
   Card,
   CardContent,
   CardDescription,
   CardFooter,
   CardHeader,
-  CardTitle,
+  CardTitle
 } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger
+} from "@/components/ui/tabs";
+
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Trash, Download, FileText } from "lucide-react";
-import { Transcription, StructuredTranscript } from "@shared/schema";
+
+import { Transcription, StructuredTranscript } from "@/shared/schema";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,8 +42,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
+  AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 
 export default function TranscriptionDetail() {
@@ -532,10 +542,10 @@ export default function TranscriptionDetail() {
           </TabsContent>
 
           <TabsContent value="comments" className="mt-4">
-            <CommentList
-              transcriptId={transcription.id}
-              onJump={(t) => setSearchTime(t)}
-            />
+            <div className="mb-4">
+               <CommentForm transcriptId={transcription.id} />
+            </div>
+            <CommentList transcriptId={transcription.id} onJump={(t) => setSearchTime(t)} />
           </TabsContent>
 
           <TabsContent value="history" className="mt-4">
