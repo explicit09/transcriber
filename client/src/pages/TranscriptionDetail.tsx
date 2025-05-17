@@ -3,6 +3,7 @@ import { useRoute, useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest, getQueryFn } from "@/lib/queryClient";
 import { TranscriptEditor } from '@/components/TranscriptEditor';
+import CollaborativeEditor from '@/components/CollaborativeEditor';
 import NavigableTranscript from '@/components/NavigableTranscript';
 import SpeakerLabels from '@/components/SpeakerLabels';
 import TranscriptView from '@/components/TranscriptView';
@@ -388,9 +389,10 @@ export default function TranscriptionDetail() {
           </TabsContent>
 
           <TabsContent value="edit" className="mt-4">
-            <TranscriptEditor 
-              transcription={transcription}
-              onSave={(text) => saveTranscriptMutation.mutateAsync(text)}
+            <CollaborativeEditor
+              docId={`transcription-${transcription.id}`}
+              token={"demo-token"}
+              wsUrl="wss://collab.example.com"
             />
           </TabsContent>
 

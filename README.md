@@ -47,6 +47,9 @@ export DATABASE_URL="sqlite://local.db"
 
 # Start the application
 npm run dev
+
+# Generate database migrations
+npx drizzle-kit push
 ```
 
 ### Advanced Speaker Recognition Setup
