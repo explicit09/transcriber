@@ -7,6 +7,7 @@ import CollaborativeEditor from '@/components/CollaborativeEditor';
 import NavigableTranscript from '@/components/NavigableTranscript';
 import SpeakerLabels from '@/components/SpeakerLabels';
 import TranscriptView from '@/components/TranscriptView';
+import TranscriptSearch from '@/components/TranscriptSearch';
 import SpeakerSimilarity from '@/components/SpeakerSimilarity';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,6 +38,7 @@ export default function TranscriptionDetail() {
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [isMergingSpeakers, setIsMergingSpeakers] = useState(false);
   const [selectedRev, setSelectedRev] = useState<number | null>(null);
+  const [searchTime, setSearchTime] = useState<number | null>(null);
   
   const id = params?.id;
 
@@ -380,9 +382,14 @@ export default function TranscriptionDetail() {
                   View the transcription content with timestamps and speaker labels.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="bg-white p-6">
-                <TranscriptView 
+              <CardContent className="bg-white p-6 space-y-4">
+                <TranscriptSearch
+                  transcriptId={transcription.id}
+                  onJump={(t) => setSearchTime(t)}
+                />
+                <TranscriptView
                   transcription={transcription}
+                  highlightTime={searchTime}
                 />
               </CardContent>
             </Card>

@@ -138,6 +138,8 @@ export const comments = pgTable("comments", {
   kind: text("kind").notNull(),
   status: text("status").notNull(),
   assignee: text("assignee"),
+  speaker: varchar("speaker", { length: 64 }),
+  timestamp: numeric("timestamp", { precision: 8, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
