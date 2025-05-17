@@ -1,4 +1,11 @@
-import { transcriptions, type Transcription, type InsertTranscription } from "@shared/schema";
+import {
+  transcriptions,
+  comments,
+  type Transcription,
+  type InsertTranscription,
+  type Comment,
+  type InsertComment,
+} from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import fs from 'fs';
@@ -12,6 +19,8 @@ export interface IStorage {
   deleteTranscription(id: number): Promise<void>;
   storeAudioFile(id: number, audioBuffer: Buffer, fileType: string): Promise<string>;
   getAudioFilePath(id: number): Promise<string | null>;
+  createComment(comment: InsertComment): Promise<Comment>;
+  listComments(transcriptionId: number): Promise<Comment[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -98,16 +107,32 @@ export class DatabaseStorage implements IStorage {
     
     return path.join(audioDir, audioFile);
   }
+
+  async createComment(comment: InsertComment): Promise<Comment> {
+    const [created] = await db.insert(comments).values(comment).returning();
+    return created;
+  }
+
+  async listComments(transcriptionId: number): Promise<Comment[]> {
+    return await db
+      .select()
+      .from(comments)
+      .where(eq(comments.transcriptionId, transcriptionId));
+  }
 }
 
 // For backwards compatibility, we can keep this class
 export class MemStorage implements IStorage {
   private transcriptions: Map<number, Transcription>;
+  private comments: Map<number, Comment[]>;
   currentId: number;
+  private commentId: number;
 
   constructor() {
     this.transcriptions = new Map();
+    this.comments = new Map();
     this.currentId = 1;
+    this.commentId = 1;
   }
 
   async createTranscription(insertTranscription: InsertTranscription): Promise<Transcription> {
@@ -221,6 +246,22 @@ export class MemStorage implements IStorage {
     }
     
     return path.join(audioDir, audioFile);
+  }
+
+  async createComment(comment: InsertComment): Promise<Comment> {
+    const newComment: Comment = {
+      id: this.commentId++,
+      createdAt: new Date(),
+      ...comment,
+    } as Comment;
+    const arr = this.comments.get(comment.transcriptionId) || [];
+    arr.push(newComment);
+    this.comments.set(comment.transcriptionId, arr);
+    return newComment;
+  }
+
+  async listComments(transcriptionId: number): Promise<Comment[]> {
+    return this.comments.get(transcriptionId) || [];
   }
 }
 
