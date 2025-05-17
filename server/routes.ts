@@ -35,6 +35,7 @@ import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { checkDiarizationSetup } from "./diarization";
 import * as Y from "yjs";
+import { extractPlainText } from "./yjsHelpers";
 
 // Setup multer for file uploads
 const upload = multer({
@@ -1096,6 +1097,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get comments for a transcription
+  app.get('/api/transcriptions/:id/comments', async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return res.status(400).json({ message: 'Invalid transcription ID' });
+    }
+
+    const transcription = await storage.getTranscription(id);
+    if (!transcription) {
+      return res.status(404).json({ message: 'Transcription not found' });
+    }
+
+    const comments = await storage.getComments(id);
+    return res.json(comments);
+  });
+
   // Create a comment for a transcription
   app.post('/api/transcriptions/:id/comments', async (req: Request, res: Response) => {
     try {
@@ -1328,60 +1345,6 @@ app.get('/api/transcriptions/:id/revisions/:rev_no', async (req: Request, res: R
   }
 });
 
-// Get comments for a transcription
-app.get('/api/transcriptions/:id/comments', async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id);
-  if (isNaN(id)) {
-    return res.status(400).json({ message: 'Invalid transcription ID' });
-  }
-
-  const transcription = await storage.getTranscription(id);
-  if (!transcription) {
-    return res.status(404).json({ message: 'Transcription not found' });
-  }
-
-  const comments = await storage.getComments(id);
-  return res.json(comments);
-});
-
-// Create a new comment
-app.post('/api/transcriptions/:id/comments', async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id);
-  if (isNaN(id)) {
-    return res.status(400).json({ message: 'Invalid transcription ID' });
-  }
-
-  const transcription = await storage.getTranscription(id);
-  if (!transcription) {
-    return res.status(404).json({ message: 'Transcription not found' });
-  }
-
-  try {
-    const { dueDate, ...commentInput } = req.body;
-    const data = insertCommentSchema.parse({
-      ...commentInput,
-      transcriptId: id,
-      dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
-    });
-    const comment = await storage.createComment(data);
-
-    if (data.kind === 'action-item') {
-      await sendActionItemWebhook({
-        transcriptionId: id,
-        body: data.body,
-        dueDate: typeof dueDate === 'string' ? dueDate : undefined,
-      });
-    }
-
-    return res.status(201).json(comment);
-  } catch (error) {
-    if (error instanceof ZodError) {
-      const validationError = fromZodError(error);
-      return res.status(400).json({ message: validationError.message });
-    }
-    return res.status(400).json({ message: error instanceof Error ? error.message : String(error) });
-  }
-});
 
 // Update a comment
 app.patch('/api/transcriptions/:id/comments/:commentId', async (req: Request, res: Response) => {
@@ -1476,7 +1439,10 @@ app.post('/api/transcriptions/:id/save-collab', async (req: Request, res: Respon
     }
     const doc = redis.getYDoc(`transcription-${id}`);
     const snapshot = Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64');
+    const text = extractPlainText(doc);
     await storage.saveRevision(id, snapshot, 0);
+    await storage.updateTranscription(id, { text });
+    await storage.addRevision(id, text);
     scheduleReindex(id);
     return res.status(204).end();
   } catch (error) {
