@@ -35,11 +35,14 @@ import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { checkDiarizationSetup } from "./diarization";
 import * as Y from "yjs";
-import { extractPlainText } from "./yjsHelpers";
 
+import { extractPlainText, insertCommentAnchor } from "./yjsHelpers";
+import commentRouter from './routers/comments';
+import searchRouter from './routers/search';
 import { extractPlainText } from "./yjsHelpers";
 
 import { yDocToPlainText } from "./yjsHelpers";
+
 
 // Setup multer for file uploads
 const upload = multer({
@@ -157,6 +160,9 @@ const chunkedUploads = new Map<number, {
 export async function registerRoutes(app: Express): Promise<Server> {
   // Check for pyannote diarization availability at startup
   await checkDiarizationAvailability();
+
+  app.use(commentRouter);
+  app.use(searchRouter);
   
   // Initialize a chunked upload - metadata only
   app.post('/api/transcribe-init', async (req: Request, res: Response) => {
@@ -1349,6 +1355,68 @@ app.get('/api/transcriptions/:id/revisions/:rev_no', async (req: Request, res: R
   }
 });
 
+// Get comments for a transcription
+app.get('/api/transcriptions/:id/comments', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) {
+    return res.status(400).json({ message: 'Invalid transcription ID' });
+  }
+
+  const transcription = await storage.getTranscription(id);
+  if (!transcription) {
+    return res.status(404).json({ message: 'Transcription not found' });
+  }
+
+  const comments = await storage.getComments(id);
+  return res.json(comments);
+});
+
+// Create a new comment
+app.post('/api/transcriptions/:id/comments', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) {
+    return res.status(400).json({ message: 'Invalid transcription ID' });
+  }
+
+  const transcription = await storage.getTranscription(id);
+  if (!transcription) {
+    return res.status(404).json({ message: 'Transcription not found' });
+  }
+
+  try {
+    const { dueDate, ...commentInput } = req.body;
+    const data = insertCommentSchema.parse({
+      ...commentInput,
+      transcriptId: id,
+      dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
+    });
+    const comment = await storage.createComment(data);
+
+    // Insert anchor mark so collaborators see the comment immediately
+    try {
+      const doc = redis.getYDoc(`transcription-${id}`);
+      insertCommentAnchor(doc, data.absolutePosition ?? 0, comment.id);
+    } catch (err) {
+      console.error('Failed to insert comment anchor', err);
+    }
+
+    if (data.kind === 'action-item') {
+      await sendActionItemWebhook({
+        transcriptionId: id,
+        body: data.body,
+        dueDate: typeof dueDate === 'string' ? dueDate : undefined,
+      });
+    }
+
+    return res.status(201).json(comment);
+  } catch (error) {
+    if (error instanceof ZodError) {
+      const validationError = fromZodError(error);
+      return res.status(400).json({ message: validationError.message });
+    }
+    return res.status(400).json({ message: error instanceof Error ? error.message : String(error) });
+  }
+});
 
 // Update a comment
 app.patch('/api/transcriptions/:id/comments/:commentId', async (req: Request, res: Response) => {
@@ -1797,27 +1865,6 @@ app.post('/api/transcriptions/:id/save-collab', async (req: Request, res: Respon
     }
   });
 
-  // Semantic search across a transcription
-  app.get('/api/search', async (req: Request, res: Response) => {
-    try {
-      const query = z.string().min(1).parse(req.query.q);
-      const transcriptId = z.coerce.number().parse(req.query.transcript_id);
-      const top = req.query.top ? z.coerce.number().parse(req.query.top) : 10;
-      const tags = typeof req.query.tags === 'string'
-        ? req.query.tags.split(',').map(t => t.trim()).filter(Boolean)
-        : [];
-
-      const results = await searchTranscript(transcriptId, query, top, tags);
-      return res.json(results);
-    } catch (err) {
-      if (err instanceof ZodError) {
-        const message = fromZodError(err).message;
-        return res.status(400).json({ message });
-      }
-      console.error('search error', err);
-      return res.status(500).json({ message: 'search failed' });
-    }
-  });
 
   // Get speaker similarity data for a transcription
   app.get('/api/transcriptions/:id/speaker-similarity', async (req: Request, res: Response) => {
