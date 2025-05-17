@@ -4,18 +4,18 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest, getQueryFn } from "@/lib/queryClient";
 import { TranscriptEditor } from '@/components/TranscriptEditor';
 import CollaborativeEditor from '@/components/CollaborativeEditor';
-import NavigableTranscript from '@/components/NavigableTranscript';
 import SpeakerLabels from '@/components/SpeakerLabels';
 import TranscriptView from '@/components/TranscriptView';
 import TranscriptSearch from '@/components/TranscriptSearch';
 import SpeakerSimilarity from '@/components/SpeakerSimilarity';
+import CommentList from '@/components/CommentList';
+import VersionHistory from '@/components/VersionHistory';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Trash, Download, FileText } from 'lucide-react';
 import { Transcription, StructuredTranscript } from '@shared/schema';
-import DiffMatchPatch from 'diff-match-patch';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,7 +37,6 @@ export default function TranscriptionDetail() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [isMergingSpeakers, setIsMergingSpeakers] = useState(false);
-  const [selectedRev, setSelectedRev] = useState<number | null>(null);
   const [searchTime, setSearchTime] = useState<number | null>(null);
   
   const id = params?.id;
@@ -49,33 +48,6 @@ export default function TranscriptionDetail() {
     enabled: !!id,
   });
 
-  const { data: revisions = [] } = useQuery({
-    queryKey: [`/api/transcriptions/${id}/revisions`],
-    queryFn: getQueryFn({ on401: 'throw' }),
-    enabled: !!id,
-  });
-
-  const { data: revisionText } = useQuery({
-    queryKey: [`/api/transcriptions/${id}/revisions`, selectedRev],
-    queryFn: async () => {
-      const response = await apiRequest(
-        'GET',
-        `/api/transcriptions/${id}/revisions/${selectedRev}`
-      );
-      return await response.text();
-    },
-    enabled: !!id && selectedRev !== null,
-  });
-
-  const diffHtml = useMemo(() => {
-    if (revisionText && transcription?.text) {
-      const dmp = new DiffMatchPatch();
-      const diff = dmp.diff_main(revisionText, transcription.text);
-      dmp.diff_cleanupSemantic(diff);
-      return dmp.diff_prettyHtml(diff);
-    }
-    return '';
-  }, [revisionText, transcription?.text]);
 
   const { data: collabToken } = useQuery({
     queryKey: [`/api/transcriptions/${id}/collab-token`],
@@ -373,10 +345,11 @@ export default function TranscriptionDetail() {
         )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full max-w-md grid-cols-4 bg-white shadow-sm mb-2">
+          <TabsList className="grid w-full max-w-md grid-cols-5 bg-white shadow-sm mb-2">
             <TabsTrigger value="view" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">View</TabsTrigger>
             <TabsTrigger value="edit" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">Edit</TabsTrigger>
             <TabsTrigger value="speakers" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">Speakers</TabsTrigger>
+            <TabsTrigger value="comments" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">Comments</TabsTrigger>
             <TabsTrigger value="history" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">History</TabsTrigger>
           </TabsList>
 
@@ -427,21 +400,12 @@ export default function TranscriptionDetail() {
             )}
           </TabsContent>
 
-          <TabsContent value="history" className="mt-4 space-y-4">
-            <div className="flex flex-wrap gap-2">
-              {revisions.map((rev: any) => (
-                <Button
-                  key={rev.revisionNo}
-                  variant={rev.revisionNo === selectedRev ? 'default' : 'outline'}
-                  onClick={() => setSelectedRev(rev.revisionNo)}
-                >
-                  {rev.revisionNo}
-                </Button>
-              ))}
-            </div>
-            {diffHtml && (
-              <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: diffHtml }} />
-            )}
+          <TabsContent value="comments" className="mt-4">
+            <CommentList transcriptId={transcription.id} onJump={(t) => setSearchTime(t)} />
+          </TabsContent>
+
+          <TabsContent value="history" className="mt-4">
+            <VersionHistory transcriptId={transcription.id} currentText={transcription.text || ''} />
           </TabsContent>
         </Tabs>
       </div>
