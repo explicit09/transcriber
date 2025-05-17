@@ -23,6 +23,7 @@ import {
   autoMergeSpeakers
 } from "./openai";
 import { indexTranscript, searchTranscript } from "./search";
+import { sendActionItemWebhook } from "./integrations";
 import { transcribeWithAssemblyAI, formatTranscriptText } from "./assemblyai";
 import { transcribeWithHybridApproach } from "./hybrid";
 import { generateTranscriptPDF } from "./pdf";
@@ -1109,16 +1110,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       const comment = await storage.createComment(data);
 
-      if (data.kind === 'action-item' && process.env.ACTION_ITEM_WEBHOOK_URL) {
-        try {
-          await fetch(process.env.ACTION_ITEM_WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ transcriptionId: id, body: data.body }),
-          });
-        } catch (err) {
-          console.error('Failed to forward action item:', err);
-        }
+      if (data.kind === 'action-item') {
+        await sendActionItemWebhook({ transcriptionId: id, body: data.body });
       }
 
       return res.status(201).json(comment);

@@ -89,6 +89,39 @@ export PORT=5001
 npm run dev
 ```
 
+## Semantic Search
+
+After a transcript is processed, segments are chunked and embedded using OpenAI embeddings.
+Query the `/api/search` endpoint:
+
+```bash
+curl '/api/search?q=keyword&transcript_id=1&top=5'
+```
+
+Results contain chunk text, timestamps and a relevance score.
+
+## Action Item Webhooks
+
+When a comment of type `action-item` is created, the server forwards the item to the URLs defined in `ACTION_ITEM_WEBHOOK_URLS` (comma separated). Use this to integrate with ClickUp or Notion.
+
+## Tests
+
+Run unit tests with:
+
+```bash
+npm run test
+```
+
+## Rollout Plan
+
+1. **Internal Beta** – enable features via flags for the team.
+2. **Limited Beta** – invite select customers and monitor feedback.
+3. **General Availability** – roll out to all users once metrics look good.
+
+## Monitoring & Alerting
+
+The server logs key metrics such as search latency and webhook failures. Configure alerting for high error rates and resource usage.
+
 ## License
 
 For internal use only. 
