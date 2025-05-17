@@ -33,8 +33,10 @@ def diarize_audio(audio_path, num_speakers=None, hf_token=None):
     
     # Initialize the diarization pipeline
     try:
+        # Use the latest diarization pipeline. Version 3.1 relies on the
+        # segmentation model 3.0 under the hood.
         pipeline = Pipeline.from_pretrained(
-            "pyannote/speaker-diarization-3.0",
+            "pyannote/speaker-diarization-3.1",
             use_auth_token=hf_token
         ).to(device)
     except Exception as e:
