@@ -1,6 +1,15 @@
 import { db } from './db';
 import { transcriptVectors } from '@shared/schema';
 import { sql } from 'drizzle-orm';
+
+export async function ensureVectorIndex() {
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS transcript_vectors_embedding_hnsw
+      ON transcript_vectors
+      USING hnsw (embedding vector_l2_ops)
+      WITH (m = 16, ef_construction = 128);
+  `);
+}
 import { embedText } from './openai';
 import { TranscriptSegment } from '@shared/schema';
 

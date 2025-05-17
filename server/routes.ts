@@ -1072,31 +1072,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Invalid transcription ID' });
       }
 
-      const { text, kind } = req.body;
-      if (!text || typeof text !== 'string') {
-        return res.status(400).json({ message: 'Comment text is required' });
-      }
-      if (!kind || typeof kind !== 'string') {
-        return res.status(400).json({ message: 'Comment kind is required' });
-      }
-
       const transcription = await storage.getTranscription(id);
       if (!transcription) {
         return res.status(404).json({ message: 'Transcription not found' });
       }
 
-      const comment = await storage.createComment({
-        transcriptionId: id,
-        text,
-        kind,
+      const data = insertCommentSchema.parse({
+        ...req.body,
+        transcriptId: id,
       });
+      const comment = await storage.createComment(data);
 
-      if (kind === 'action-item' && process.env.ACTION_ITEM_WEBHOOK_URL) {
+      if (data.kind === 'action-item' && process.env.ACTION_ITEM_WEBHOOK_URL) {
         try {
           await fetch(process.env.ACTION_ITEM_WEBHOOK_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ transcriptionId: id, text }),
+            body: JSON.stringify({ transcriptionId: id, body: data.body }),
           });
         } catch (err) {
           console.error('Failed to forward action item:', err);
@@ -1105,6 +1097,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       return res.status(201).json(comment);
     } catch (error) {
+      if (error instanceof ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
       console.error('Error creating comment:', error);
       return res.status(500).json({ message: 'Internal server error' });
     }

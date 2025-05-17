@@ -5,6 +5,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { startCollabGateway } from './collab';
 import dotenv from 'dotenv';
+import { ensureVectorIndex } from './search';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -51,6 +52,7 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  await ensureVectorIndex();
   const server = await registerRoutes(app);
   startCollabGateway(server);
 
