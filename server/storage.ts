@@ -1,14 +1,17 @@
 import {
   transcriptions,
-  comments,
+  transcriptionRevisions,
   transcriptRevisions,
+  comments,
   type Transcription,
   type InsertTranscription,
+  type TranscriptionRevision,
   type Comment,
   type InsertComment,
 } from "@/shared/schema";
+
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import fs from "fs";
 import path from "path";
 
@@ -20,8 +23,8 @@ export interface IStorage {
   deleteTranscription(id: number): Promise<void>;
   storeAudioFile(id: number, audioBuffer: Buffer, fileType: string): Promise<string>;
   getAudioFilePath(id: number): Promise<string | null>;
-
 export interface IStorage {
+  // Transcriptions
   createTranscription(transcription: InsertTranscription): Promise<Transcription>;
   getTranscription(id: number): Promise<Transcription | undefined>;
   updateTranscription(id: number, updates: Partial<Transcription>): Promise<Transcription | undefined>;
@@ -30,12 +33,19 @@ export interface IStorage {
   storeAudioFile(id: number, audioBuffer: Buffer, fileType: string): Promise<string>;
   getAudioFilePath(id: number): Promise<string | null>;
 
+  // Comments
   createComment(comment: InsertComment): Promise<Comment>;
   getComments(transcriptionId: number): Promise<Comment[]>;
   updateComment(id: number, updates: Partial<Comment>): Promise<Comment | undefined>;
   deleteComment(id: number): Promise<void>;
 
+  // Collaborative Editing Snapshot (if using Yjs)
   saveRevision(transcriptionId: number, snapshot: string, ops: number[]): Promise<void>;
+
+  // Transcription Revision History
+  addRevision(transcriptionId: number, text: string): Promise<void>;
+  listRevisions(transcriptionId: number): Promise<Pick<TranscriptionRevision, 'revisionNo' | 'createdAt'>[]>;
+  getRevision(transcriptionId: number, revisionNo: number): Promise<TranscriptionRevision | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -122,20 +132,62 @@ export class DatabaseStorage implements IStorage {
     
     return path.join(audioDir, audioFile);
   }
+// DATABASE STORAGE METHODS FOR TRANSCRIPTION HISTORY
+async addRevision(transcriptionId: number, text: string): Promise<void> {
+  const revisions = await db
+    .select({ revisionNo: transcriptionRevisions.revisionNo })
+    .from(transcriptionRevisions)
+    .where(eq(transcriptionRevisions.transcriptionId, transcriptionId));
 
+  const nextNo =
+    revisions.sort((a, b) => b.revisionNo - a.revisionNo)?.[0]?.revisionNo + 1 || 1;
+
+  await db.insert(transcriptionRevisions).values({
+    transcriptionId,
+    revisionNo: nextNo,
+    text,
+  });
+}
+
+async listRevisions(transcriptionId: number): Promise<Pick<TranscriptionRevision, 'revisionNo' | 'createdAt'>[]> {
+  return db
+    .select({
+      revisionNo: transcriptionRevisions.revisionNo,
+      createdAt: transcriptionRevisions.createdAt,
+    })
+    .from(transcriptionRevisions)
+    .where(eq(transcriptionRevisions.transcriptionId, transcriptionId));
+}
+
+async getRevision(transcriptionId: number, revisionNo: number): Promise<TranscriptionRevision | undefined> {
+  const [rev] = await db
+    .select()
+    .from(transcriptionRevisions)
+    .where(
+      and(
+        eq(transcriptionRevisions.transcriptionId, transcriptionId),
+        eq(transcriptionRevisions.revisionNo, revisionNo)
+      )
+    );
+  return rev || undefined;
+}
+  
 // MemStorage class
 export class MemStorage implements IStorage {
   private transcriptions: Map<number, Transcription>;
   private comments: Map<number, Comment[]>;
+  private revisions: Map<number, TranscriptionRevision[]>;
   private currentId: number;
   private commentId: number;
 
   constructor() {
     this.transcriptions = new Map();
     this.comments = new Map();
+    this.revisions = new Map();
     this.currentId = 1;
     this.commentId = 1;
   }
+
 
   async createTranscription(insertTranscription: InsertTranscription): Promise<Transcription> {
     const id = this.currentId++;
@@ -272,6 +324,28 @@ export class MemStorage implements IStorage {
 
   async saveRevision(transcriptionId: number, _snapshot: string, _ops: number[]): Promise<void> {
     // no-op in memory
+  }
+
+  async addRevision(transcriptionId: number, text: string): Promise<void> {
+    const list = this.revisions.get(transcriptionId) || [];
+    const nextNo = (list[list.length - 1]?.revisionNo || 0) + 1;
+    list.push({
+      id: nextNo, // id is not used, but keep field
+      transcriptionId,
+      revisionNo: nextNo,
+      text,
+      createdAt: new Date(),
+    } as TranscriptionRevision);
+    this.revisions.set(transcriptionId, list);
+  }
+
+  async listRevisions(transcriptionId: number): Promise<Pick<TranscriptionRevision, 'revisionNo' | 'createdAt'>[]> {
+    return (this.revisions.get(transcriptionId) || []).map(r => ({ revisionNo: r.revisionNo, createdAt: r.createdAt }));
+  }
+
+  async getRevision(transcriptionId: number, revisionNo: number): Promise<TranscriptionRevision | undefined> {
+    const list = this.revisions.get(transcriptionId) || [];
+    return list.find(r => r.revisionNo === revisionNo);
   }
 }
 

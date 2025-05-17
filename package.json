@@ -95,6 +95,7 @@
     "y-websocket": "^1.5.12",
     "yjs": "^13.6.9"
     "ws": "^8.18.0",
+    "diff-match-patch": "^1.0.5",
     "zod": "^3.24.2",
     "zod-validation-error": "^3.4.0",
     "y-websocket": "^1.5.10",

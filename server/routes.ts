@@ -710,7 +710,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!transcription) {
         return res.status(404).json({ message: "Transcription not found" });
       }
-      
+
       // Parse structured transcript from JSON string if it exists
       let structuredTranscript = null;
       if (transcription.structuredTranscript) {
@@ -848,7 +848,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!transcription) {
         return res.status(404).json({ message: "Transcription not found" });
       }
-      
+
+      if (transcription.text) {
+        await storage.addRevision(id, transcription.text);
+      }
+
       const updatedTranscription = await storage.updateTranscription(id, {
         text,
         updatedAt: new Date(),
@@ -1260,6 +1264,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+// Get transcription revisions metadata
+app.get('/api/transcriptions/:id/revisions', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return res.status(400).json({ message: 'Invalid transcription ID' });
+    }
+
+    const revisions = await storage.listRevisions(id);
+    return res.json(revisions);
+  } catch (error) {
+    console.error('Error retrieving revisions:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// Get specific revision text
+app.get('/api/transcriptions/:id/revisions/:rev_no', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    const revNo = parseInt(req.params.rev_no);
+    if (isNaN(id) || isNaN(revNo)) {
+      return res.status(400).json({ message: 'Invalid transcription or revision ID' });
+    }
+
+    const revision = await storage.getRevision(id, revNo);
+    if (!revision) {
+      return res.status(404).json({ message: 'Revision not found' });
+    }
+
+    res.setHeader('Content-Type', 'text/plain');
+    return res.status(200).send(revision.text);
+  } catch (error) {
+    console.error('Error retrieving revision:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 // Get comments for a transcription
 app.get('/api/transcriptions/:id/comments', async (req: Request, res: Response) => {
   const id = parseInt(req.params.id);
@@ -1289,9 +1331,9 @@ app.post('/api/transcriptions/:id/comments', async (req: Request, res: Response)
   }
 
   try {
-    const data = insertTranscriptionCommentSchema.parse({
+    const data = insertCommentSchema.parse({
       ...req.body,
-      transcriptionId: id,
+      transcriptId: id,
     });
     const comment = await storage.createComment(data);
     return res.status(201).json(comment);
@@ -1317,8 +1359,8 @@ app.patch('/api/transcriptions/:id/comments/:commentId', async (req: Request, re
     return res.status(404).json({ message: 'Transcription not found' });
   }
 
-  const updates: Partial<TranscriptionComment> = {
-    relativePos: req.body.relativePos,
+  const updates: Partial<Comment> = {
+    yjsPos: req.body.yjsPos,
     body: req.body.body,
     kind: req.body.kind,
     status: req.body.status,

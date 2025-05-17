@@ -66,6 +66,21 @@ export const insertTranscriptionSchemaTyped = insertTranscriptionSchema.extend({
 export type InsertTranscription = z.infer<typeof insertTranscriptionSchemaTyped>;
 export type Transcription = typeof transcriptions.$inferSelect;
 
+// ─────────────────────────────────────────────
+// TRANSCRIPTION REVISION HISTORY TABLE
+// ─────────────────────────────────────────────
+
+export const transcriptionRevisions = pgTable("transcription_revisions", {
+  id: serial("id").primaryKey(),
+  transcriptionId: integer("transcription_id")
+    .references(() => transcriptions.id)
+    .notNull(),
+  revisionNo: integer("revision_no").notNull(),
+  text: text("text").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type TranscriptionRevision = typeof transcriptionRevisions.$inferSelect;
 
 // ─────────────────────────────────────────────
 // AUDIO FILE VALIDATION
@@ -83,7 +98,6 @@ export const audioFileSchema = z.object({
 });
 
 export type AudioFile = z.infer<typeof audioFileSchema>;
-
 
 // ─────────────────────────────────────────────
 // STRUCTURED TRANSCRIPT TYPES
