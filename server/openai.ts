@@ -38,6 +38,16 @@ async function withRetry<T>(
   }
 }
 
+export async function embedText(text: string): Promise<number[]> {
+  const resp = await limiter.schedule(() =>
+    withRetry(() =>
+      openai.embeddings.create({ model: "text-embedding-3-small", input: text })
+    )
+  );
+  const embedding = (resp as any).data?.[0]?.embedding || [];
+  return embedding;
+}
+
 export async function transcribeAudio(
   audioFilePath: string
 ): Promise<{ text: string; duration?: number; language?: string }> {
