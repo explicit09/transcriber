@@ -10,9 +10,10 @@ interface DocInfo {
   doc: Y.Doc;
   ops: number;
   lastSave: number;
+  timer: NodeJS.Timeout;
 }
 
-const redis = new RedisPersistence({
+export const redis = new RedisPersistence({
   host: process.env.REDIS_HOST || '127.0.0.1',
   port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : 6379,
 });
@@ -21,20 +22,37 @@ const docs = new Map<string, DocInfo>();
 
 function trackDoc(name: string, doc: Y.Doc) {
   if (docs.has(name)) return docs.get(name)!;
-  const info: DocInfo = { doc, ops: 0, lastSave: Date.now() };
+
+  let info: DocInfo;
+  const save = () => {
+    if (info.ops === 0) return;
+    const snapshot = Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64');
+    const id = Number(name.replace(/^transcription-/, ''));
+    if (!Number.isNaN(id)) {
+      storage.saveRevision(id, snapshot, info.ops).catch(console.error);
+    }
+    info.ops = 0;
+    info.lastSave = Date.now();
+  };
+
+  info = {
+    doc,
+    ops: 0,
+    lastSave: Date.now(),
+    timer: setInterval(() => {
+      if (Date.now() - info.lastSave >= 5 * 60 * 1000) {
+        save();
+      }
+    }, 60 * 1000),
+  };
+
   doc.on('update', () => {
     info.ops++;
-    const now = Date.now();
-    if (info.ops >= 500 || now - info.lastSave > 5 * 60 * 1000) {
-      const snapshot = Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64');
-      const id = Number(name);
-      if (!Number.isNaN(id)) {
-        storage.saveRevision(id, snapshot, info.ops).catch(console.error);
-      }
-      info.ops = 0;
-      info.lastSave = now;
+    if (info.ops >= 500) {
+      save();
     }
   });
+
   docs.set(name, info);
   return info;
 }

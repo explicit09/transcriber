@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface SearchResult {
   chunk_id: number;
@@ -13,33 +14,65 @@ interface SearchResult {
 
 interface TranscriptSearchProps {
   transcriptId: number;
-  onJump: (time: number) => void;
+  onJump: (time: number, text: string) => void;
 }
 
-export default function TranscriptSearch({ transcriptId, onJump }: TranscriptSearchProps) {
-  const [q, setQ] = useState('');
+export default function TranscriptSearch({
+  transcriptId,
+  onJump,
+}: TranscriptSearchProps) {
+  const [q, setQ] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
-  const handleSearch = async () => {
-    if (!q.trim()) return;
-    setLoading(true);
-    try {
-      const resp = await apiRequest('GET', `/api/search?q=${encodeURIComponent(q)}&transcript_id=${transcriptId}`);
-      const data = await resp.json();
-      setResults(data as SearchResult[]);
-    } finally {
-      setLoading(false);
+  const toggleTag = (tag: string) => {
+    setSelectedTags(prev =>
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    );
+  };
+
+  useEffect(() => {
+  const persistence = new IndexeddbPersistence(docId, ydoc);
+  persistence.on("synced", () => {});
+
+  const provider = new WebsocketProvider(wsUrl, docId, doc, {
+    params: { token },
+  });
+  provider.awareness.setLocalStateField("user", user);
+  providerRef.current = provider;
+
+  const saveHandler = (e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      const match = docId.match(/transcription-(\d+)/);
+      if (match) {
+        fetch(`/api/transcriptions/${match[1]}/save-collab`, {
+          method: 'POST',
+          credentials: 'include',
+        });
+      }
     }
   };
+    
+  window.addEventListener('keydown', saveHandler);
+
+  return () => {
+    provider.destroy();
+    persistence.destroy();
+    doc.destroy();
+    window.removeEventListener('keydown', saveHandler);
+    ydoc.destroy();
+  };
+}, [docId, provider, user, ydoc]);
 
   return (
     <div className="space-y-2">
-      <div className="flex gap-2">
+      <div className="flex gap-2 items-center">
         <input
           type="text"
           value={q}
-          onChange={e => setQ(e.target.value)}
+          onChange={(e) => setQ(e.target.value)}
           placeholder="Search transcript..."
           className="flex-1 border rounded p-2 text-sm"
         />
@@ -47,14 +80,31 @@ export default function TranscriptSearch({ transcriptId, onJump }: TranscriptSea
           Search
         </Button>
       </div>
+      <div className="flex gap-4 text-sm">
+        {['Decision', 'Risk', 'Date'].map(tag => (
+          <label key={tag} className="flex items-center gap-1">
+            <Checkbox
+              checked={selectedTags.includes(tag)}
+              onCheckedChange={() => toggleTag(tag)}
+            />
+            {tag}
+          </label>
+        ))}
+      </div>
       {results.length > 0 && (
         <ul className="border rounded p-2 max-h-60 overflow-y-auto space-y-1 text-sm bg-white">
-          {results.map(r => (
-            <li key={r.chunk_id} className="cursor-pointer hover:bg-blue-50 p-1 rounded" onClick={() => r.ts_start !== null && onJump(r.ts_start)}>
+          {results.map((r) => (
+            <li
+              key={r.chunk_id}
+              className="cursor-pointer hover:bg-blue-50 p-1 rounded"
+              onClick={() =>
+                r.ts_start !== null && onJump(r.ts_start, r.text ?? "")
+              }
+            >
               <div className="font-medium">{r.text}</div>
               <div className="text-gray-500 text-xs">
-                {r.speaker ? `${r.speaker} · ` : ''}
-                {r.ts_start !== null ? r.ts_start.toFixed(2) + 's' : ''}
+                {r.speaker ? `${r.speaker} · ` : ""}
+                {r.ts_start !== null ? r.ts_start.toFixed(2) + "s" : ""}
               </div>
             </li>
           ))}

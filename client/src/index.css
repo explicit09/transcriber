@@ -59,3 +59,24 @@
   }
 }
 
+/* Styles for TipTap collaboration cursors */
+.tiptap-collaboration-cursor__caret {
+  border-left: 1px solid var(--cursor-color, #000);
+  border-right: 1px solid var(--cursor-color, #000);
+  margin-left: -1px;
+  margin-right: -1px;
+  position: relative;
+}
+
+.tiptap-collaboration-cursor__label {
+  position: absolute;
+  top: -1.4em;
+  left: -1px;
+  font-size: 0.75rem;
+  padding: 0 0.2rem;
+  border-radius: 3px;
+  color: white;
+  white-space: nowrap;
+  transform: translateY(-2px);
+}
+

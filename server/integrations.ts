@@ -1,5 +1,30 @@
-export async function sendActionItemWebhook(data: { transcriptionId: number; body: string }) {
-  const urls = (process.env.ACTION_ITEM_WEBHOOK_URLS || '').split(',').map(u => u.trim()).filter(Boolean);
+export interface ActionItemData {
+  transcriptionId: number;
+  body: string;
+  dueDate?: string;
+}
+
+function getWebhookUrls(): string[] {
+  const urls: string[] = [];
+  if (process.env.CLICKUP_WEBHOOK_URL) {
+    urls.push(process.env.CLICKUP_WEBHOOK_URL);
+  }
+  if (process.env.NOTION_WEBHOOK_URL) {
+    urls.push(process.env.NOTION_WEBHOOK_URL);
+  }
+  if (process.env.ACTION_ITEM_WEBHOOK_URLS) {
+    urls.push(
+      ...process.env.ACTION_ITEM_WEBHOOK_URLS
+        .split(',')
+        .map((u) => u.trim())
+        .filter(Boolean),
+    );
+  }
+  return urls;
+}
+
+export async function sendActionItemWebhook(data: ActionItemData): Promise<void> {
+  const urls = getWebhookUrls();
   for (const url of urls) {
     try {
       await fetch(url, {

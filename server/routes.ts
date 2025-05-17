@@ -23,15 +23,18 @@ import {
   autoMergeSpeakers
 } from "./openai";
 import { indexTranscript, searchTranscript } from "./search";
+import { tagTranscriptVectors } from "./tagger";
 import { sendActionItemWebhook } from "./integrations";
 import { transcribeWithAssemblyAI, formatTranscriptText } from "./assemblyai";
 import { transcribeWithHybridApproach } from "./hybrid";
 import { generateTranscriptPDF } from "./pdf";
+import { redis } from "./collab";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { checkDiarizationSetup } from "./diarization";
+import * as Y from "yjs";
 
 // Setup multer for file uploads
 const upload = multer({
@@ -439,6 +442,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             structuredTranscript: JSON.stringify(result.structuredTranscript)
           });
           await indexTranscript(transcriptionId, result.structuredTranscript.segments);
+          tagTranscriptVectors(transcriptionId).catch(err => console.error('tagging failed', err));
           
         } catch (error) {
           console.error("Error during chunked file transcription:", error);
@@ -670,6 +674,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             structuredTranscript: JSON.stringify(result.structuredTranscript)
           });
           await indexTranscript(transcription.id, result.structuredTranscript.segments);
+          tagTranscriptVectors(transcription.id).catch(err => console.error('tagging failed', err));
         } catch (error) {
           // Handle errors and update the record (Original simpler error handling)
           const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1104,14 +1109,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Transcription not found' });
       }
 
+      const { dueDate, ...commentInput } = req.body;
       const data = insertCommentSchema.parse({
-        ...req.body,
+        ...commentInput,
         transcriptId: id,
+        dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
       });
       const comment = await storage.createComment(data);
 
       if (data.kind === 'action-item') {
-        await sendActionItemWebhook({ transcriptionId: id, body: data.body });
+        await sendActionItemWebhook({
+          transcriptionId: id,
+          body: data.body,
+          dueDate: typeof dueDate === 'string' ? dueDate : undefined,
+        });
       }
 
       return res.status(201).json(comment);
@@ -1346,11 +1357,22 @@ app.post('/api/transcriptions/:id/comments', async (req: Request, res: Response)
   }
 
   try {
+    const { dueDate, ...commentInput } = req.body;
     const data = insertCommentSchema.parse({
-      ...req.body,
+      ...commentInput,
       transcriptId: id,
+      dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
     });
     const comment = await storage.createComment(data);
+
+    if (data.kind === 'action-item') {
+      await sendActionItemWebhook({
+        transcriptionId: id,
+        body: data.body,
+        dueDate: typeof dueDate === 'string' ? dueDate : undefined,
+      });
+    }
+
     return res.status(201).json(comment);
   } catch (error) {
     if (error instanceof ZodError) {
@@ -1380,6 +1402,10 @@ app.patch('/api/transcriptions/:id/comments/:commentId', async (req: Request, re
     kind: req.body.kind,
     status: req.body.status,
     assignee: req.body.assignee,
+    createdBy: req.body.createdBy,
+    dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
+    metadata: req.body.metadata,
+    absolutePosition: req.body.absolutePosition,
   };
 
   const updated = await storage.updateComment(commentId, updates);
@@ -1437,6 +1463,23 @@ app.get('/api/transcriptions/:id/collab-token', async (req: Request, res: Respon
     return res.status(200).json({ token });
   } catch (error) {
     console.error('Error generating collaboration token:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// Manually save a collaboration snapshot
+app.post('/api/transcriptions/:id/save-collab', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return res.status(400).json({ message: 'Invalid transcription ID' });
+    }
+    const doc = redis.getYDoc(`transcription-${id}`);
+    const snapshot = Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64');
+    await storage.saveRevision(id, snapshot, 0);
+    return res.status(204).end();
+  } catch (error) {
+    console.error('Error saving collaboration snapshot:', error);
     return res.status(500).json({ message: 'Internal server error' });
   }
 });
@@ -1604,6 +1647,7 @@ app.get('/api/transcriptions/:id/collab-token', async (req: Request, res: Respon
                   structuredTranscript: JSON.stringify(result.structuredTranscript)
                 });
                 await indexTranscript(id, result.structuredTranscript.segments);
+                tagTranscriptVectors(id).catch(err => console.error('tagging failed', err));
               } else {
                 // Use basic transcription for simple cases
                 const result = await transcribeAudio(file.path);
@@ -1785,8 +1829,11 @@ app.get('/api/transcriptions/:id/collab-token', async (req: Request, res: Respon
       const query = z.string().min(1).parse(req.query.q);
       const transcriptId = z.coerce.number().parse(req.query.transcript_id);
       const top = req.query.top ? z.coerce.number().parse(req.query.top) : 10;
+      const tags = typeof req.query.tags === 'string'
+        ? req.query.tags.split(',').map(t => t.trim()).filter(Boolean)
+        : [];
 
-      const results = await searchTranscript(transcriptId, query, top);
+      const results = await searchTranscript(transcriptId, query, top, tags);
       return res.json(results);
     } catch (err) {
       if (err instanceof ZodError) {

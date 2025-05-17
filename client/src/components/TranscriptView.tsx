@@ -1,54 +1,65 @@
-import React from 'react';
-import { StructuredTranscript, Transcription } from '@shared/schema';
+import React from "react";
+import { StructuredTranscript, Transcription } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CheckCircle2, Calendar, Users, FileText, Mic } from 'lucide-react';
-import SpeakerLabels from './SpeakerLabels';
-import { formatTimestamp, getSpeakerColorClass } from '@/lib/utils';
+import { CheckCircle2, Calendar, Users, FileText, Mic } from "lucide-react";
+import SpeakerLabels from "./SpeakerLabels";
+import { formatTimestamp, getSpeakerColorClass } from "@/lib/utils";
 
 interface TranscriptViewProps {
   transcription: Transcription;
   highlightTime?: number | null;
+  highlightText?: string | null;
 }
 
-export default function TranscriptView({ transcription, highlightTime }: TranscriptViewProps) {
+export default function TranscriptView({
+  transcription,
+  highlightTime,
+  highlightText,
+}: TranscriptViewProps) {
   // Parse action items from summary if available
   const actionItems = React.useMemo(() => {
     if (!transcription.actionItems) return [];
-    
+
     // If it's already a string, split by newlines
-    if (typeof transcription.actionItems === 'string') {
-      return transcription.actionItems.split('\n').filter(Boolean);
+    if (typeof transcription.actionItems === "string") {
+      return transcription.actionItems.split("\n").filter(Boolean);
     }
-    
+
     // Handle case where it might be an array or other type
     return [];
   }, [transcription.actionItems]);
-  
+
   // If we have structured transcript with segments, render with timestamps
-  const hasStructuredTranscript = 
-    transcription.structuredTranscript && 
-    typeof transcription.structuredTranscript === 'object' && 
+  const hasStructuredTranscript =
+    transcription.structuredTranscript &&
+    typeof transcription.structuredTranscript === "object" &&
     transcription.structuredTranscript.segments &&
     Array.isArray(transcription.structuredTranscript.segments);
-  
-  const segments = hasStructuredTranscript && transcription.structuredTranscript?.segments
-    ? transcription.structuredTranscript.segments
-    : [];
+
+  const segments =
+    hasStructuredTranscript && transcription.structuredTranscript?.segments
+      ? transcription.structuredTranscript.segments
+      : [];
 
   const segmentRefs = React.useRef<Array<HTMLDivElement | null>>([]);
 
   React.useEffect(() => {
     if (highlightTime === undefined || highlightTime === null) return;
-    const idx = segments.findIndex(s => s.start <= highlightTime && s.end >= highlightTime);
+    const idx = segments.findIndex(
+      (s) => s.start <= highlightTime && s.end >= highlightTime,
+    );
     if (idx >= 0 && segmentRefs.current[idx]) {
-      segmentRefs.current[idx]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      segmentRefs.current[idx]?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
     }
   }, [highlightTime, segments]);
-  
+
   // If no structured transcript, we'll show plain text
-  
+
   return (
     <div className="space-y-6">
       {/* Meeting Info Card */}
@@ -63,11 +74,13 @@ export default function TranscriptView({ transcription, highlightTime }: Transcr
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-gray-700 whitespace-pre-line">{transcription.summary}</p>
+              <p className="text-gray-700 whitespace-pre-line">
+                {transcription.summary}
+              </p>
             </CardContent>
           </Card>
         )}
-        
+
         {/* Action Items Card */}
         {actionItems.length > 0 && (
           <Card className="md:col-span-1">
@@ -90,11 +103,11 @@ export default function TranscriptView({ transcription, highlightTime }: Transcr
           </Card>
         )}
       </div>
-      
+
       <Separator />
-      
+
       {/* Speaker labels section */}
-      {hasStructuredTranscript && segments.some(s => s.speaker) && (
+      {hasStructuredTranscript && segments.some((s) => s.speaker) && (
         <div className="mb-4">
           <Card>
             <CardHeader className="pb-2">
@@ -104,9 +117,9 @@ export default function TranscriptView({ transcription, highlightTime }: Transcr
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <SpeakerLabels 
-                segments={segments} 
-                transcriptionId={transcription.id} 
+              <SpeakerLabels
+                segments={segments}
+                transcriptionId={transcription.id}
                 onSpeakersUpdated={() => {
                   // Force a refresh of the component by reloading the page
                   window.location.reload();
@@ -116,7 +129,7 @@ export default function TranscriptView({ transcription, highlightTime }: Transcr
           </Card>
         </div>
       )}
-      
+
       {/* Transcript Content */}
       <div className="border rounded-md">
         <ScrollArea className="h-[600px] w-full">
@@ -128,11 +141,36 @@ export default function TranscriptView({ transcription, highlightTime }: Transcr
                   highlightTime !== null &&
                   segment.start <= highlightTime &&
                   segment.end >= highlightTime;
+
+                let textNode: React.ReactNode = segment.text;
+                if (active && highlightText) {
+                  const idx = segment.text
+                    .toLowerCase()
+                    .indexOf(highlightText.toLowerCase());
+                  if (idx >= 0) {
+                    const before = segment.text.slice(0, idx);
+                    const match = segment.text.slice(
+                      idx,
+                      idx + highlightText.length,
+                    );
+                    const after = segment.text.slice(
+                      idx + highlightText.length,
+                    );
+                    textNode = (
+                      <>
+                        {before}
+                        <mark className="bg-yellow-200">{match}</mark>
+                        {after}
+                      </>
+                    );
+                  }
+                }
+
                 return (
                   <div
                     key={`${segment.start}-${index}`}
-                    ref={el => (segmentRefs.current[index] = el)}
-                    className={`pb-3 border-b border-gray-100 last:border-0 ${active ? 'bg-yellow-50' : ''}`}
+                    ref={(el) => (segmentRefs.current[index] = el)}
+                    className={`pb-3 border-b border-gray-100 last:border-0 ${active ? "bg-yellow-50" : ""}`}
                   >
                     <div className="flex items-start">
                       <span className="text-xs font-mono bg-gray-100 rounded px-1 py-0.5 text-gray-600 mr-2 mt-1 whitespace-nowrap">
@@ -140,11 +178,13 @@ export default function TranscriptView({ transcription, highlightTime }: Transcr
                       </span>
                       <div className="flex-1">
                         {segment.speaker && (
-                          <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium mb-1 ${getSpeakerColorClass(segment.speaker)}`}>
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium mb-1 ${getSpeakerColorClass(segment.speaker)}`}
+                          >
                             {segment.speaker}
                           </span>
                         )}
-                        <p className="text-gray-800 break-words">{segment.text}</p>
+                        <p className="text-gray-800 break-words">{textNode}</p>
                       </div>
                     </div>
                   </div>
@@ -153,7 +193,9 @@ export default function TranscriptView({ transcription, highlightTime }: Transcr
             </div>
           ) : (
             <div className="p-4">
-              <pre className="whitespace-pre-line text-gray-800 text-sm break-words">{transcription.text}</pre>
+              <pre className="whitespace-pre-line text-gray-800 text-sm break-words">
+                {transcription.text}
+              </pre>
             </div>
           )}
         </ScrollArea>
