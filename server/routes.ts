@@ -1829,8 +1829,11 @@ app.post('/api/transcriptions/:id/save-collab', async (req: Request, res: Respon
       const query = z.string().min(1).parse(req.query.q);
       const transcriptId = z.coerce.number().parse(req.query.transcript_id);
       const top = req.query.top ? z.coerce.number().parse(req.query.top) : 10;
+      const tags = typeof req.query.tags === 'string'
+        ? req.query.tags.split(',').map(t => t.trim()).filter(Boolean)
+        : [];
 
-      const results = await searchTranscript(transcriptId, query, top);
+      const results = await searchTranscript(transcriptId, query, top, tags);
       return res.json(results);
     } catch (err) {
       if (err instanceof ZodError) {

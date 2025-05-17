@@ -31,7 +31,7 @@ This document lists tasks required to bring the implementation up to the require
    - Implement background job that tags transcript chunks with `Decision`, `Risk`, or `Date` labels using an LLM.
    - Store tags in `transcript_vectors` or a new table referenced by chunk.
 
-7. **Faceted Search Filters**
+7. **Faceted Search Filters** ✅
    - Extend the search API to filter by tags (e.g., only show `Decision` chunks).
    - Update the client search UI to allow toggling these smart filters.
 
