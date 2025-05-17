@@ -1,0 +1,70 @@
+import { Server } from 'http';
+import { WebSocketServer } from 'ws';
+import { verify } from 'jsonwebtoken';
+import { setupWSConnection } from 'y-websocket/bin/utils.js';
+import { RedisPersistence } from 'y-redis';
+import * as Y from 'yjs';
+import { storage } from './storage';
+
+interface DocInfo {
+  doc: Y.Doc;
+  ops: number;
+  lastSave: number;
+}
+
+const redis = new RedisPersistence({
+  host: process.env.REDIS_HOST || '127.0.0.1',
+  port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : 6379,
+});
+
+const docs = new Map<string, DocInfo>();
+
+function trackDoc(name: string, doc: Y.Doc) {
+  if (docs.has(name)) return docs.get(name)!;
+  const info: DocInfo = { doc, ops: 0, lastSave: Date.now() };
+  doc.on('update', () => {
+    info.ops++;
+    const now = Date.now();
+    if (info.ops >= 500 || now - info.lastSave > 5 * 60 * 1000) {
+      const snapshot = Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64');
+      const id = Number(name);
+      if (!Number.isNaN(id)) {
+        storage.saveRevision(id, snapshot, info.ops).catch(console.error);
+      }
+      info.ops = 0;
+      info.lastSave = now;
+    }
+  });
+  docs.set(name, info);
+  return info;
+}
+
+export function startCollabGateway(server: Server) {
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on('upgrade', (req, socket, head) => {
+    if (!req.url || !req.url.startsWith('/collab')) return;
+    const url = new URL(req.url, 'http://localhost');
+    const token =
+      url.searchParams.get('token') ||
+      (req.headers['sec-websocket-protocol']?.split(',')[0] ?? '');
+    try {
+      verify(token, process.env.JWT_SECRET || 'secret');
+    } catch (err) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit('connection', ws, req);
+    });
+  });
+
+  wss.on('connection', (ws, req) => {
+    const url = new URL(req.url || '', 'http://localhost');
+    const docName = url.pathname.replace(/^\/collab\/?/, '');
+    const doc = redis.getYDoc(docName);
+    trackDoc(docName, doc);
+    setupWSConnection(ws, req, { docName, doc, persistence: redis });
+  });
+}

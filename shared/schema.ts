@@ -100,3 +100,16 @@ export const structuredTranscriptSchema = z.object({
 });
 
 export type StructuredTranscript = z.infer<typeof structuredTranscriptSchema>;
+
+// Table for storing collaborative document revisions
+export const transcriptRevisions = pgTable('transcript_revisions', {
+  id: serial('id').primaryKey(),
+  transcriptionId: integer('transcription_id')
+    .notNull()
+    .references(() => transcriptions.id),
+  snapshot: text('snapshot').notNull(),
+  ops: integer('ops').notNull().default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type TranscriptRevision = typeof transcriptRevisions.$inferSelect;

@@ -1,4 +1,4 @@
-import { transcriptions, type Transcription, type InsertTranscription } from "@shared/schema";
+import { transcriptions, transcriptRevisions, type Transcription, type InsertTranscription } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import fs from 'fs';
@@ -12,6 +12,7 @@ export interface IStorage {
   deleteTranscription(id: number): Promise<void>;
   storeAudioFile(id: number, audioBuffer: Buffer, fileType: string): Promise<string>;
   getAudioFilePath(id: number): Promise<string | null>;
+  saveRevision(transcriptionId: number, snapshot: string, ops: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -97,6 +98,14 @@ export class DatabaseStorage implements IStorage {
     }
     
     return path.join(audioDir, audioFile);
+  }
+
+  async saveRevision(transcriptionId: number, snapshot: string, ops: number): Promise<void> {
+    await db.insert(transcriptRevisions).values({
+      transcriptionId,
+      snapshot,
+      ops,
+    });
   }
 }
 
@@ -221,6 +230,10 @@ export class MemStorage implements IStorage {
     }
     
     return path.join(audioDir, audioFile);
+  }
+
+  async saveRevision(_transcriptionId: number, _snapshot: string, _ops: number): Promise<void> {
+    // no-op for in-memory storage
   }
 }
 
