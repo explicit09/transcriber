@@ -9,9 +9,10 @@ import { formatTimestamp, getSpeakerColorClass } from '@/lib/utils';
 
 interface TranscriptViewProps {
   transcription: Transcription;
+  highlightTime?: number | null;
 }
 
-export default function TranscriptView({ transcription }: TranscriptViewProps) {
+export default function TranscriptView({ transcription, highlightTime }: TranscriptViewProps) {
   // Parse action items from summary if available
   const actionItems = React.useMemo(() => {
     if (!transcription.actionItems) return [];
@@ -32,9 +33,19 @@ export default function TranscriptView({ transcription }: TranscriptViewProps) {
     transcription.structuredTranscript.segments &&
     Array.isArray(transcription.structuredTranscript.segments);
   
-  const segments = hasStructuredTranscript && transcription.structuredTranscript?.segments 
-    ? transcription.structuredTranscript.segments 
+  const segments = hasStructuredTranscript && transcription.structuredTranscript?.segments
+    ? transcription.structuredTranscript.segments
     : [];
+
+  const segmentRefs = React.useRef<Array<HTMLDivElement | null>>([]);
+
+  React.useEffect(() => {
+    if (highlightTime === undefined || highlightTime === null) return;
+    const idx = segments.findIndex(s => s.start <= highlightTime && s.end >= highlightTime);
+    if (idx >= 0 && segmentRefs.current[idx]) {
+      segmentRefs.current[idx]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlightTime, segments]);
   
   // If no structured transcript, we'll show plain text
   
@@ -111,26 +122,34 @@ export default function TranscriptView({ transcription }: TranscriptViewProps) {
         <ScrollArea className="h-[600px] w-full">
           {hasStructuredTranscript ? (
             <div className="space-y-4 p-4">
-              {segments.map((segment, index) => (
-                <div 
-                  key={`${segment.start}-${index}`} 
-                  className="pb-3 border-b border-gray-100 last:border-0"
-                >
-                  <div className="flex items-start">
-                    <span className="text-xs font-mono bg-gray-100 rounded px-1 py-0.5 text-gray-600 mr-2 mt-1 whitespace-nowrap">
-                      {formatTimestamp(segment.start)}
-                    </span>
-                    <div className="flex-1">
-                      {segment.speaker && (
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium mb-1 ${getSpeakerColorClass(segment.speaker)}`}>
-                          {segment.speaker}
-                        </span>
-                      )}
-                      <p className="text-gray-800 break-words">{segment.text}</p>
+              {segments.map((segment, index) => {
+                const active =
+                  highlightTime !== undefined &&
+                  highlightTime !== null &&
+                  segment.start <= highlightTime &&
+                  segment.end >= highlightTime;
+                return (
+                  <div
+                    key={`${segment.start}-${index}`}
+                    ref={el => (segmentRefs.current[index] = el)}
+                    className={`pb-3 border-b border-gray-100 last:border-0 ${active ? 'bg-yellow-50' : ''}`}
+                  >
+                    <div className="flex items-start">
+                      <span className="text-xs font-mono bg-gray-100 rounded px-1 py-0.5 text-gray-600 mr-2 mt-1 whitespace-nowrap">
+                        {formatTimestamp(segment.start)}
+                      </span>
+                      <div className="flex-1">
+                        {segment.speaker && (
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium mb-1 ${getSpeakerColorClass(segment.speaker)}`}>
+                            {segment.speaker}
+                          </span>
+                        )}
+                        <p className="text-gray-800 break-words">{segment.text}</p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="p-4">

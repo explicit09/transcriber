@@ -1,28 +1,33 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { 
-  insertTranscriptionSchema, 
-  audioFileSchema, 
-  structuredTranscriptSchema, 
+import {
+  insertTranscriptionSchema,
+  audioFileSchema,
+  structuredTranscriptSchema,
   StructuredTranscript,
-  TranscriptSegment 
+  TranscriptSegment,
+  insertTranscriptionCommentSchema,
+  TranscriptionComment,
 } from "@shared/schema";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
 import os from "os";
-import { 
-  transcribeAudio, 
+import {
+  transcribeAudio,
   transcribeAudioWithFeatures,
   transcribeWithPyannote,
-  generateTranscriptSummary, 
+  generateTranscriptSummary,
   translateTranscript,
   autoMergeSpeakers
 } from "./openai";
+import { indexTranscript, searchTranscript } from "./search";
+import { sendActionItemWebhook } from "./integrations";
 import { transcribeWithAssemblyAI, formatTranscriptText } from "./assemblyai";
 import { transcribeWithHybridApproach } from "./hybrid";
 import { generateTranscriptPDF } from "./pdf";
+import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
@@ -56,6 +61,32 @@ const upload = multer({
     } else {
       cb(new Error("Invalid file type. Only MP3, WAV, and M4A files are allowed."));
     }
+  }
+});
+
+// Special upload configuration for chunks with higher limits
+const chunkUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const uploadDir = path.join(os.tmpdir(), 'chunk-uploads');
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      const ext = path.extname(file.originalname);
+      cb(null, `${uniqueSuffix}${ext}`);
+    }
+  }),
+  limits: {
+    fileSize: 500 * 1024 * 1024, // 500 MB for chunks
+    fieldSize: 100 * 1024 * 1024 // 100 MB for form fields
+  },
+  fileFilter: (req, file, cb) => {
+    // Allow any file type for chunks as we validate the complete file later
+    cb(null, true);
   }
 });
 
@@ -175,7 +206,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Receive a chunk of a large file
-  app.post('/api/transcribe-chunk', upload.single('chunk'), async (req: Request, res: Response) => {
+  app.post('/api/transcribe-chunk', chunkUpload.single('chunk'), async (req: Request, res: Response) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No chunk uploaded" });
@@ -407,6 +438,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             hasTimestamps: metadata.enableTimestamps,
             structuredTranscript: JSON.stringify(result.structuredTranscript)
           });
+          await indexTranscript(transcriptionId, result.structuredTranscript.segments);
           
         } catch (error) {
           console.error("Error during chunked file transcription:", error);
@@ -635,8 +667,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             speakerLabels: enableSpeakerLabels && result.structuredTranscript.segments.some(s => s.speaker),
             hasTimestamps: enableTimestamps,
             // Store structured transcript as JSON string
-            structuredTranscript: JSON.stringify(result.structuredTranscript) 
+            structuredTranscript: JSON.stringify(result.structuredTranscript)
           });
+          await indexTranscript(transcription.id, result.structuredTranscript.segments);
         } catch (error) {
           // Handle errors and update the record (Original simpler error handling)
           const errorMessage = error instanceof Error ? error.message : String(error);
@@ -704,7 +737,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!transcription) {
         return res.status(404).json({ message: "Transcription not found" });
       }
-      
+
       // Parse structured transcript from JSON string if it exists
       let structuredTranscript = null;
       if (transcription.structuredTranscript) {
@@ -842,7 +875,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!transcription) {
         return res.status(404).json({ message: "Transcription not found" });
       }
-      
+
+      if (transcription.text) {
+        await storage.addRevision(id, transcription.text);
+      }
+
       const updatedTranscription = await storage.updateTranscription(id, {
         text,
         updatedAt: new Date(),
@@ -1053,6 +1090,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(500).json({ message: "Error translating transcription" });
     }
   });
+
+  // Create a comment for a transcription
+  app.post('/api/transcriptions/:id/comments', async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: 'Invalid transcription ID' });
+      }
+
+      const transcription = await storage.getTranscription(id);
+      if (!transcription) {
+        return res.status(404).json({ message: 'Transcription not found' });
+      }
+
+      const data = insertCommentSchema.parse({
+        ...req.body,
+        transcriptId: id,
+      });
+      const comment = await storage.createComment(data);
+
+      if (data.kind === 'action-item') {
+        await sendActionItemWebhook({ transcriptionId: id, body: data.body });
+      }
+
+      return res.status(201).json(comment);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      console.error('Error creating comment:', error);
+      return res.status(500).json({ message: 'Internal server error' });
+    }
+  });
   
   // Download a transcription as PDF
   app.get('/api/transcriptions/:id/pdf', async (req: Request, res: Response) => {
@@ -1207,6 +1278,168 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(500).json({ message: "Internal server error" });
     }
   });
+
+// Get transcription revisions metadata
+app.get('/api/transcriptions/:id/revisions', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return res.status(400).json({ message: 'Invalid transcription ID' });
+    }
+
+    const revisions = await storage.listRevisions(id);
+    return res.json(revisions);
+  } catch (error) {
+    console.error('Error retrieving revisions:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// Get specific revision text
+app.get('/api/transcriptions/:id/revisions/:rev_no', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    const revNo = parseInt(req.params.rev_no);
+    if (isNaN(id) || isNaN(revNo)) {
+      return res.status(400).json({ message: 'Invalid transcription or revision ID' });
+    }
+
+    const revision = await storage.getRevision(id, revNo);
+    if (!revision) {
+      return res.status(404).json({ message: 'Revision not found' });
+    }
+
+    res.setHeader('Content-Type', 'text/plain');
+    return res.status(200).send(revision.text);
+  } catch (error) {
+    console.error('Error retrieving revision:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// Get comments for a transcription
+app.get('/api/transcriptions/:id/comments', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) {
+    return res.status(400).json({ message: 'Invalid transcription ID' });
+  }
+
+  const transcription = await storage.getTranscription(id);
+  if (!transcription) {
+    return res.status(404).json({ message: 'Transcription not found' });
+  }
+
+  const comments = await storage.getComments(id);
+  return res.json(comments);
+});
+
+// Create a new comment
+app.post('/api/transcriptions/:id/comments', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) {
+    return res.status(400).json({ message: 'Invalid transcription ID' });
+  }
+
+  const transcription = await storage.getTranscription(id);
+  if (!transcription) {
+    return res.status(404).json({ message: 'Transcription not found' });
+  }
+
+  try {
+    const data = insertCommentSchema.parse({
+      ...req.body,
+      transcriptId: id,
+    });
+    const comment = await storage.createComment(data);
+    return res.status(201).json(comment);
+  } catch (error) {
+    if (error instanceof ZodError) {
+      const validationError = fromZodError(error);
+      return res.status(400).json({ message: validationError.message });
+    }
+    return res.status(400).json({ message: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+// Update a comment
+app.patch('/api/transcriptions/:id/comments/:commentId', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  const commentId = parseInt(req.params.commentId);
+  if (isNaN(id) || isNaN(commentId)) {
+    return res.status(400).json({ message: 'Invalid ID' });
+  }
+
+  const transcription = await storage.getTranscription(id);
+  if (!transcription) {
+    return res.status(404).json({ message: 'Transcription not found' });
+  }
+
+  const updates: Partial<Comment> = {
+    yjsPos: req.body.yjsPos,
+    body: req.body.body,
+    kind: req.body.kind,
+    status: req.body.status,
+    assignee: req.body.assignee,
+  };
+
+  const updated = await storage.updateComment(commentId, updates);
+  if (!updated) {
+    return res.status(404).json({ message: 'Comment not found' });
+  }
+  return res.json(updated);
+});
+
+// Delete a comment
+app.delete('/api/transcriptions/:id/comments/:commentId', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  const commentId = parseInt(req.params.commentId);
+  if (isNaN(id) || isNaN(commentId)) {
+    return res.status(400).json({ message: 'Invalid ID' });
+  }
+
+  const transcription = await storage.getTranscription(id);
+  if (!transcription) {
+    return res.status(404).json({ message: 'Transcription not found' });
+  }
+
+  await storage.deleteComment(commentId);
+  return res.status(204).send();
+});
+
+// Generate a collaboration token for a transcription
+app.get('/api/transcriptions/:id/collab-token', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return res.status(400).json({ message: 'Invalid transcription ID' });
+    }
+
+    const transcription = await storage.getTranscription(id);
+    if (!transcription) {
+      return res.status(404).json({ message: 'Transcription not found' });
+    }
+
+    const scopesParam = req.query.scopes;
+    let scopes: string[] = [];
+    if (typeof scopesParam === 'string') {
+      scopes = scopesParam.split(',').map(s => s.trim()).filter(s => s === 'read' || s === 'write');
+    }
+    if (scopes.length === 0) {
+      scopes = ['read'];
+    }
+
+    const secret = process.env.COLLAB_TOKEN_SECRET;
+    if (!secret) {
+      return res.status(500).json({ message: 'Collaboration token secret is not configured' });
+    }
+
+    const token = jwt.sign({ transcriptionId: id, scopes }, secret, { expiresIn: '2h' });
+    return res.status(200).json({ token });
+  } catch (error) {
+    console.error('Error generating collaboration token:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+});
 
   // Batch process multiple files
   app.post('/api/batch-transcribe', upload.array('files', 10), async (req: Request, res: Response) => {
@@ -1368,8 +1601,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   speakerLabels: enableSpeakerLabels && result.structuredTranscript.segments.some(s => s.speaker),
                   hasTimestamps: enableTimestamps,
                   // Store structured transcript as JSON string
-                  structuredTranscript: JSON.stringify(result.structuredTranscript) 
+                  structuredTranscript: JSON.stringify(result.structuredTranscript)
                 });
+                await indexTranscript(id, result.structuredTranscript.segments);
               } else {
                 // Use basic transcription for simple cases
                 const result = await transcribeAudio(file.path);
@@ -1542,6 +1776,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error merging speakers:", error);
       return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Semantic search across a transcription
+  app.get('/api/search', async (req: Request, res: Response) => {
+    try {
+      const query = z.string().min(1).parse(req.query.q);
+      const transcriptId = z.coerce.number().parse(req.query.transcript_id);
+      const top = req.query.top ? z.coerce.number().parse(req.query.top) : 10;
+
+      const results = await searchTranscript(transcriptId, query, top);
+      return res.json(results);
+    } catch (err) {
+      if (err instanceof ZodError) {
+        const message = fromZodError(err).message;
+        return res.status(400).json({ message });
+      }
+      console.error('search error', err);
+      return res.status(500).json({ message: 'search failed' });
     }
   });
 

@@ -1,12 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest, getQueryFn } from "@/lib/queryClient";
 import { TranscriptEditor } from '@/components/TranscriptEditor';
-import NavigableTranscript from '@/components/NavigableTranscript';
+import CollaborativeEditor from '@/components/CollaborativeEditor';
 import SpeakerLabels from '@/components/SpeakerLabels';
 import TranscriptView from '@/components/TranscriptView';
+import TranscriptSearch from '@/components/TranscriptSearch';
 import SpeakerSimilarity from '@/components/SpeakerSimilarity';
+import CommentList from '@/components/CommentList';
+import VersionHistory from '@/components/VersionHistory';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -34,6 +37,7 @@ export default function TranscriptionDetail() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [isMergingSpeakers, setIsMergingSpeakers] = useState(false);
+  const [searchTime, setSearchTime] = useState<number | null>(null);
   
   const id = params?.id;
 
@@ -42,6 +46,17 @@ export default function TranscriptionDetail() {
     queryKey: [`/api/transcriptions/${id}`],
     queryFn: getQueryFn({ on401: "throw" }),
     enabled: !!id,
+  });
+
+
+  const { data: collabToken } = useQuery({
+    queryKey: [`/api/transcriptions/${id}/collab-token`],
+    queryFn: async () => {
+      const res = await apiRequest('GET', `/api/transcriptions/${id}/collab-token?scopes=read,write`);
+      const json = await res.json();
+      return json.token as string;
+    },
+    enabled: !!id && activeTab === 'edit',
   });
 
   // Handle save transcript mutation
@@ -330,10 +345,12 @@ export default function TranscriptionDetail() {
         )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full max-w-md grid-cols-3 bg-white shadow-sm mb-2">
+          <TabsList className="grid w-full max-w-md grid-cols-5 bg-white shadow-sm mb-2">
             <TabsTrigger value="view" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">View</TabsTrigger>
             <TabsTrigger value="edit" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">Edit</TabsTrigger>
             <TabsTrigger value="speakers" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">Speakers</TabsTrigger>
+            <TabsTrigger value="comments" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">Comments</TabsTrigger>
+            <TabsTrigger value="history" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">History</TabsTrigger>
           </TabsList>
 
           <TabsContent value="view" className="mt-4">
@@ -348,28 +365,47 @@ export default function TranscriptionDetail() {
                   View the transcription content with timestamps and speaker labels.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="bg-white p-6">
-                <TranscriptView 
+              <CardContent className="bg-white p-6 space-y-4">
+                <TranscriptSearch
+                  transcriptId={transcription.id}
+                  onJump={(t) => setSearchTime(t)}
+                />
+                <TranscriptView
                   transcription={transcription}
+                  highlightTime={searchTime}
                 />
               </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="edit" className="mt-4">
-            <TranscriptEditor 
-              transcription={transcription}
-              onSave={(text) => saveTranscriptMutation.mutateAsync(text)}
-            />
+            {collabToken && (
+              <CollaborativeEditor
+                docId={`transcription-${transcription.id}`}
+                token={collabToken}
+                wsUrl={
+                  (import.meta.env.VITE_COLLAB_URL as string) ||
+                  `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/collab`
+                }
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="speakers" className="mt-4">
             {transcription.structuredTranscript && (
-              <SpeakerSimilarity 
+              <SpeakerSimilarity
                 transcriptionId={parseInt(id)}
                 onMergeSpeakers={(targetCount) => mergeSpeakersMutation.mutateAsync(targetCount)}
               />
             )}
+          </TabsContent>
+
+          <TabsContent value="comments" className="mt-4">
+            <CommentList transcriptId={transcription.id} onJump={(t) => setSearchTime(t)} />
+          </TabsContent>
+
+          <TabsContent value="history" className="mt-4">
+            <VersionHistory transcriptId={transcription.id} currentText={transcription.text || ''} />
           </TabsContent>
         </Tabs>
       </div>

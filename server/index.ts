@@ -1,8 +1,11 @@
 import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
+import rateLimit from 'express-rate-limit';
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { startCollabGateway } from './collab';
 import dotenv from 'dotenv';
+import { ensureVectorIndex } from './search';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -11,6 +14,12 @@ const app = express();
 // Increase body size limits to handle large file uploads
 app.use(express.json({ limit: '500mb' }));
 app.use(express.urlencoded({ extended: false, limit: '500mb' }));
+
+const searchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+});
+app.use('/api/search', searchLimiter);
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -43,7 +52,9 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  await ensureVectorIndex();
   const server = await registerRoutes(app);
+  startCollabGateway(server);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

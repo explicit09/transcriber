@@ -1,17 +1,43 @@
-import { transcriptions, type Transcription, type InsertTranscription } from "@shared/schema";
+import {
+  transcriptions,
+  transcriptionRevisions,
+  collabTranscriptRevisions,
+  comments,
+  type Transcription,
+  type InsertTranscription,
+  type TranscriptionRevision,
+  type Comment,
+  type InsertComment,
+} from "@/shared/schema";
+
 import { db } from "./db";
-import { eq } from "drizzle-orm";
-import fs from 'fs';
-import path from 'path';
+import { eq, and } from "drizzle-orm";
+import fs from "fs";
+import path from "path";
 
 export interface IStorage {
+  // Transcriptions
   createTranscription(transcription: InsertTranscription): Promise<Transcription>;
   getTranscription(id: number): Promise<Transcription | undefined>;
   updateTranscription(id: number, updates: Partial<Transcription>): Promise<Transcription | undefined>;
-  listTranscriptions(): Promise<Transcription[]>;
   deleteTranscription(id: number): Promise<void>;
+  listTranscriptions(): Promise<Transcription[]>;
   storeAudioFile(id: number, audioBuffer: Buffer, fileType: string): Promise<string>;
   getAudioFilePath(id: number): Promise<string | null>;
+
+  // Comments
+  createComment(comment: InsertComment): Promise<Comment>;
+  getComments(transcriptionId: number): Promise<Comment[]>;
+  updateComment(id: number, updates: Partial<Comment>): Promise<Comment | undefined>;
+  deleteComment(id: number): Promise<void>;
+
+  // Collaborative Editing Snapshot (if using Yjs)
+  saveRevision(transcriptionId: number, snapshot: string, ops: number): Promise<void>;
+
+  // Transcription Revision History
+  addRevision(transcriptionId: number, text: string): Promise<void>;
+  listRevisions(transcriptionId: number): Promise<Pick<TranscriptionRevision, 'revisionNo' | 'createdAt'>[]>;
+  getRevision(transcriptionId: number, revisionNo: number): Promise<TranscriptionRevision | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -98,50 +124,130 @@ export class DatabaseStorage implements IStorage {
     
     return path.join(audioDir, audioFile);
   }
+
+  // Comment operations -----------------------------------------------------
+  async createComment(comment: InsertComment): Promise<Comment> {
+    const [row] = await db
+      .insert(comments)
+      .values(comment)
+      .returning();
+    return row;
+  }
+
+  async getComments(transcriptionId: number): Promise<Comment[]> {
+    return db
+      .select()
+      .from(comments)
+      .where(eq(comments.transcriptId, transcriptionId));
+  }
+
+  async updateComment(id: number, updates: Partial<Comment>): Promise<Comment | undefined> {
+    const [row] = await db
+      .update(comments)
+      .set(updates)
+      .where(eq(comments.id, id))
+      .returning();
+    return row || undefined;
+  }
+
+  async deleteComment(id: number): Promise<void> {
+    await db.delete(comments).where(eq(comments.id, id));
+  }
+
+  async saveRevision(transcriptionId: number, snapshot: string, ops: number[]): Promise<void> {
+
+    await db.insert(collabTranscriptRevisions).values({
+      transcriptId: transcriptionId,
+      snapshot,
+      ops,
+    });
+  }
+// DATABASE STORAGE METHODS FOR TRANSCRIPTION HISTORY
+async addRevision(transcriptionId: number, text: string): Promise<void> {
+  const revisions = await db
+    .select({ revisionNo: transcriptionRevisions.revisionNo })
+    .from(transcriptionRevisions)
+    .where(eq(transcriptionRevisions.transcriptionId, transcriptionId));
+
+  const nextNo =
+    revisions.sort((a, b) => b.revisionNo - a.revisionNo)?.[0]?.revisionNo + 1 || 1;
+
+  await db.insert(transcriptionRevisions).values({
+    transcriptionId,
+    revisionNo: nextNo,
+    text,
+  });
 }
 
-// For backwards compatibility, we can keep this class
+async listRevisions(transcriptionId: number): Promise<Pick<TranscriptionRevision, 'revisionNo' | 'createdAt'>[]> {
+  return db
+    .select({
+      revisionNo: transcriptionRevisions.revisionNo,
+      createdAt: transcriptionRevisions.createdAt,
+    })
+    .from(transcriptionRevisions)
+    .where(eq(transcriptionRevisions.transcriptionId, transcriptionId));
+}
+
+async getRevision(transcriptionId: number, revisionNo: number): Promise<TranscriptionRevision | undefined> {
+  const [rev] = await db
+    .select()
+    .from(transcriptionRevisions)
+    .where(
+      and(
+        eq(transcriptionRevisions.transcriptionId, transcriptionId),
+        eq(transcriptionRevisions.revisionNo, revisionNo)
+      )
+    );
+  return rev || undefined;
+ }
+
+}
+
+// MemStorage class
 export class MemStorage implements IStorage {
   private transcriptions: Map<number, Transcription>;
-  currentId: number;
+  private comments: Map<number, Comment[]>;
+  private revisions: Map<number, TranscriptionRevision[]>;
+  private currentId: number;
+  private commentId: number;
 
   constructor() {
     this.transcriptions = new Map();
+    this.comments = new Map();
+    this.revisions = new Map();
     this.currentId = 1;
+    this.commentId = 1;
   }
+
 
   async createTranscription(insertTranscription: InsertTranscription): Promise<Transcription> {
     const id = this.currentId++;
     const now = new Date();
-    
-    // Create transcription with all required fields
-    const transcription: Transcription = { 
-      ...insertTranscription, 
+
+    const transcription: Transcription = {
+      ...insertTranscription,
       id,
-      text: null, 
+      text: null,
       error: null,
-      // Speaker diarization
       speakerLabels: false,
       speakerCount: null,
-      // Timestamps
       hasTimestamps: false,
       duration: null,
-      // Advanced features
       language: null,
       translatedText: null,
       summary: null,
       actionItems: null,
       keywords: null,
-      // Status and metadata
       status: insertTranscription.status || "pending",
       meetingTitle: insertTranscription.meetingTitle || null,
       meetingDate: insertTranscription.meetingDate || now,
       participants: insertTranscription.participants || null,
-      // Initialize structured transcript
-      structuredTranscript: null, // Initialize as null
+      structuredTranscript: null,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
     };
+
     this.transcriptions.set(id, transcription);
     return transcription;
   }
@@ -153,25 +259,23 @@ export class MemStorage implements IStorage {
   async updateTranscription(id: number, updates: Partial<Transcription>): Promise<Transcription | undefined> {
     const transcription = this.transcriptions.get(id);
     if (!transcription) return undefined;
-    
-    // Merge updates, ensuring structuredTranscript is handled
-    const updatedTranscription = { 
-      ...transcription, 
-      ...updates, // This will overwrite structuredTranscript if it's in updates
-      updatedAt: new Date()
+
+    const updated = {
+      ...transcription,
+      ...updates,
+      updatedAt: new Date(),
     };
-    this.transcriptions.set(id, updatedTranscription);
-    return updatedTranscription;
+
+    this.transcriptions.set(id, updated);
+    return updated;
   }
 
   async listTranscriptions(): Promise<Transcription[]> {
     return Array.from(this.transcriptions.values());
   }
-  
+
   async deleteTranscription(id: number): Promise<void> {
     this.transcriptions.delete(id);
-    
-    // Also delete the audio file if it exists
     try {
       const audioPath = await this.getAudioFilePath(id);
       if (audioPath) {
@@ -179,48 +283,101 @@ export class MemStorage implements IStorage {
       }
     } catch (error) {
       console.error(`Error deleting audio file for transcription ${id}:`, error);
-      // Continue with deletion even if audio file deletion fails
     }
   }
-  
+
   async storeAudioFile(id: number, audioBuffer: Buffer, fileType: string): Promise<string> {
-    // Create directory for audio files if it doesn't exist
-    const audioDir = path.join(process.cwd(), 'audio-files');
+    const audioDir = path.join(process.cwd(), "audio-files");
     if (!fs.existsSync(audioDir)) {
       fs.mkdirSync(audioDir, { recursive: true });
     }
-    
-    // Determine file extension based on file type
+
     let extension = fileType.toLowerCase();
-    if (!extension.startsWith('.')) {
-      extension = '.' + extension;
+    if (!extension.startsWith(".")) {
+      extension = "." + extension;
     }
-    
-    // Create filename with transcription ID
+
     const filename = `transcription-${id}${extension}`;
     const filePath = path.join(audioDir, filename);
-    
-    // Write the audio buffer to file
+
     await fs.promises.writeFile(filePath, audioBuffer);
-    
     return filePath;
   }
-  
+
   async getAudioFilePath(id: number): Promise<string | null> {
-    const audioDir = path.join(process.cwd(), 'audio-files');
+    const audioDir = path.join(process.cwd(), "audio-files");
     if (!fs.existsSync(audioDir)) {
       return null;
     }
-    
-    // Check for any file matching the pattern transcription-{id}.*
+
     const files = fs.readdirSync(audioDir);
-    const audioFile = files.find((file: string) => file.startsWith(`transcription-${id}.`));
-    
-    if (!audioFile) {
-      return null;
+    const audioFile = files.find((file) => file.startsWith(`transcription-${id}.`));
+    return audioFile ? path.join(audioDir, audioFile) : null;
+  }
+
+  async createComment(comment: InsertComment): Promise<Comment> {
+    const newComment: Comment = {
+      id: this.commentId++,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...comment,
+    };
+
+    const arr = this.comments.get(comment.transcriptId) || [];
+    arr.push(newComment);
+    this.comments.set(comment.transcriptId, arr);
+    return newComment;
+  }
+
+  async getComments(transcriptionId: number): Promise<Comment[]> {
+    return this.comments.get(transcriptionId) || [];
+  }
+
+  async updateComment(id: number, updates: Partial<Comment>): Promise<Comment | undefined> {
+    for (const [transcriptId, commentList] of this.comments.entries()) {
+      const index = commentList.findIndex((c) => c.id === id);
+      if (index !== -1) {
+        const existing = commentList[index];
+        const updated = { ...existing, ...updates, updatedAt: new Date() };
+        commentList[index] = updated;
+        this.comments.set(transcriptId, commentList);
+        return updated;
+      }
     }
-    
-    return path.join(audioDir, audioFile);
+    return undefined;
+  }
+
+  async deleteComment(id: number): Promise<void> {
+    for (const [transcriptId, commentList] of this.comments.entries()) {
+      const filtered = commentList.filter((c) => c.id !== id);
+      this.comments.set(transcriptId, filtered);
+    }
+  }
+
+  async saveRevision(transcriptionId: number, _snapshot: string, _ops: number): Promise<void> {
+    // no-op in memory
+  }
+
+  async addRevision(transcriptionId: number, text: string): Promise<void> {
+    const list = this.revisions.get(transcriptionId) || [];
+    const nextNo = (list[list.length - 1]?.revisionNo || 0) + 1;
+    list.push({
+      id: nextNo, // id is not used, but keep field
+      transcriptionId,
+      revisionNo: nextNo,
+      text,
+      createdAt: new Date(),
+    } as TranscriptionRevision);
+    this.revisions.set(transcriptionId, list);
+  }
+
+  async listRevisions(transcriptionId: number): Promise<Pick<TranscriptionRevision, 'revisionNo' | 'createdAt'>[]> {
+    return (this.revisions.get(transcriptionId) || []).map(r => ({ revisionNo: r.revisionNo, createdAt: r.createdAt }));
+  }
+
+  async getRevision(transcriptionId: number, revisionNo: number): Promise<TranscriptionRevision | undefined> {
+    const list = this.revisions.get(transcriptionId) || [];
+    return list.find(r => r.revisionNo === revisionNo);
   }
 }
 
