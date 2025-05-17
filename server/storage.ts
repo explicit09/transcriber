@@ -1,7 +1,6 @@
 import {
   transcriptions,
   transcriptionRevisions,
-  transcriptRevisions,
   comments,
   type Transcription,
   type InsertTranscription,
@@ -15,14 +14,6 @@ import { eq, and } from "drizzle-orm";
 import fs from "fs";
 import path from "path";
 
-export interface IStorage {
-  createTranscription(transcription: InsertTranscription): Promise<Transcription>;
-  getTranscription(id: number): Promise<Transcription | undefined>;
-  updateTranscription(id: number, updates: Partial<Transcription>): Promise<Transcription | undefined>;
-  listTranscriptions(): Promise<Transcription[]>;
-  deleteTranscription(id: number): Promise<void>;
-  storeAudioFile(id: number, audioBuffer: Buffer, fileType: string): Promise<string>;
-  getAudioFilePath(id: number): Promise<string | null>;
 export interface IStorage {
   // Transcriptions
   createTranscription(transcription: InsertTranscription): Promise<Transcription>;
@@ -170,8 +161,10 @@ async getRevision(transcriptionId: number, revisionNo: number): Promise<Transcri
       )
     );
   return rev || undefined;
+ }
+
 }
-  
+
 // MemStorage class
 export class MemStorage implements IStorage {
   private transcriptions: Map<number, Transcription>;
