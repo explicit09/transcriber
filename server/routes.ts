@@ -35,6 +35,7 @@ import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { checkDiarizationSetup } from "./diarization";
 import * as Y from "yjs";
+import { yDocToPlainText } from "./yjsHelpers";
 
 // Setup multer for file uploads
 const upload = multer({
@@ -1476,7 +1477,14 @@ app.post('/api/transcriptions/:id/save-collab', async (req: Request, res: Respon
     }
     const doc = redis.getYDoc(`transcription-${id}`);
     const snapshot = Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64');
+
+    // Convert Yjs document to plain text for persistence
+    const text = yDocToPlainText(doc);
+
     await storage.saveRevision(id, snapshot, 0);
+    await storage.updateTranscription(id, { text, updatedAt: new Date() });
+    await storage.addRevision(id, text);
+
     scheduleReindex(id);
     return res.status(204).end();
   } catch (error) {
