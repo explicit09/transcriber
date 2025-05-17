@@ -36,6 +36,20 @@ import { fromZodError } from "zod-validation-error";
 import { checkDiarizationSetup } from "./diarization";
 import * as Y from "yjs";
 
+import { commentsRouter } from './routes/comments';
+import { transcriptionsRouter } from './routes/transcriptions';
+import { searchRouter } from './routes/search';
+import { extractPlainText } from "./yjsHelpers";
+
+
+import { extractPlainText, insertCommentAnchor } from "./yjsHelpers";
+import commentRouter from './routers/comments';
+import searchRouter from './routers/search';
+import { extractPlainText } from "./yjsHelpers";
+
+import { yDocToPlainText } from "./yjsHelpers";
+
+
 // Setup multer for file uploads
 const upload = multer({
   storage: multer.diskStorage({
@@ -153,9 +167,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Check for pyannote diarization availability at startup
   await checkDiarizationAvailability();
 
-  app.use(commentsRouter);
-  app.use(searchRouter);
-  
+  app.use('/api/transcriptions', commentsRouter);
+  app.use('/api/transcriptions', transcriptionsRouter);
+  app.use('/api/search', searchRouter);
+
   // Initialize a chunked upload - metadata only
   app.post('/api/transcribe-init', async (req: Request, res: Response) => {
     try {
@@ -1098,7 +1113,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(500).json({ message: "Error translating transcription" });
     }
   });
-
   
   // Download a transcription as PDF
   app.get('/api/transcriptions/:id/pdf', async (req: Request, res: Response) => {
@@ -1293,6 +1307,7 @@ app.get('/api/transcriptions/:id/revisions/:rev_no', async (req: Request, res: R
 });
 
 
+
 // Generate a collaboration token for a transcription
 app.get('/api/transcriptions/:id/collab-token', async (req: Request, res: Response) => {
   try {
@@ -1329,12 +1344,14 @@ app.get('/api/transcriptions/:id/collab-token', async (req: Request, res: Respon
 });
 
 // Manually save a collaboration snapshot
+
 app.post('/api/transcriptions/:id/save-collab', async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
       return res.status(400).json({ message: 'Invalid transcription ID' });
     }
+
     const doc = redis.getYDoc(`transcription-${id}`);
     const snapshot = Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64');
     const plain = extractPlainText(doc);
@@ -1345,13 +1362,14 @@ app.post('/api/transcriptions/:id/save-collab', async (req: Request, res: Respon
     await storage.updateTranscription(id, { text: plain, updatedAt: new Date() });
     await storage.saveRevision(id, snapshot, 0);
     scheduleReindex(id);
+
     return res.status(204).end();
   } catch (error) {
     console.error('Error saving collaboration snapshot:', error);
     return res.status(500).json({ message: 'Internal server error' });
   }
 });
-
+  
   // Batch process multiple files
   app.post('/api/batch-transcribe', upload.array('files', 10), async (req: Request, res: Response) => {
     try {

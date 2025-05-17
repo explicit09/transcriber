@@ -84,16 +84,16 @@ export async function searchTranscript(
   query: string,
   top: number,
   tags: string[] = [],
-  options: { db?: any; embedFn?: (text: string) => Promise<number[]>; bypassCache?: boolean } = {}
-): Promise<{
-  chunk_id: number;
-  speaker: string | null;
-  ts_start: number | null;
-  ts_end: number | null;
-  text: string | null;
-  score: number;
-}[]> {
-  const cacheKey = `${transcriptId}:${query}:${tags.sort().join(',')}`;
+  options: {
+    db?: any;
+    embedFn?: (text: string) => Promise<number[]>;
+    bypassCache?: boolean;
+    speaker?: string;
+    start?: number;
+    end?: number;
+  } = {}
+): Promise<{ results: any[]; facets: { speakers: Record<string, number>; tags: Record<string, number> } }> {
+  const cacheKey = `${transcriptId}:${query}:${tags.sort().join(',')}:${options.speaker ?? ''}:${options.start ?? ''}:${options.end ?? ''}`;
   if (!options.bypassCache) {
     const cached = cache.get(cacheKey);
     if (cached && Date.now() - cached.ts < CACHE_TTL) {
@@ -105,23 +105,36 @@ export async function searchTranscript(
   const embedFn = options.embedFn ?? embedText;
 
   const embedding = await embedFn(query);
-  const limit = tags.length > 0 ? top * 10 : top;
+  const limit = tags.length > 0 || options.speaker ? top * 10 : top;
   const result = await database.execute(sql`
     SELECT chunk_id, speaker, ts_start, ts_end, text, tags,
       1 - (embedding <#> ${embedding}) AS score
     FROM transcript_vectors
     WHERE transcript_id = ${transcriptId}
+      ${options.speaker ? sql`AND speaker = ${options.speaker}` : sql``}
+      ${options.start !== undefined ? sql`AND ts_start >= ${options.start}` : sql``}
+      ${options.end !== undefined ? sql`AND ts_end <= ${options.end}` : sql``}
     ORDER BY embedding <#> ${embedding}
     LIMIT ${limit}
   `);
   let rows = result.rows as any[];
   if (tags.length > 0) {
     rows = rows.filter(r => Array.isArray(r.tags) && r.tags.some((t: string) => tags.includes(t)));
-    rows = rows.slice(0, top);
   }
+  const facets = { speakers: {} as Record<string, number>, tags: {} as Record<string, number> };
+  for (const r of rows) {
+    if (r.speaker) facets.speakers[r.speaker] = (facets.speakers[r.speaker] || 0) + 1;
+    if (Array.isArray(r.tags)) {
+      for (const t of r.tags) {
+        facets.tags[t] = (facets.tags[t] || 0) + 1;
+      }
+    }
+  }
+  rows = rows.slice(0, top);
 
-  cache.set(cacheKey, { ts: Date.now(), result: rows });
-  return rows as any;
+  const resultPayload = { results: rows as any[], facets };
+  cache.set(cacheKey, { ts: Date.now(), result: resultPayload });
+  return resultPayload;
 }
 export async function searchTranscriptWithFacets(
   transcriptId: number,

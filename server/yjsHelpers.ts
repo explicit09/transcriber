@@ -24,3 +24,4 @@ export function insertCommentAnchor(doc: Y.Doc, commentId: number, position = -1
     frag.insert(position, [span]);
   }
 }
+
