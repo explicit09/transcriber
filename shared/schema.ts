@@ -89,12 +89,18 @@ export type TranscriptionRevision = typeof transcriptionRevisions.$inferSelect;
 export const audioFileSchema = z.object({
   file: z.any()
     .refine(file => file !== undefined, "File is required")
-    .refine(file => {
-      if (!file || !file.originalname) return false;
-      const ext = file.originalname.split('.').pop()?.toLowerCase();
-      return ['mp3', 'wav', 'm4a'].includes(ext);
-    }, "Only MP3, WAV, and M4A files are supported")
-    .refine(file => !file || file.size <= 200 * 1024 * 1024, "File size must be less than 200MB"),
+    .refine(
+      file => {
+        if (!file || !file.originalname) return false;
+        const ext = file.originalname.split('.').pop()?.toLowerCase();
+        return ['mp3', 'wav', 'm4a'].includes(ext);
+      },
+      "Only MP3, WAV, and M4A files are supported"
+    )
+    .refine(
+      file => !file || file.size <= 200 * 1024 * 1024,
+      "File size must be less than 200MB"
+    ),
 });
 
 export type AudioFile = z.infer<typeof audioFileSchema>;

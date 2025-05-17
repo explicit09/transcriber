@@ -8,8 +8,11 @@ import MeetingMetadataForm, { MeetingMetadata } from "./MeetingMetadataForm";
 import AudioRecorder from "./AudioRecorder";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import {
+  shouldUseChunkedUpload,
+  splitFileIntoChunks,
+} from "@/lib/fileUtils";
 
 // Type definition for transcription data from the API
 interface Transcription {
@@ -101,77 +104,119 @@ export default function TranscriptionContainer() {
 
   // Mutation to upload and transcribe file with metadata
   const { mutate: uploadFile, isPending } = useMutation({
-    mutationFn: async ({ file, metadata }: { file: File, metadata: MeetingMetadata }) => {
-      // Reset progress at start of upload
+    mutationFn: async ({ file, metadata }: { file: File; metadata: MeetingMetadata }) => {
       setProgress(0);
-      
-      try {
-        // Use XMLHttpRequest for better progress tracking
-        return new Promise((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          const formData = new FormData();
-          
-          // Append file and metadata
-          formData.append("file", file);
-          formData.append("meetingTitle", metadata.meetingTitle);
-          formData.append("meetingDate", metadata.meetingDate.toISOString());
-          formData.append("participants", metadata.participants);
-          formData.append("enableSpeakerLabels", metadata.enableSpeakerLabels.toString());
-          formData.append("enableTimestamps", metadata.enableTimestamps.toString());
-          formData.append("generateSummary", metadata.generateSummary.toString());
-          
-          if (metadata.language) {
-            formData.append("language", metadata.language);
-          }
-          
-          if (metadata.numSpeakers !== null) {
-            formData.append("numSpeakers", metadata.numSpeakers.toString());
-          }
-          
-          // Track upload progress
-          xhr.upload.onprogress = (event) => {
-            if (event.lengthComputable) {
-              const percentComplete = Math.floor((event.loaded / event.total) * 90);
-              setProgress(percentComplete);
-            }
-          };
-          
-          // Handle response
-          xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) {
-              try {
-                const response = JSON.parse(xhr.responseText);
-                resolve(response);
-              } catch (err) {
-                reject(new Error("Invalid server response"));
-              }
-            } else {
-              reject(new Error(`Upload failed with status ${xhr.status}: ${xhr.statusText}`));
-            }
-          };
-          
-          // Handle errors
-          xhr.onerror = () => {
-            reject(new Error("Network error during upload"));
-          };
-          
-          // Handle timeouts
-          xhr.ontimeout = () => {
-            reject(new Error("Upload timed out"));
-          };
-          
-          // Set request 
-          xhr.open("POST", "/api/transcribe", true);
-          xhr.withCredentials = true;
-          xhr.timeout = 3600000; // 1 hour timeout
-          
-          // Send the form data
-          xhr.send(formData);
+
+      const useChunks = shouldUseChunkedUpload(file.size);
+
+      if (useChunks) {
+        // ----- Chunked upload workflow -----
+        const initRes = await fetch("/api/transcribe-init", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type,
+            meetingTitle: metadata.meetingTitle,
+            meetingDate: metadata.meetingDate.toISOString(),
+            participants: metadata.participants,
+            enableSpeakerLabels: metadata.enableSpeakerLabels,
+            enableTimestamps: metadata.enableTimestamps,
+            language: metadata.language,
+            generateSummary: metadata.generateSummary,
+            numSpeakers: metadata.numSpeakers,
+          }),
         });
-      } catch (error) {
-        console.error("Upload error:", error);
-        throw error;
+
+        if (!initRes.ok) {
+          throw new Error("Failed to initialize upload");
+        }
+        const { transcriptionId } = await initRes.json();
+
+        const chunks = splitFileIntoChunks(file);
+        const totalChunks = chunks.length;
+
+        for (let i = 0; i < totalChunks; i++) {
+          const formData = new FormData();
+          formData.append("chunk", chunks[i], file.name);
+          formData.append("transcriptionId", transcriptionId.toString());
+          formData.append("chunkIndex", i.toString());
+          formData.append("totalChunks", totalChunks.toString());
+
+          const res = await fetch("/api/transcribe-chunk", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!res.ok) {
+            throw new Error(`Chunk ${i + 1} upload failed`);
+          }
+
+          const percentComplete = Math.floor(((i + 1) / totalChunks) * 90);
+          setProgress(percentComplete);
+        }
+
+        const completeRes = await fetch(`/api/transcribe-complete/${transcriptionId}`, {
+          method: "POST",
+        });
+
+        if (!completeRes.ok) {
+          throw new Error("Failed to finalize upload");
+        }
+
+        return completeRes.json();
       }
+
+      // ----- Regular single request upload -----
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        const formData = new FormData();
+
+        formData.append("file", file);
+        formData.append("meetingTitle", metadata.meetingTitle);
+        formData.append("meetingDate", metadata.meetingDate.toISOString());
+        formData.append("participants", metadata.participants);
+        formData.append("enableSpeakerLabels", metadata.enableSpeakerLabels.toString());
+        formData.append("enableTimestamps", metadata.enableTimestamps.toString());
+        formData.append("generateSummary", metadata.generateSummary.toString());
+
+        if (metadata.language) {
+          formData.append("language", metadata.language);
+        }
+
+        if (metadata.numSpeakers !== null) {
+          formData.append("numSpeakers", metadata.numSpeakers.toString());
+        }
+
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const percentComplete = Math.floor((event.loaded / event.total) * 90);
+            setProgress(percentComplete);
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const response = JSON.parse(xhr.responseText);
+              resolve(response);
+            } catch {
+              reject(new Error("Invalid server response"));
+            }
+          } else {
+            reject(new Error(`Upload failed with status ${xhr.status}: ${xhr.statusText}`));
+          }
+        };
+
+        xhr.onerror = () => reject(new Error("Network error during upload"));
+        xhr.ontimeout = () => reject(new Error("Upload timed out"));
+
+        xhr.open("POST", "/api/transcribe", true);
+        xhr.withCredentials = true;
+        xhr.timeout = 3600000; // 1 hour timeout
+        xhr.send(formData);
+      });
     },
     onSuccess: (data) => {
       setTranscriptionId(data.id);
