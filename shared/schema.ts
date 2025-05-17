@@ -168,7 +168,7 @@ export const collabTranscriptRevisions = pgTable("collab_transcript_revisions", 
     .references(() => transcriptions.id)
     .notNull(),
   snapshot: text("snapshot").notNull(),
-  ops: jsonb("ops").notNull().default([]),
+  ops: integer("ops").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
