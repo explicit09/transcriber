@@ -1,13 +1,18 @@
 import * as Y from 'yjs';
 
-export function yDocToPlainText(doc: import('yjs').Doc): string {
-  const fragments = Array.from(doc as any).share.values() as any[];
-  let result = "";
+/**
+ * Extract plain text from a Y.Doc object.
+ * Handles XmlText and XmlElement (e.g. from ProseMirror),
+ * preserves block structure via line breaks.
+ */
+export function yDocToPlainText(doc: Y.Doc): string {
+  const fragments = Array.from((doc as any).share.values()) as any[];
+  let result = '';
 
   const traverse = (node: any) => {
     if (!node) return;
 
-    if (typeof node.toString === 'function' && node.constructor.name === 'Text') {
+    if (typeof node.toString === 'function' && node.constructor?.name === 'Text') {
       result += node.toString();
     } else if (node.constructor?.name === 'XmlText') {
       result += node.toString();
