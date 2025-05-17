@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest, getQueryFn } from "@/lib/queryClient";
@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Trash, Download, FileText } from 'lucide-react';
 import { Transcription, StructuredTranscript } from '@shared/schema';
+import DiffMatchPatch from 'diff-match-patch';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,6 +35,7 @@ export default function TranscriptionDetail() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [isMergingSpeakers, setIsMergingSpeakers] = useState(false);
+  const [selectedRev, setSelectedRev] = useState<number | null>(null);
   
   const id = params?.id;
 
@@ -43,6 +45,34 @@ export default function TranscriptionDetail() {
     queryFn: getQueryFn({ on401: "throw" }),
     enabled: !!id,
   });
+
+  const { data: revisions = [] } = useQuery({
+    queryKey: [`/api/transcriptions/${id}/revisions`],
+    queryFn: getQueryFn({ on401: 'throw' }),
+    enabled: !!id,
+  });
+
+  const { data: revisionText } = useQuery({
+    queryKey: [`/api/transcriptions/${id}/revisions`, selectedRev],
+    queryFn: async () => {
+      const response = await apiRequest(
+        'GET',
+        `/api/transcriptions/${id}/revisions/${selectedRev}`
+      );
+      return await response.text();
+    },
+    enabled: !!id && selectedRev !== null,
+  });
+
+  const diffHtml = useMemo(() => {
+    if (revisionText && transcription?.text) {
+      const dmp = new DiffMatchPatch();
+      const diff = dmp.diff_main(revisionText, transcription.text);
+      dmp.diff_cleanupSemantic(diff);
+      return dmp.diff_prettyHtml(diff);
+    }
+    return '';
+  }, [revisionText, transcription?.text]);
 
   // Handle save transcript mutation
   const saveTranscriptMutation = useMutation({
@@ -330,10 +360,11 @@ export default function TranscriptionDetail() {
         )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full max-w-md grid-cols-3 bg-white shadow-sm mb-2">
+          <TabsList className="grid w-full max-w-md grid-cols-4 bg-white shadow-sm mb-2">
             <TabsTrigger value="view" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">View</TabsTrigger>
             <TabsTrigger value="edit" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">Edit</TabsTrigger>
             <TabsTrigger value="speakers" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">Speakers</TabsTrigger>
+            <TabsTrigger value="history" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">History</TabsTrigger>
           </TabsList>
 
           <TabsContent value="view" className="mt-4">
@@ -365,10 +396,27 @@ export default function TranscriptionDetail() {
 
           <TabsContent value="speakers" className="mt-4">
             {transcription.structuredTranscript && (
-              <SpeakerSimilarity 
+              <SpeakerSimilarity
                 transcriptionId={parseInt(id)}
                 onMergeSpeakers={(targetCount) => mergeSpeakersMutation.mutateAsync(targetCount)}
               />
+            )}
+          </TabsContent>
+
+          <TabsContent value="history" className="mt-4 space-y-4">
+            <div className="flex flex-wrap gap-2">
+              {revisions.map((rev: any) => (
+                <Button
+                  key={rev.revisionNo}
+                  variant={rev.revisionNo === selectedRev ? 'default' : 'outline'}
+                  onClick={() => setSelectedRev(rev.revisionNo)}
+                >
+                  {rev.revisionNo}
+                </Button>
+              ))}
+            </div>
+            {diffHtml && (
+              <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: diffHtml }} />
             )}
           </TabsContent>
         </Tabs>

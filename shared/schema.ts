@@ -58,6 +58,19 @@ export const insertTranscriptionSchemaTyped = insertTranscriptionSchema.extend({
 export type InsertTranscription = z.infer<typeof insertTranscriptionSchemaTyped>;
 export type Transcription = typeof transcriptions.$inferSelect;
 
+// Table to store transcription revisions
+export const transcriptionRevisions = pgTable("transcription_revisions", {
+  id: serial("id").primaryKey(),
+  transcriptionId: integer("transcription_id")
+    .references(() => transcriptions.id)
+    .notNull(),
+  revisionNo: integer("revision_no").notNull(),
+  text: text("text").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type TranscriptionRevision = typeof transcriptionRevisions.$inferSelect;
+
 // Schema for file upload
 export const audioFileSchema = z.object({
   file: z.any()

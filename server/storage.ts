@@ -1,6 +1,6 @@
-import { transcriptions, type Transcription, type InsertTranscription } from "@shared/schema";
+import { transcriptions, transcriptionRevisions, type Transcription, type InsertTranscription, type TranscriptionRevision } from "@shared/schema";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import fs from 'fs';
 import path from 'path';
 
@@ -12,6 +12,9 @@ export interface IStorage {
   deleteTranscription(id: number): Promise<void>;
   storeAudioFile(id: number, audioBuffer: Buffer, fileType: string): Promise<string>;
   getAudioFilePath(id: number): Promise<string | null>;
+  addRevision(transcriptionId: number, text: string): Promise<void>;
+  listRevisions(transcriptionId: number): Promise<Pick<TranscriptionRevision, 'revisionNo' | 'createdAt'>[]>;
+  getRevision(transcriptionId: number, revisionNo: number): Promise<TranscriptionRevision | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -98,15 +101,50 @@ export class DatabaseStorage implements IStorage {
     
     return path.join(audioDir, audioFile);
   }
+
+  async addRevision(transcriptionId: number, text: string): Promise<void> {
+    const revisions = await db
+      .select({ revisionNo: transcriptionRevisions.revisionNo })
+      .from(transcriptionRevisions)
+      .where(eq(transcriptionRevisions.transcriptionId, transcriptionId));
+
+    const nextNo = (revisions.sort((a, b) => b.revisionNo - a.revisionNo)[0]?.revisionNo || 0) + 1;
+
+    await db.insert(transcriptionRevisions).values({
+      transcriptionId,
+      revisionNo: nextNo,
+      text,
+    });
+  }
+
+  async listRevisions(transcriptionId: number): Promise<Pick<TranscriptionRevision, 'revisionNo' | 'createdAt'>[]> {
+    return db
+      .select({ revisionNo: transcriptionRevisions.revisionNo, createdAt: transcriptionRevisions.createdAt })
+      .from(transcriptionRevisions)
+      .where(eq(transcriptionRevisions.transcriptionId, transcriptionId));
+  }
+
+  async getRevision(transcriptionId: number, revisionNo: number): Promise<TranscriptionRevision | undefined> {
+    const [rev] = await db
+      .select()
+      .from(transcriptionRevisions)
+      .where(and(
+        eq(transcriptionRevisions.transcriptionId, transcriptionId),
+        eq(transcriptionRevisions.revisionNo, revisionNo)
+      ));
+    return rev || undefined;
+  }
 }
 
 // For backwards compatibility, we can keep this class
 export class MemStorage implements IStorage {
   private transcriptions: Map<number, Transcription>;
+  private revisions: Map<number, TranscriptionRevision[]>;
   currentId: number;
 
   constructor() {
     this.transcriptions = new Map();
+    this.revisions = new Map();
     this.currentId = 1;
   }
 
@@ -221,6 +259,28 @@ export class MemStorage implements IStorage {
     }
     
     return path.join(audioDir, audioFile);
+  }
+
+  async addRevision(transcriptionId: number, text: string): Promise<void> {
+    const list = this.revisions.get(transcriptionId) || [];
+    const nextNo = (list[list.length - 1]?.revisionNo || 0) + 1;
+    list.push({
+      id: nextNo, // id is not used, but keep field
+      transcriptionId,
+      revisionNo: nextNo,
+      text,
+      createdAt: new Date(),
+    } as TranscriptionRevision);
+    this.revisions.set(transcriptionId, list);
+  }
+
+  async listRevisions(transcriptionId: number): Promise<Pick<TranscriptionRevision, 'revisionNo' | 'createdAt'>[]> {
+    return (this.revisions.get(transcriptionId) || []).map(r => ({ revisionNo: r.revisionNo, createdAt: r.createdAt }));
+  }
+
+  async getRevision(transcriptionId: number, revisionNo: number): Promise<TranscriptionRevision | undefined> {
+    const list = this.revisions.get(transcriptionId) || [];
+    return list.find(r => r.revisionNo === revisionNo);
   }
 }
 
