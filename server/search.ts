@@ -136,3 +136,34 @@ export async function searchTranscript(
   cache.set(cacheKey, { ts: Date.now(), result: resultPayload });
   return resultPayload;
 }
+export async function searchTranscriptWithFacets(
+  transcriptId: number,
+  query: string,
+  top: number,
+  filters: { tags?: string[]; speakers?: string[]; start?: number; end?: number } = {},
+  options: { db?: any; embedFn?: (text: string) => Promise<number[]>; bypassCache?: boolean } = {}
+): Promise<{ results: Awaited<ReturnType<typeof searchTranscript>>; facets: { tags: Record<string, number>; speakers: Record<string, number> } }> {
+  const base = await searchTranscript(transcriptId, query, top * 10, filters.tags ?? [], { ...options, bypassCache: true });
+  let rows: any[] = base;
+  if (filters.speakers && filters.speakers.length > 0) {
+    rows = rows.filter(r => r.speaker && filters.speakers!.includes(r.speaker));
+  }
+  if (typeof filters.start === 'number') {
+    rows = rows.filter(r => r.ts_start === null || r.ts_start >= filters.start!);
+  }
+  if (typeof filters.end === 'number') {
+    rows = rows.filter(r => r.ts_end === null || r.ts_end <= filters.end!);
+  }
+
+  const tagFacets: Record<string, number> = {};
+  const speakerFacets: Record<string, number> = {};
+  for (const r of rows) {
+    if (Array.isArray(r.tags)) {
+      for (const t of r.tags) tagFacets[t] = (tagFacets[t] || 0) + 1;
+    }
+    if (r.speaker) speakerFacets[r.speaker] = (speakerFacets[r.speaker] || 0) + 1;
+  }
+
+  const results = rows.slice(0, top);
+  return { results, facets: { tags: tagFacets, speakers: speakerFacets } };
+}

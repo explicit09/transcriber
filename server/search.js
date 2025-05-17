@@ -122,3 +122,26 @@ export async function searchTranscript(transcriptId, query, top, options = {}) {
   cache.set(key, { ts: Date.now(), result: rows });
   return rows;
 }
+export async function searchTranscriptWithFacets(transcriptId, query, top, filters = {}, options = {}) {
+  const base = await searchTranscript(transcriptId, query, top * 10, { ...options, tags: filters.tags ?? [], bypassCache: true });
+  let rows = base;
+  if (filters.speakers && filters.speakers.length) {
+    rows = rows.filter(r => r.speaker && filters.speakers.includes(r.speaker));
+  }
+  if (typeof filters.start === 'number') {
+    rows = rows.filter(r => r.ts_start == null || r.ts_start >= filters.start);
+  }
+  if (typeof filters.end === 'number') {
+    rows = rows.filter(r => r.ts_end == null || r.ts_end <= filters.end);
+  }
+  const tagFacets = {};
+  const speakerFacets = {};
+  for (const r of rows) {
+    if (Array.isArray(r.tags)) {
+      for (const t of r.tags) tagFacets[t] = (tagFacets[t] || 0) + 1;
+    }
+    if (r.speaker) speakerFacets[r.speaker] = (speakerFacets[r.speaker] || 0) + 1;
+  }
+  const results = rows.slice(0, top);
+  return { results, facets: { tags: tagFacets, speakers: speakerFacets } };
+}
