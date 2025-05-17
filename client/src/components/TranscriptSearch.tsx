@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { apiRequest } from '@/lib/queryClient';
-import { Button } from '@/components/ui/button';
+import { useState } from "react";
+import { apiRequest } from "@/lib/queryClient";
+import { Button } from "@/components/ui/button";
 
 interface SearchResult {
   chunk_id: number;
@@ -13,11 +13,14 @@ interface SearchResult {
 
 interface TranscriptSearchProps {
   transcriptId: number;
-  onJump: (time: number) => void;
+  onJump: (time: number, text: string) => void;
 }
 
-export default function TranscriptSearch({ transcriptId, onJump }: TranscriptSearchProps) {
-  const [q, setQ] = useState('');
+export default function TranscriptSearch({
+  transcriptId,
+  onJump,
+}: TranscriptSearchProps) {
+  const [q, setQ] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -25,7 +28,10 @@ export default function TranscriptSearch({ transcriptId, onJump }: TranscriptSea
     if (!q.trim()) return;
     setLoading(true);
     try {
-      const resp = await apiRequest('GET', `/api/search?q=${encodeURIComponent(q)}&transcript_id=${transcriptId}`);
+      const resp = await apiRequest(
+        "GET",
+        `/api/search?q=${encodeURIComponent(q)}&transcript_id=${transcriptId}`,
+      );
       const data = await resp.json();
       setResults(data as SearchResult[]);
     } finally {
@@ -39,7 +45,7 @@ export default function TranscriptSearch({ transcriptId, onJump }: TranscriptSea
         <input
           type="text"
           value={q}
-          onChange={e => setQ(e.target.value)}
+          onChange={(e) => setQ(e.target.value)}
           placeholder="Search transcript..."
           className="flex-1 border rounded p-2 text-sm"
         />
@@ -49,12 +55,18 @@ export default function TranscriptSearch({ transcriptId, onJump }: TranscriptSea
       </div>
       {results.length > 0 && (
         <ul className="border rounded p-2 max-h-60 overflow-y-auto space-y-1 text-sm bg-white">
-          {results.map(r => (
-            <li key={r.chunk_id} className="cursor-pointer hover:bg-blue-50 p-1 rounded" onClick={() => r.ts_start !== null && onJump(r.ts_start)}>
+          {results.map((r) => (
+            <li
+              key={r.chunk_id}
+              className="cursor-pointer hover:bg-blue-50 p-1 rounded"
+              onClick={() =>
+                r.ts_start !== null && onJump(r.ts_start, r.text ?? "")
+              }
+            >
               <div className="font-medium">{r.text}</div>
               <div className="text-gray-500 text-xs">
-                {r.speaker ? `${r.speaker} · ` : ''}
-                {r.ts_start !== null ? r.ts_start.toFixed(2) + 's' : ''}
+                {r.speaker ? `${r.speaker} · ` : ""}
+                {r.ts_start !== null ? r.ts_start.toFixed(2) + "s" : ""}
               </div>
             </li>
           ))}
