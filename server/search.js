@@ -17,6 +17,39 @@ try {
   ({ embedText: defaultEmbed } = await import('./openai.js'));
 } catch {}
 
+let storage;
+try {
+  ({ storage } = await import('./storage.js'));
+} catch {}
+
+const cache = new Map();
+const CACHE_TTL = 5 * 60 * 1000;
+
+const reindexTimers = new Map();
+
+async function reindexTranscript(id) {
+  if (!storage) return;
+  const t = await storage.getTranscription(id);
+  if (!t || !t.structuredTranscript) return;
+  const data = JSON.parse(t.structuredTranscript);
+  if (!Array.isArray(data.segments)) return;
+  if (defaultDb.execute) {
+    await defaultDb.execute(sql`DELETE FROM transcript_vectors WHERE transcript_id = ${id}`);
+  }
+  await indexTranscript(id, data.segments);
+}
+
+export function scheduleReindex(id, delay = 30000) {
+  if (reindexTimers.has(id)) clearTimeout(reindexTimers.get(id));
+  reindexTimers.set(
+    id,
+    setTimeout(() => {
+      reindexTimers.delete(id);
+      reindexTranscript(id).catch(console.error);
+    }, delay)
+  );
+}
+
 export async function ensureVectorIndex(database = defaultDb) {
   await database.execute(sql`
     CREATE INDEX IF NOT EXISTS transcript_vectors_embedding_hnsw
@@ -61,13 +94,17 @@ export async function indexTranscript(transcriptId, segments, options = {}) {
  * @param {{db?: any, embedFn?: (text:string)=>Promise<number[]>}} [options]
  */
 export async function searchTranscript(transcriptId, query, top, options = {}) {
-  const database = options.db ?? defaultDb;
-  const embed = options.embedFn ?? defaultEmbed;
-  const tags = options.tags ?? [];
+  const { db: database = defaultDb, embedFn: embed = defaultEmbed, tags = [], bypassCache = false } = options;
+  const key = `${transcriptId}:${query}:${tags.sort().join(',')}`;
+  if (!bypassCache && cache.has(key)) {
+    const c = cache.get(key);
+    if (Date.now() - c.ts < CACHE_TTL) return c.result;
+  }
   const embedding = await embed(query);
   if (database.execute.length === 1) {
-    // custom mock database
-    return (await database.execute({ transcriptId, embedding, top, tags })).rows;
+    const res = (await database.execute({ transcriptId, embedding, top, tags })).rows;
+    cache.set(key, { ts: Date.now(), result: res });
+    return res;
   }
   const limit = tags.length > 0 ? top * 10 : top;
   const result = await database.execute(sql`
@@ -82,5 +119,6 @@ export async function searchTranscript(transcriptId, query, top, options = {}) {
   if (tags.length > 0) {
     rows = rows.filter(r => Array.isArray(r.tags) && r.tags.some(t => tags.includes(t))).slice(0, top);
   }
+  cache.set(key, { ts: Date.now(), result: rows });
   return rows;
 }

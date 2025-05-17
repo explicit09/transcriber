@@ -5,6 +5,7 @@ import { setupWSConnection } from 'y-websocket/bin/utils.js';
 import { RedisPersistence } from 'y-redis';
 import * as Y from 'yjs';
 import { storage } from './storage';
+import { scheduleReindex } from './search';
 
 interface DocInfo {
   doc: Y.Doc;
@@ -30,6 +31,7 @@ function trackDoc(name: string, doc: Y.Doc) {
     const id = Number(name.replace(/^transcription-/, ''));
     if (!Number.isNaN(id)) {
       storage.saveRevision(id, snapshot, info.ops).catch(console.error);
+      scheduleReindex(id);
     }
     info.ops = 0;
     info.lastSave = Date.now();
