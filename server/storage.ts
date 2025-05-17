@@ -154,8 +154,7 @@ export class DatabaseStorage implements IStorage {
     await db.delete(comments).where(eq(comments.id, id));
   }
 
-  async saveRevision(transcriptionId: number, snapshot: string, ops: number[]): Promise<void> {
-
+  async saveRevision(transcriptionId: number, snapshot: string, ops: number): Promise<void> {
     await db.insert(collabTranscriptRevisions).values({
       transcriptId: transcriptionId,
       snapshot,
