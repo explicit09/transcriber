@@ -209,6 +209,7 @@ export const transcriptVectors = pgTable("transcript_vectors", {
   tokenStart: integer("token_start"),
   tokenEnd: integer("token_end"),
   embedding: vector("embedding", { dimensions: 1536 }),
+  tags: text("tags").array(),
 });
 
 export const insertVectorSchema = createInsertSchema(transcriptVectors);

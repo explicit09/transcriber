@@ -23,6 +23,7 @@ import {
   autoMergeSpeakers
 } from "./openai";
 import { indexTranscript, searchTranscript } from "./search";
+import { tagTranscriptVectors } from "./tagger";
 import { sendActionItemWebhook } from "./integrations";
 import { transcribeWithAssemblyAI, formatTranscriptText } from "./assemblyai";
 import { transcribeWithHybridApproach } from "./hybrid";
@@ -441,6 +442,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             structuredTranscript: JSON.stringify(result.structuredTranscript)
           });
           await indexTranscript(transcriptionId, result.structuredTranscript.segments);
+          tagTranscriptVectors(transcriptionId).catch(err => console.error('tagging failed', err));
           
         } catch (error) {
           console.error("Error during chunked file transcription:", error);
@@ -672,6 +674,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             structuredTranscript: JSON.stringify(result.structuredTranscript)
           });
           await indexTranscript(transcription.id, result.structuredTranscript.segments);
+          tagTranscriptVectors(transcription.id).catch(err => console.error('tagging failed', err));
         } catch (error) {
           // Handle errors and update the record (Original simpler error handling)
           const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1644,6 +1647,7 @@ app.post('/api/transcriptions/:id/save-collab', async (req: Request, res: Respon
                   structuredTranscript: JSON.stringify(result.structuredTranscript)
                 });
                 await indexTranscript(id, result.structuredTranscript.segments);
+                tagTranscriptVectors(id).catch(err => console.error('tagging failed', err));
               } else {
                 // Use basic transcription for simple cases
                 const result = await transcribeAudio(file.path);
