@@ -110,9 +110,8 @@ export const structuredTranscriptSchema = z.object({
 
 export type StructuredTranscript = z.infer<typeof structuredTranscriptSchema>;
 
-
 // ─────────────────────────────────────────────
-// COMMENTS TABLE (FULL VERSION)
+// COMMENTS TABLE (CANONICAL VERSION)
 // ─────────────────────────────────────────────
 
 export const comments = pgTable("comments", {
@@ -133,7 +132,6 @@ export const insertCommentSchema = createInsertSchema(comments);
 export type InsertComment = z.infer<typeof insertCommentSchema>;
 export type Comment = typeof comments.$inferSelect;
 
-
 // ─────────────────────────────────────────────
 // COLLABORATIVE REVISIONS TABLE
 // ─────────────────────────────────────────────
@@ -149,7 +147,6 @@ export const collabTranscriptRevisions = pgTable("collab_transcript_revisions", 
 });
 
 export type CollabTranscriptRevision = typeof collabTranscriptRevisions.$inferSelect;
-
 
 // ─────────────────────────────────────────────
 // VERSIONED DOCUMENT REVISIONS TABLE
@@ -168,7 +165,6 @@ export const transcriptRevisions = pgTable("transcript_revisions", {
 export const insertTranscriptRevisionSchema = createInsertSchema(transcriptRevisions);
 export type InsertTranscriptRevision = z.infer<typeof insertTranscriptRevisionSchema>;
 export type TranscriptRevision = typeof transcriptRevisions.$inferSelect;
-
 
 // ─────────────────────────────────────────────
 // TRANSCRIPT VECTORS TABLE

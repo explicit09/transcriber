@@ -1,12 +1,14 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { 
-  insertTranscriptionSchema, 
-  audioFileSchema, 
-  structuredTranscriptSchema, 
+import {
+  insertTranscriptionSchema,
+  audioFileSchema,
+  structuredTranscriptSchema,
   StructuredTranscript,
-  TranscriptSegment 
+  TranscriptSegment,
+  insertTranscriptionCommentSchema,
+  TranscriptionComment,
 } from "@shared/schema";
 import multer from "multer";
 import path from "path";
@@ -1258,40 +1260,129 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Generate a collaboration token for a transcription
-  app.get('/api/transcriptions/:id/collab-token', async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-      if (isNaN(id)) {
-        return res.status(400).json({ message: 'Invalid transcription ID' });
-      }
+// Get comments for a transcription
+app.get('/api/transcriptions/:id/comments', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) {
+    return res.status(400).json({ message: 'Invalid transcription ID' });
+  }
 
-      const transcription = await storage.getTranscription(id);
-      if (!transcription) {
-        return res.status(404).json({ message: 'Transcription not found' });
-      }
+  const transcription = await storage.getTranscription(id);
+  if (!transcription) {
+    return res.status(404).json({ message: 'Transcription not found' });
+  }
 
-      const scopesParam = req.query.scopes;
-      let scopes: string[] = [];
-      if (typeof scopesParam === 'string') {
-        scopes = scopesParam.split(',').map(s => s.trim()).filter(s => s === 'read' || s === 'write');
-      }
-      if (scopes.length === 0) {
-        scopes = ['read'];
-      }
+  const comments = await storage.getComments(id);
+  return res.json(comments);
+});
 
-      const secret = process.env.COLLAB_TOKEN_SECRET;
-      if (!secret) {
-        return res.status(500).json({ message: 'Collaboration token secret is not configured' });
-      }
+// Create a new comment
+app.post('/api/transcriptions/:id/comments', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) {
+    return res.status(400).json({ message: 'Invalid transcription ID' });
+  }
 
-      const token = jwt.sign({ transcriptionId: id, scopes }, secret, { expiresIn: '2h' });
-      return res.status(200).json({ token });
-    } catch (error) {
-      console.error('Error generating collaboration token:', error);
-      return res.status(500).json({ message: 'Internal server error' });
+  const transcription = await storage.getTranscription(id);
+  if (!transcription) {
+    return res.status(404).json({ message: 'Transcription not found' });
+  }
+
+  try {
+    const data = insertTranscriptionCommentSchema.parse({
+      ...req.body,
+      transcriptionId: id,
+    });
+    const comment = await storage.createComment(data);
+    return res.status(201).json(comment);
+  } catch (error) {
+    if (error instanceof ZodError) {
+      const validationError = fromZodError(error);
+      return res.status(400).json({ message: validationError.message });
     }
-  });
+    return res.status(400).json({ message: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+// Update a comment
+app.patch('/api/transcriptions/:id/comments/:commentId', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  const commentId = parseInt(req.params.commentId);
+  if (isNaN(id) || isNaN(commentId)) {
+    return res.status(400).json({ message: 'Invalid ID' });
+  }
+
+  const transcription = await storage.getTranscription(id);
+  if (!transcription) {
+    return res.status(404).json({ message: 'Transcription not found' });
+  }
+
+  const updates: Partial<TranscriptionComment> = {
+    relativePos: req.body.relativePos,
+    body: req.body.body,
+    kind: req.body.kind,
+    status: req.body.status,
+    assignee: req.body.assignee,
+  };
+
+  const updated = await storage.updateComment(commentId, updates);
+  if (!updated) {
+    return res.status(404).json({ message: 'Comment not found' });
+  }
+  return res.json(updated);
+});
+
+// Delete a comment
+app.delete('/api/transcriptions/:id/comments/:commentId', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  const commentId = parseInt(req.params.commentId);
+  if (isNaN(id) || isNaN(commentId)) {
+    return res.status(400).json({ message: 'Invalid ID' });
+  }
+
+  const transcription = await storage.getTranscription(id);
+  if (!transcription) {
+    return res.status(404).json({ message: 'Transcription not found' });
+  }
+
+  await storage.deleteComment(commentId);
+  return res.status(204).send();
+});
+
+// Generate a collaboration token for a transcription
+app.get('/api/transcriptions/:id/collab-token', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return res.status(400).json({ message: 'Invalid transcription ID' });
+    }
+
+    const transcription = await storage.getTranscription(id);
+    if (!transcription) {
+      return res.status(404).json({ message: 'Transcription not found' });
+    }
+
+    const scopesParam = req.query.scopes;
+    let scopes: string[] = [];
+    if (typeof scopesParam === 'string') {
+      scopes = scopesParam.split(',').map(s => s.trim()).filter(s => s === 'read' || s === 'write');
+    }
+    if (scopes.length === 0) {
+      scopes = ['read'];
+    }
+
+    const secret = process.env.COLLAB_TOKEN_SECRET;
+    if (!secret) {
+      return res.status(500).json({ message: 'Collaboration token secret is not configured' });
+    }
+
+    const token = jwt.sign({ transcriptionId: id, scopes }, secret, { expiresIn: '2h' });
+    return res.status(200).json({ token });
+  } catch (error) {
+    console.error('Error generating collaboration token:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+});
 
   // Batch process multiple files
   app.post('/api/batch-transcribe', upload.array('files', 10), async (req: Request, res: Response) => {
