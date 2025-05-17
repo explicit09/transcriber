@@ -1566,9 +1566,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Parse the structured transcript
-      let segments;
+      let segments: TranscriptSegment[] = [];
       try {
-        segments = JSON.parse(transcription.structuredTranscript) as TranscriptSegment[];
+        const parsed = JSON.parse(transcription.structuredTranscript) as StructuredTranscript;
+        if (Array.isArray(parsed.segments)) {
+          segments = parsed.segments as TranscriptSegment[];
+        }
       } catch (error) {
         return res.status(500).json({ error: 'Failed to parse structured transcript' });
       }
