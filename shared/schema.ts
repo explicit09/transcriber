@@ -1,4 +1,5 @@
-import { pgTable, text, serial, integer, boolean, timestamp, real, numeric, varchar } from "drizzle-orm/pg-core";
+
+import { pgTable, text, serial, integer, boolean, timestamp, real, numeric, varchar, bytea, jsonb } from "drizzle-orm/pg-core";
 import { vector } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -102,6 +103,39 @@ export const structuredTranscriptSchema = z.object({
 
 export type StructuredTranscript = z.infer<typeof structuredTranscriptSchema>;
 
+
+export const transcriptRevisions = pgTable("transcript_revisions", {
+  id: serial("id").primaryKey(),
+  transcriptId: integer("transcript_id")
+    .references(() => transcriptions.id)
+    .notNull(),
+  revNo: integer("rev_no").notNull(),
+  doc: bytea("doc").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertTranscriptRevisionSchema = createInsertSchema(transcriptRevisions);
+export type InsertTranscriptRevision = z.infer<typeof insertTranscriptRevisionSchema>;
+export type TranscriptRevision = typeof transcriptRevisions.$inferSelect;
+
+export const comments = pgTable("comments", {
+  id: serial("id").primaryKey(),
+  transcriptId: integer("transcript_id")
+    .references(() => transcriptions.id)
+    .notNull(),
+  yjsPos: jsonb("yjs_pos").notNull(),
+  body: text("body").notNull(),
+  kind: text("kind").notNull(),
+  status: text("status").notNull(),
+  assignee: text("assignee"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCommentSchema = createInsertSchema(comments);
+export type InsertComment = z.infer<typeof insertCommentSchema>;
+export type Comment = typeof comments.$inferSelect;
+
 export const transcriptVectors = pgTable("transcript_vectors", {
   id: serial("id").primaryKey(),
   transcriptId: integer("transcript_id").notNull().references(() => transcriptions.id),
@@ -118,3 +152,4 @@ export const transcriptVectors = pgTable("transcript_vectors", {
 export const insertVectorSchema = createInsertSchema(transcriptVectors);
 export type InsertVector = z.infer<typeof insertVectorSchema>;
 export type TranscriptVector = typeof transcriptVectors.$inferSelect;
+
