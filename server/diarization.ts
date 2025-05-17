@@ -25,9 +25,17 @@ export async function checkDiarizationSetup(): Promise<boolean> {
       return false;
     }
     
+    // Use the Anaconda Python environment
+    const pythonPath = '/opt/anaconda3/bin/python';
+    
     // Check if Python is available
     const python = await new Promise<boolean>((resolve) => {
-      const proc = spawn('python3', ['-c', 'import pyannote.audio; print("OK")']);
+      // Make sure to pass the HuggingFace token
+      const env = {
+        ...process.env,
+        PYTHONPATH: path.join(process.cwd(), 'python'),
+      };
+      const proc = spawn(pythonPath, ['-c', 'import pyannote.audio; print("OK")'], { env });
       
       proc.stdout.on('data', (data) => {
         if (data.toString().trim() === 'OK') {
@@ -80,7 +88,10 @@ export async function diarizeAudio(
     console.log(`Running diarization on ${audioFilePath}`);
     const startTime = Date.now();
     
-    const python = spawn('python3', args, { env });
+    // Use the Anaconda Python environment
+    const pythonPath = '/opt/anaconda3/bin/python';
+    
+    const python = spawn(pythonPath, args, { env });
     
     let stdout = '';
     let stderr = '';
@@ -126,4 +137,4 @@ export async function diarizeAudio(
       }
     });
   });
-} 
+}

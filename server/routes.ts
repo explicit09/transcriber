@@ -63,6 +63,32 @@ const upload = multer({
   }
 });
 
+// Special upload configuration for chunks with higher limits
+const chunkUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const uploadDir = path.join(os.tmpdir(), 'chunk-uploads');
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      const ext = path.extname(file.originalname);
+      cb(null, `${uniqueSuffix}${ext}`);
+    }
+  }),
+  limits: {
+    fileSize: 500 * 1024 * 1024, // 500 MB for chunks
+    fieldSize: 100 * 1024 * 1024 // 100 MB for form fields
+  },
+  fileFilter: (req, file, cb) => {
+    // Allow any file type for chunks as we validate the complete file later
+    cb(null, true);
+  }
+});
+
 // Helper function to format seconds into readable time
 function formatTime(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
@@ -179,7 +205,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Receive a chunk of a large file
-  app.post('/api/transcribe-chunk', upload.single('chunk'), async (req: Request, res: Response) => {
+  app.post('/api/transcribe-chunk', chunkUpload.single('chunk'), async (req: Request, res: Response) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No chunk uploaded" });
