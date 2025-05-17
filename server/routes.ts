@@ -36,6 +36,12 @@ import { fromZodError } from "zod-validation-error";
 import { checkDiarizationSetup } from "./diarization";
 import * as Y from "yjs";
 
+import { commentsRouter } from './routes/comments';
+import { transcriptionsRouter } from './routes/transcriptions';
+import { searchRouter } from './routes/search';
+import { extractPlainText } from "./yjsHelpers";
+
+
 import { extractPlainText, insertCommentAnchor } from "./yjsHelpers";
 import commentRouter from './routers/comments';
 import searchRouter from './routers/search';
@@ -161,8 +167,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Check for pyannote diarization availability at startup
   await checkDiarizationAvailability();
 
-  app.use(commentRouter);
-  app.use(searchRouter);
+  app.use('/api/transcriptions', commentsRouter);
+  app.use('/api/transcriptions', transcriptionsRouter);
+  app.use('/api/search', searchRouter);
   
   // Initialize a chunked upload - metadata only
   app.post('/api/transcribe-init', async (req: Request, res: Response) => {
@@ -1107,6 +1114,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+
   // Get comments for a transcription
   app.get('/api/transcriptions/:id/comments', async (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
@@ -1526,6 +1534,7 @@ app.post('/api/transcriptions/:id/save-collab', async (req: Request, res: Respon
     return res.status(500).json({ message: 'Internal server error' });
   }
 });
+  
   // Batch process multiple files
   app.post('/api/batch-transcribe', upload.array('files', 10), async (req: Request, res: Response) => {
     try {
