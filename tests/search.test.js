@@ -52,3 +52,21 @@ test('searchTranscript filters by tags', async () => {
   assert.equal(results.length, 1);
   assert.equal(results[0].text, 'risky choice');
 });
+
+test('searchTranscript caches repeated queries', async () => {
+  const localDb = new MockDB();
+  let embedCalls = 0;
+  let execCalls = 0;
+  const embedFn = async (t) => { embedCalls++; return [t.length]; };
+  localDb.execute = async function() { execCalls++; return MockDB.prototype.execute.call(localDb); };
+  const segments = [ { start:0, end:1, text:'cached segment' } ];
+  await indexTranscript(3, segments, { db: localDb, embedFn });
+  embedCalls = 0;
+  localDb.lastQuery = { transcriptId: 3, embedding: [5], top: 1 };
+  await searchTranscript(3, 'cache', 1, { db: localDb, embedFn });
+  localDb.lastQuery = { transcriptId: 3, embedding: [5], top: 1 };
+  await searchTranscript(3, 'cache', 1, { db: localDb, embedFn });
+  assert.equal(embedCalls, 1);
+  assert.equal(execCalls, 1);
+});
+

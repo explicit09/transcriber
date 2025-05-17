@@ -22,7 +22,7 @@ import {
   translateTranscript,
   autoMergeSpeakers
 } from "./openai";
-import { indexTranscript, searchTranscript } from "./search";
+import { indexTranscript, searchTranscript, scheduleReindex } from "./search";
 import { tagTranscriptVectors } from "./tagger";
 import { sendActionItemWebhook } from "./integrations";
 import { transcribeWithAssemblyAI, formatTranscriptText } from "./assemblyai";
@@ -1477,6 +1477,7 @@ app.post('/api/transcriptions/:id/save-collab', async (req: Request, res: Respon
     const doc = redis.getYDoc(`transcription-${id}`);
     const snapshot = Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64');
     await storage.saveRevision(id, snapshot, 0);
+    scheduleReindex(id);
     return res.status(204).end();
   } catch (error) {
     console.error('Error saving collaboration snapshot:', error);

@@ -1,6 +1,7 @@
 import { db } from './db';
-import { transcriptVectors } from '@shared/schema';
-import { sql } from 'drizzle-orm';
+import { transcriptVectors, transcriptions } from '@shared/schema';
+import { eq, sql } from 'drizzle-orm';
+import { storage } from './storage';
 
 export async function ensureVectorIndex() {
   await db.execute(sql`
@@ -16,29 +17,65 @@ import { chunkTranscriptSegments } from './chunker';
 
 import { chunkTranscript } from './chunking';
 
+// ---- simple in-memory cache for search results ----
+interface CacheEntry {
+  ts: number;
+  result: any;
+}
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const cache = new Map<string, CacheEntry>();
 
+export function clearSearchCache() {
+  cache.clear();
+}
+
+// ---- incremental reindex scheduling ----
+const reindexTimers = new Map<number, NodeJS.Timeout>();
+
+async function reindexTranscript(id: number) {
+  const t = await storage.getTranscription(id);
+  if (!t || !t.structuredTranscript) return;
+  const data = JSON.parse(t.structuredTranscript);
+  if (!Array.isArray(data.segments)) return;
+  await db.delete(transcriptVectors).where(eq(transcriptVectors.transcriptId, id));
+  await indexTranscript(id, data.segments);
+}
+
+export function scheduleReindex(id: number, delay = 30000) {
+  if (reindexTimers.has(id)) {
+    clearTimeout(reindexTimers.get(id)!);
+  }
+  reindexTimers.set(
+    id,
+    setTimeout(() => {
+      reindexTimers.delete(id);
+      reindexTranscript(id).catch(console.error);
+    }, delay)
+  );
+}
 export async function indexTranscript(
   transcriptId: number,
-  segments: (TranscriptSegment & { tags?: string[] })[]
+  segments: (TranscriptSegment & { tags?: string[] })[],
+  options: { db?: any; embedFn?: (text: string) => Promise<number[]> } = {}
 ): Promise<void> {
-const chunks = chunkTranscript(segments);
-
-for (let i = 0; i < chunks.length; i++) {
-  const chunk = chunks[i];
-  const embedding = await embedText(chunk.text);
-
-  await db.insert(transcriptVectors).values({
-    transcriptId,
-    chunkId: i,
-    speaker: chunk.speaker,
-    text: chunk.text,
-    tsStart: chunk.tsStart,
-    tsEnd: chunk.tsEnd,
-    tokenStart: chunk.tokenStart,
-    tokenEnd: chunk.tokenEnd,
-    embedding,
-    tags: (segments[i] as any).tags ?? null,
-   });
+  const database = options.db ?? db;
+  const embedFn = options.embedFn ?? embedText;
+  const chunks = chunkTranscript(segments);
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    const embedding = await embedFn(chunk.text);
+    await database.insert(transcriptVectors).values({
+      transcriptId,
+      chunkId: i,
+      speaker: chunk.speaker,
+      text: chunk.text,
+      tsStart: chunk.tsStart,
+      tsEnd: chunk.tsEnd,
+      tokenStart: chunk.tokenStart,
+      tokenEnd: chunk.tokenEnd,
+      embedding,
+      tags: (segments[i] as any).tags ?? null,
+    });
   }
 }
 
@@ -46,7 +83,8 @@ export async function searchTranscript(
   transcriptId: number,
   query: string,
   top: number,
-  tags: string[] = []
+  tags: string[] = [],
+  options: { db?: any; embedFn?: (text: string) => Promise<number[]>; bypassCache?: boolean } = {}
 ): Promise<{
   chunk_id: number;
   speaker: string | null;
@@ -55,9 +93,20 @@ export async function searchTranscript(
   text: string | null;
   score: number;
 }[]> {
-  const embedding = await embedText(query);
+  const cacheKey = `${transcriptId}:${query}:${tags.sort().join(',')}`;
+  if (!options.bypassCache) {
+    const cached = cache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < CACHE_TTL) {
+      return cached.result;
+    }
+  }
+
+  const database = options.db ?? db;
+  const embedFn = options.embedFn ?? embedText;
+
+  const embedding = await embedFn(query);
   const limit = tags.length > 0 ? top * 10 : top;
-  const result = await db.execute(sql`
+  const result = await database.execute(sql`
     SELECT chunk_id, speaker, ts_start, ts_end, text, tags,
       1 - (embedding <#> ${embedding}) AS score
     FROM transcript_vectors
@@ -70,5 +119,7 @@ export async function searchTranscript(
     rows = rows.filter(r => Array.isArray(r.tags) && r.tags.some((t: string) => tags.includes(t)));
     rows = rows.slice(0, top);
   }
+
+  cache.set(cacheKey, { ts: Date.now(), result: rows });
   return rows as any;
 }
