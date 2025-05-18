@@ -1,5 +1,5 @@
 import { transcribeInChunks } from './openai';
-import { structuredTranscriptToSRT } from './srt.js';
+import { structuredTranscriptToSRT } from './srt';
 import fs from 'fs';
 
 async function main() {

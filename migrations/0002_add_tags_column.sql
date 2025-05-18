@@ -1,0 +1,1 @@
+ALTER TABLE transcript_vectors ADD COLUMN IF NOT EXISTS tags text[]; 

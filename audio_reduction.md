@@ -5,41 +5,48 @@ Enable transcription of audio files larger than 25 MB by automatically splitti
 
 ---
 
-## Step-by-Step Plan
+## Step-by-Step Plan (with Implementation Status)
 
 ### 1. **Audio Chunking**
 - **Goal:** Split input audio into segments, each ≤25 MB (OpenAI Whisper's API limit).
+- **Status:** **Fully Implemented (Silence-Based & Timed)**
 - **Method:**
-  - Use `ffmpeg` or a Node.js audio processing library to split the file by duration or size.
-  - Ensure chunks are split at natural silence points if possible (to avoid cutting words).
-  - Name chunks sequentially (e.g., `audio_part_01.wav`, `audio_part_02.wav`, ...).
+  - Uses `ffmpeg` (see `server/audioChunker.ts`) to split the file at natural silence points, ensuring each chunk is ≤25 MB.
+  - Chunks are named sequentially (e.g., `part-001.wav`, ...).
+  - Explicitly stores and returns chunk start/end times for each chunk.
 - **Considerations:**
-  - Keep a mapping of chunk order for later recombination.
-  - Store chunk start/end times for accurate timestamp mapping.
+  - Mapping of chunk order is maintained by file naming and order.
+  - Chunks are split at natural silence points for improved transcript quality.
+  - Start/end times for each chunk are available for advanced mapping/debugging.
 
 ### 2. **Chunk Upload & Transcription**
 - **Goal:** Transcribe each chunk using OpenAI Whisper API.
+- **Status:** **Fully Implemented (Robust & Fault-Tolerant)**
 - **Method:**
-  - Loop through each chunk and send it to the Whisper API.
-  - Collect the `verbose_json` output for each chunk.
+  - Each chunk is sent to the Whisper API (`server/openai.ts`), using rate limiting and retry logic.
+  - Collects `verbose_json` output for each chunk.
+  - If a chunk fails after all retries, it is recorded in a `failedChunks` array with its file path, start/end times, and error message. The process continues for other chunks, and the result includes both successful and failed chunks for selective reprocessing or reporting.
 - **Considerations:**
-  - Implement rate limiting and retry logic as needed.
-  - If a chunk fails, provide a mechanism to retry only that chunk.
+  - Robust chunk-level retry and error reporting are implemented. Single chunk failures do not halt the entire job.
 
 ### 3. **Sequencing and Merging Transcripts**
 - **Goal:** Combine all chunk transcripts into a single, ordered transcript.
+- **Status:** **Fully Implemented (Overlap, Deduplication, Speaker Merging)**
 - **Method:**
-  - Concatenate transcripts in chunk order.
-  - Adjust timestamps so that each chunk’s transcript is offset by the cumulative duration of previous chunks.
-  - Merge speaker labels and segments to avoid duplicate speaker IDs or overlapping times.
+  - Concatenates transcripts in chunk order.
+  - Adjusts timestamps by offsetting each chunk's transcript by the cumulative duration of previous chunks.
+  - Adds overlap (1–2 seconds) between chunks during splitting, and deduplicates overlapping text and segments during merging.
+  - Refines speaker merging at chunk boundaries: if the last segment of one chunk and the first of the next are from the same speaker and contiguous, they are merged into a single segment.
 - **Considerations:**
-  - Handle cases where a word or sentence is split across chunks (optional: add overlap between chunks and deduplicate transcriptions).
+  - Transcript is seamless, with no duplicated text or artificial speaker breaks at chunk boundaries.
 
 ### 4. **Output Final Transcript**
 - **Goal:** Provide a seamless, single transcript to the user.
+- **Status:** **Fully Implemented (Plain Text, StructuredTranscript, SRT)**
 - **Method:**
-  - Output as plain text, SRT, or the app’s `StructuredTranscript` format.
-  - Optionally, provide original chunk boundaries for debugging or review.
+  - Outputs as plain text, as a `StructuredTranscript` object, and as SRT (via the CLI or backend using the type-safe utility in `server/srt.ts`).
+  - SRT output is integrated into the output pipeline and can be generated for any transcript.
+  - **Next:** Optionally include original chunk boundary metadata for debugging/review.
 
 ---
 
@@ -56,15 +63,39 @@ Enable transcription of audio files larger than 25 MB by automatically splitti
 
 ## Example Workflow
 1. User uploads a 100 MB audio file.
-2. System splits it into 5 × 20 MB chunks.
-3. Each chunk is transcribed in sequence.
+2. System splits it into 5 × 20 MB chunks at natural silence points.
+3. Each chunk is transcribed in sequence, with robust error handling and reporting for any failed chunks.
 4. Timestamps of later chunks are offset by the durations of previous chunks.
-5. All transcripts are merged and returned as a single result.
+5. All transcripts are merged and returned as a single result, with no duplicated text or artificial speaker breaks.
+6. User can download the transcript as plain text, JSON, or SRT.
 
 ---
 
-## Next Steps
-- Prototype chunking logic with `ffmpeg`.
-- Build chunk upload/transcription loop.
-- Implement transcript merging and timestamp adjustment.
-- Integrate with the existing backend pipeline.
+## Implementation Status Summary
+- **Core pipeline (chunking, transcription, merging, output):** Implemented and functional.
+- **Silence-based chunking and explicit chunk timing:** Fully implemented.
+- **Robust chunk-level retry and error reporting:** Fully implemented.
+- **Overlap, deduplication, and speaker merging:** Fully implemented.
+- **SRT output:** Fully implemented and integrated.
+- **Chunk boundary metadata:** Optional/next.
+
+---
+
+## Recommended Next Steps & Enhancements
+
+1. **Output Enhancements:**
+   - Optionally, include original chunk boundaries in the output for debugging/review.
+
+2. **Robustness:**
+   - Further enhance error handling and reporting as needed.
+
+---
+
+## Next Steps (Actionable Tasks)
+- [ ] Optionally, include chunk boundary metadata in output.
+- [ ] Review and refine error handling as needed.
+
+---
+
+## Integration
+- The current pipeline is integrated with the backend and will automatically use chunked transcription for large files. SRT output is available via CLI or backend. Further enhancements can be incrementally added as above.

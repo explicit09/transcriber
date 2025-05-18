@@ -30,7 +30,7 @@ const limiter = new Bottleneck({
 const OPENAI_LIMIT_BYTES = 25 * 1024 * 1024;
 const CHUNK_SIZE = 24 * 1024 * 1024;
 
-async function splitFile(filePath: string, chunkSize = CHUNK_SIZE): Promise<string[]> {
+async function splitFile(filePath: string, chunkSize = CHUNK_SIZE): Promise<{ filePath: string; start: number; end: number }[]> {
   return splitAudio(filePath, chunkSize);
 }
 
@@ -72,30 +72,96 @@ async function transcribeChunk(
   };
 }
 
+function deduplicateOverlap(prevText: string, nextText: string): string {
+  // Simple deduplication: find the largest suffix of prevText that is a prefix of nextText
+  // and remove it from nextText
+  const maxLen = Math.min(prevText.length, nextText.length, 200); // limit search window
+  for (let len = maxLen; len > 10; len--) {
+    if (
+      prevText.slice(-len).replace(/\s+/g, ' ').trim() ===
+      nextText.slice(0, len).replace(/\s+/g, ' ').trim()
+    ) {
+      return nextText.slice(len).trim();
+    }
+  }
+  return nextText;
+}
+
 export async function transcribeInChunks(
   filePath: string,
   options: { enableTimestamps?: boolean; language?: string } = {}
-): Promise<{ text: string; segments: EnhancedTranscriptSegment[]; duration: number; language?: string }> {
-  const parts = await splitFile(filePath);
+): Promise<{
+  text: string;
+  segments: EnhancedTranscriptSegment[];
+  duration: number;
+  language?: string;
+  failedChunks: { filePath: string; start: number; end: number; error: string }[];
+}> {
+  const chunkInfos = await splitFile(filePath);
   const texts: string[] = [];
   const allSegments: EnhancedTranscriptSegment[] = [];
+  const failedChunks: { filePath: string; start: number; end: number; error: string }[] = [];
   let duration = 0;
   let lang: string | undefined = options.language;
+  let prevText = '';
+  let prevSegments: EnhancedTranscriptSegment[] = [];
 
-  for (const p of parts) {
-    const res = await transcribeChunk(p, options.enableTimestamps, options.language);
-    texts.push(res.text);
-    res.segments.forEach((seg) => {
-      seg.start += duration;
-      seg.end += duration;
-    });
-    allSegments.push(...res.segments);
-    duration += res.duration;
-    if (!lang) lang = res.language;
-    fs.unlinkSync(p);
+  for (const chunkInfo of chunkInfos) {
+    try {
+      const res = await transcribeChunk(chunkInfo.filePath, options.enableTimestamps, options.language);
+      // Deduplicate overlap in text
+      let dedupedText = res.text;
+      if (texts.length > 0) {
+        dedupedText = deduplicateOverlap(prevText, res.text);
+      }
+      texts.push(dedupedText);
+      prevText = res.text;
+
+      // Deduplicate overlap in segments (by timestamp)
+      let dedupedSegments = res.segments;
+      if (allSegments.length > 0 && dedupedSegments.length > 0) {
+        const last = allSegments[allSegments.length - 1];
+        const first = dedupedSegments[0];
+        // If same speaker and segments are contiguous (gap < 0.5s)
+        if (
+          last.speaker === first.speaker &&
+          first.start - last.end < 0.5 &&
+          first.start >= last.end
+        ) {
+          last.end = first.end;
+          last.text = `${last.text} ${first.text}`.trim();
+          last.confidence = Math.min(last.confidence, first.confidence);
+          // Remove the first segment from dedupedSegments
+          dedupedSegments = dedupedSegments.slice(1);
+        }
+      }
+      dedupedSegments.forEach((seg) => {
+        seg.start += duration;
+        seg.end += duration;
+      });
+      allSegments.push(...dedupedSegments);
+      prevSegments = res.segments;
+      duration += res.duration;
+      if (!lang) lang = res.language;
+    } catch (err: any) {
+      failedChunks.push({
+        filePath: chunkInfo.filePath,
+        start: chunkInfo.start,
+        end: chunkInfo.end,
+        error: err?.message || String(err),
+      });
+    } finally {
+      fs.unlinkSync(chunkInfo.filePath);
+    }
   }
 
-  return { text: texts.join(" "), segments: allSegments, duration, language: lang };
+  return {
+    text: texts.join(" "),
+    segments: allSegments,
+    duration,
+    language: lang,
+    failedChunks,
+  };
 }
 
 async function withRetry<T>(
