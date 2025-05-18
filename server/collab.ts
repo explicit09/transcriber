@@ -1,7 +1,8 @@
 import { Server } from 'http';
 import { WebSocketServer } from 'ws';
 import { verify } from 'jsonwebtoken';
-import { setupWSConnection } from 'y-websocket/bin/utils.js';
+import YWebSocket from 'y-websocket';
+const { setupWSConnection } = YWebSocket;
 import { RedisPersistence } from 'y-redis';
 import * as Y from 'yjs';
 import { storage } from './storage';

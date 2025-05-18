@@ -8,7 +8,7 @@ import {
   real,
   numeric,
   varchar,
-  bytea,
+
   jsonb,
   vector
 } from "drizzle-orm/pg-core";
@@ -184,7 +184,7 @@ export const transcriptRevisions = pgTable("transcript_revisions", {
     .references(() => transcriptions.id)
     .notNull(),
   revNo: integer("rev_no").notNull(),
-  doc: bytea("doc").notNull(),
+  doc: text("doc").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
