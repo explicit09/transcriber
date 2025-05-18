@@ -6,10 +6,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { formatTimestamp } from '@/lib/utils';
 
-function parseNaturalLanguageDate(text: string): string | null {
-  const date = new Date(text);
-  return isNaN(date.getTime()) ? null : date.toISOString();
-}
 
 interface Comment {
   id: number;
@@ -54,7 +50,7 @@ export default function CommentList({ transcriptId, onJump }: CommentListProps) 
     await apiRequest('PATCH', `/api/transcriptions/${transcriptId}/comments/${commentId}`, {
       body,
       assignee: assignee || null,
-      dueDate: parseNaturalLanguageDate(dueText),
+      dueDate: dueText || null,
     });
   };
 

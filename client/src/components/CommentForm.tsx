@@ -9,11 +9,6 @@ interface CommentFormProps {
   transcriptId: number;
 }
 
-// Simple placeholder for natural language date parsing
-function parseNaturalLanguageDate(text: string): string | null {
-  const date = new Date(text);
-  return isNaN(date.getTime()) ? null : date.toISOString();
-}
 
 export default function CommentForm({ transcriptId }: CommentFormProps) {
   const [body, setBody] = useState('');
@@ -30,8 +25,7 @@ export default function CommentForm({ transcriptId }: CommentFormProps) {
         kind: 'comment',
         status: 'open',
         assignee: assignee || null,
-        // dueDate is not yet persisted on the server
-        dueDate: parseNaturalLanguageDate(dueText),
+        dueDate: dueText || null,
       });
     },
     onSuccess: () => {
