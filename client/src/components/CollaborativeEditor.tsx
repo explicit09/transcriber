@@ -8,6 +8,7 @@ import { TextSelection } from "prosemirror-state";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { IndexeddbPersistence } from "y-indexeddb";
+import PresenceList from "./PresenceList";
 
 // Timestamp anchor mark
 const TimestampAnchor = Mark.create({
@@ -139,62 +140,71 @@ export function CollaborativeEditor({ docId, token, wsUrl }: CollaborativeEditor
     ],
   });
 
-  // Highlight search text when provided
+  // Highlight search text and keep highlights on document updates
   useEffect(() => {
-    if (!highlightText || !editor) return;
-    const { state, view, schema } = editor;
-    const mark = schema.marks["search-highlight"];
-    if (!mark) return;
-    let tr = state.tr;
-    tr = tr.removeMark(0, state.doc.content.size, mark);
-    const regex = new RegExp(
-      highlightText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-      "gi",
-    );
-    let first: number | null = null;
-    state.doc.descendants((node, pos) => {
-      if (!node.isText) return true;
-      const text = node.text || "";
-      let m;
-      while ((m = regex.exec(text))) {
-        const from = pos + m.index;
-        const to = from + m[0].length;
-        tr.addMark(from, to, mark.create());
-        if (first === null) first = from;
+    if (!editor) return;
+
+    const applyHighlight = () => {
+      const { state, view, schema } = editor;
+      const mark = schema.marks["search-highlight"];
+      if (!mark) return;
+      let tr = state.tr;
+      tr = tr.removeMark(0, state.doc.content.size, mark);
+
+      let first: number | null = null;
+      if (highlightText) {
+        const regex = new RegExp(
+          highlightText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+          "gi",
+        );
+        state.doc.descendants((node, pos) => {
+          if (!node.isText) return true;
+          const text = node.text || "";
+          let m;
+          while ((m = regex.exec(text))) {
+            const from = pos + m.index;
+            const to = from + m[0].length;
+            tr = tr.addMark(from, to, mark.create());
+            if (first === null) first = from;
+          }
+          return true;
+        });
+        if (first !== null) {
+          tr = tr.setSelection(TextSelection.create(tr.doc, first));
+        }
       }
-      return true;
-    });
-    if (tr.docChanged) {
-      if (first !== null) {
-        tr.setSelection(TextSelection.create(tr.doc, first));
-      }
-      view.dispatch(tr);
-      if (first !== null) {
+
+      if (tr.docChanged || tr.selectionSet) {
+        view.dispatch(tr.scrollIntoView());
         view.focus();
       }
-    }
-  }, [highlightText, editor]);
+    };
+
+    applyHighlight();
+    editor.on("update", applyHighlight);
+    return () => {
+      editor.off("update", applyHighlight);
+    };
+  }, [editor, highlightText]);
 
   useEffect(() => {
-  const persistence = new IndexeddbPersistence(docId, ydoc);
-  persistence.on("synced", () => {});
+    const persistence = new IndexeddbPersistence(docId, ydoc);
+    persistence.on("synced", () => {});
 
-  const provider = new WebsocketProvider(wsUrl, docId, doc, {
-    params: { token },
-  });
-  provider.awareness.setLocalStateField("user", user);
-  providerRef.current = provider;
+    provider.awareness.setLocalStateField("user", user);
 
-  const saveHandler = (e: KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
-      e.preventDefault();
-      const match = docId.match(/transcription-(\d+)/);
-      if (match) {
-        fetch(`/api/transcriptions/${match[1]}/save-collab`, {
-          method: 'POST',
-          credentials: 'include',
-        });
+    const saveHandler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        const match = docId.match(/transcription-(\d+)/);
+        if (match) {
+          fetch(`/api/transcriptions/${match[1]}/save-collab`, {
+            method: "POST",
+            credentials: "include",
+          });
+        }
       }
+
     }
   };
   window.addEventListener('keydown', saveHandler);

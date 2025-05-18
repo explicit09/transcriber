@@ -70,3 +70,18 @@ test('searchTranscript caches repeated queries', async () => {
   assert.equal(execCalls, 1);
 });
 
+
+test('searchTranscriptWithFacets filters by speaker', async () => {
+  const localDb = new MockDB();
+  const segments = [
+    { start: 0, end: 1, text: 'hello A', speaker: 'Alice' },
+    { start: 1, end: 2, text: 'hello B', speaker: 'Bob' },
+  ];
+  const embedFn = async (t) => [t.length];
+  await indexTranscript(4, segments, { db: localDb, embedFn });
+  localDb.lastQuery = { transcriptId: 4, embedding: [6], top: 2 };
+  const { searchTranscriptWithFacets } = await import('../server/search.js');
+  const res = await searchTranscriptWithFacets(4, 'hello', 2, { speakers: ['Bob'] }, { db: localDb, embedFn });
+  assert.equal(res.results.length, 1);
+  assert.equal(res.results[0].speaker, 'Bob');
+});
