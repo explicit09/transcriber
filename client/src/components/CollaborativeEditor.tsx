@@ -8,6 +8,7 @@ import { TextSelection } from "prosemirror-state";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { IndexeddbPersistence } from "y-indexeddb";
+import PresenceList from "./PresenceList";
 
 // Timestamp anchor mark
 const TimestampAnchor = Mark.create({
@@ -214,7 +215,12 @@ export function CollaborativeEditor({ docId, token, wsUrl }: CollaborativeEditor
     };
   }, [docId, provider, user, ydoc]);
 
-  return <EditorContent editor={editor} />;
+  return (
+    <div>
+      <PresenceList provider={provider} />
+      <EditorContent editor={editor} />
+    </div>
+  );
 }
 
 export default CollaborativeEditor;
