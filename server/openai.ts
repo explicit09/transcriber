@@ -1,5 +1,7 @@
 import OpenAI from "openai";
 import fs from "fs";
+import path from "path";
+import os from "os";
 import Bottleneck from "bottleneck";
 import { TranscriptSegment, StructuredTranscript } from "@shared/schema";
 import { diarizeAudio } from "./diarization";
@@ -23,6 +25,87 @@ const limiter = new Bottleneck({
   maxConcurrent: 5,
   minTime: 200,
 });
+
+const OPENAI_LIMIT_BYTES = 25 * 1024 * 1024;
+const CHUNK_SIZE = 24 * 1024 * 1024;
+
+async function splitFile(filePath: string, chunkSize = CHUNK_SIZE): Promise<string[]> {
+  const chunkPaths: string[] = [];
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "whisper-chunk-"));
+  const stream = fs.createReadStream(filePath, { highWaterMark: chunkSize });
+  let idx = 0;
+  for await (const chunk of stream) {
+    const part = path.join(dir, `part-${idx}${path.extname(filePath)}`);
+    fs.writeFileSync(part, chunk as Buffer);
+    chunkPaths.push(part);
+    idx++;
+  }
+  return chunkPaths;
+}
+
+async function transcribeChunk(
+  filePath: string,
+  enableTimestamps?: boolean,
+  language?: string
+): Promise<{ text: string; segments: EnhancedTranscriptSegment[]; duration: number; language?: string }> {
+  const streamFactory = () => fs.createReadStream(filePath);
+  const transcription = await limiter.schedule(() =>
+    withRetry(() =>
+      openai.audio.transcriptions.create({
+        file: streamFactory(),
+        model: "whisper-1",
+        response_format: "verbose_json",
+        timestamp_granularities: enableTimestamps ? ["segment", "word"] : ["segment"],
+        language,
+      })
+    )
+  );
+
+  const segments: EnhancedTranscriptSegment[] = transcription.segments
+    ? (transcription.segments as WhisperSegment[])
+        .map((s) => ({
+          start: s.start,
+          end: s.end,
+          text: s.text.trim(),
+          speaker: undefined,
+          confidence: s.confidence ?? 1.0,
+        }))
+        .sort((a, b) => a.start - b.start)
+    : [];
+
+  return {
+    text: transcription.text,
+    segments,
+    duration: transcription.duration || 0,
+    language: transcription.language,
+  };
+}
+
+async function transcribeInChunks(
+  filePath: string,
+  options: { enableTimestamps?: boolean; language?: string } = {}
+): Promise<{ text: string; segments: EnhancedTranscriptSegment[]; duration: number; language?: string }> {
+  const parts = await splitFile(filePath);
+  const texts: string[] = [];
+  const allSegments: EnhancedTranscriptSegment[] = [];
+  let duration = 0;
+  let lang: string | undefined = options.language;
+
+  for (const p of parts) {
+    const res = await transcribeChunk(p, options.enableTimestamps, options.language);
+    texts.push(res.text);
+    res.segments.forEach((seg) => {
+      seg.start += duration;
+      seg.end += duration;
+    });
+    allSegments.push(...res.segments);
+    duration += res.duration;
+    if (!lang) lang = res.language;
+    fs.unlinkSync(p);
+  }
+
+  return { text: texts.join(" "), segments: allSegments, duration, language: lang };
+}
 
 async function withRetry<T>(
   fn: () => Promise<T>,
@@ -92,6 +175,12 @@ export async function embedText(text: string): Promise<number[]> {
 export async function transcribeAudio(
   audioFilePath: string
 ): Promise<{ text: string; duration?: number; language?: string }> {
+  const stats = fs.statSync(audioFilePath);
+  if (stats.size > OPENAI_LIMIT_BYTES) {
+    const result = await transcribeInChunks(audioFilePath, {});
+    return { text: result.text, duration: result.duration, language: result.language };
+  }
+
   const streamFactory = () => fs.createReadStream(audioFilePath);
 
   const transcription = await limiter.schedule(() =>
@@ -127,6 +216,77 @@ export async function transcribeAudioWithFeatures(
   language?: string;
   translatedText?: string;
 }> {
+  const stats = fs.statSync(audioFilePath);
+  if (stats.size > OPENAI_LIMIT_BYTES) {
+    const result = await transcribeInChunks(audioFilePath, {
+      enableTimestamps: options.enableTimestamps,
+      language: options.language,
+    });
+
+    let segments: EnhancedTranscriptSegment[] = result.segments;
+    segments = segments.reduce((acc: EnhancedTranscriptSegment[], curr) => {
+      if (!acc.length) return [curr];
+      const prev = acc[acc.length - 1];
+      if (curr.start - prev.end < 0.3 && curr.start >= prev.start) {
+        prev.end = curr.end;
+        prev.text = `${prev.text} ${curr.text}`;
+        prev.confidence = Math.min(prev.confidence, curr.confidence);
+        return acc;
+      }
+      return [...acc, curr];
+    }, []);
+
+    let speakerCount = 1;
+    if (segments.length) {
+      const { segments: diarized, speakerCount: count } = await processSpeakerDiarization(
+        segments as TranscriptSegment[],
+        result.text
+      );
+
+      const processed = (diarized as EnhancedTranscriptSegment[])
+        .map((seg, i, arr) => {
+          if (
+            i > 0 &&
+            seg.start - arr[i - 1].end < 0.3 &&
+            seg.speaker === arr[i - 1].speaker &&
+            seg.confidence > 0.8 &&
+            arr[i - 1].confidence > 0.8
+          ) {
+            arr[i - 1].end = seg.end;
+            arr[i - 1].text = `${arr[i - 1].text} ${seg.text}`;
+            return null as unknown as EnhancedTranscriptSegment;
+          }
+          return seg;
+        })
+        .filter(Boolean);
+
+      speakerCount = count;
+      segments = processed;
+    }
+
+    segments = segments.reduce((acc: EnhancedTranscriptSegment[], curr) => {
+      if (!acc.length) return [curr];
+      const prev = acc[acc.length - 1];
+      if (curr.start < prev.end && curr.speaker !== prev.speaker) {
+        const mid = (curr.start + prev.end) / 2;
+        prev.end = mid;
+        curr.start = mid;
+      }
+      return [...acc, curr];
+    }, []);
+
+    const structuredTranscript: StructuredTranscript = {
+      segments: segments as TranscriptSegment[],
+      metadata: { speakerCount, duration: result.duration || 0, language: result.language },
+    };
+
+    return {
+      text: result.text,
+      structuredTranscript,
+      duration: result.duration,
+      language: result.language,
+    };
+  }
   // ---- Optional translation branch ---------------------------------------
   if (options.enableTranslation && options.targetLanguage) {
     const translation = await limiter.schedule(() =>
@@ -668,33 +828,50 @@ export async function transcribeWithPyannote(
   
   // Step 2: Get transcription from Whisper
   console.log("Transcribing audio with Whisper...");
-  const streamFactory = () => fs.createReadStream(audioFilePath);
-  const transcription = await limiter.schedule(() =>
-    withRetry(() =>
-      openai.audio.transcriptions.create({
-        file: streamFactory(),
-        model: "whisper-1",
-        response_format: "verbose_json",
-        timestamp_granularities: ["segment", "word"],
-      })
-    )
-  );
+  const stats = fs.statSync(audioFilePath);
+  let text: string;
+  let duration: number | undefined;
+  let language: string | undefined;
+  let whisperSegments: EnhancedTranscriptSegment[] = [];
 
-  const text = transcription.text;
-  const duration = transcription.duration;
-  const language = transcription.language;
-  
-  // Step 3: Get Whisper segments
-  const whisperSegments = transcription.segments
-    ? (transcription.segments as WhisperSegment[])
-        .map((s) => ({
-          start: s.start,
-          end: s.end,
-          text: s.text.trim(),
-          confidence: s.confidence ?? 1.0,
-        }))
-        .sort((a, b) => a.start - b.start)
-    : [];
+  if (stats.size > OPENAI_LIMIT_BYTES) {
+    const result = await transcribeInChunks(audioFilePath, {
+      enableTimestamps: true,
+      language: options.language,
+    });
+    text = result.text;
+    duration = result.duration;
+    language = result.language;
+    whisperSegments = result.segments;
+  } else {
+    const streamFactory = () => fs.createReadStream(audioFilePath);
+    const transcription = await limiter.schedule(() =>
+      withRetry(() =>
+        openai.audio.transcriptions.create({
+          file: streamFactory(),
+          model: "whisper-1",
+          response_format: "verbose_json",
+          timestamp_granularities: ["segment", "word"],
+        })
+      )
+    );
+
+    text = transcription.text;
+    duration = transcription.duration;
+    language = transcription.language;
+
+    whisperSegments = transcription.segments
+      ? (transcription.segments as WhisperSegment[])
+          .map((s) => ({
+            start: s.start,
+            end: s.end,
+            text: s.text.trim(),
+            confidence: s.confidence ?? 1.0,
+          }))
+          .sort((a, b) => a.start - b.start)
+      : [];
+  }
+
   
   if (whisperSegments.length === 0) {
     console.warn("Whisper returned no segments, using full text");
