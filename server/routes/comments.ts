@@ -7,10 +7,23 @@ import { ZodError } from 'zod';
 import { fromZodError } from 'zod-validation-error';
 import { redis } from '../collab';
 import * as Y from 'yjs';
+import { parseDueDate } from '../openai';
 
 import { insertCommentAnchor } from '../yjsHelpers';
 
 export const commentsRouter = Router();
+
+async function normalizeDueDate(input: any): Promise<{ date?: Date; iso?: string }> {
+  if (!input) return {};
+  const d = new Date(input);
+  if (!isNaN(d.getTime())) return { date: d, iso: d.toISOString() };
+  const iso = await parseDueDate(String(input));
+  if (iso) {
+    const parsed = new Date(iso);
+    if (!isNaN(parsed.getTime())) return { date: parsed, iso };
+  }
+  return {};
+}
 
 
 commentsRouter.get('/api/transcriptions/:id/comments', async (req: Request, res: Response) => {
@@ -29,12 +42,12 @@ commentsRouter.post('/api/transcriptions/:id/comments', async (req: Request, res
   if (!transcription) return res.status(404).json({ message: 'Transcription not found' });
 
   try {
-
     const { dueDate, ...commentInput } = req.body;
+    const parsed = await normalizeDueDate(dueDate);
     const data = insertCommentSchema.parse({
       ...commentInput,
       transcriptId: id,
-      dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
+      dueDate: parsed.date,
     });
     const comment = await storage.createComment(data);
 
@@ -42,7 +55,7 @@ commentsRouter.post('/api/transcriptions/:id/comments', async (req: Request, res
       await sendActionItemWebhook({
         transcriptionId: id,
         body: data.body,
-        dueDate: typeof dueDate === 'string' ? dueDate : undefined,
+        dueDate: parsed.iso,
       });
     }
 
@@ -81,7 +94,7 @@ commentsRouter.patch('/api/transcriptions/:id/comments/:commentId', async (req: 
     status: req.body.status,
     assignee: req.body.assignee,
     createdBy: req.body.createdBy,
-    dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
+    dueDate: (await normalizeDueDate(req.body.dueDate)).date,
     metadata: req.body.metadata,
     absolutePosition: req.body.absolutePosition,
 

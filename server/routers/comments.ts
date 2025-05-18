@@ -6,8 +6,21 @@ import { insertCommentSchema } from '@/shared/schema';
 import { sendActionItemWebhook } from '../integrations';
 import { redis } from '../collab';
 import { insertCommentAnchor } from '../yjsHelpers';
+import { parseDueDate } from '../openai';
 
 const router = Router();
+
+async function normalizeDueDate(input: any): Promise<{ date?: Date; iso?: string }> {
+  if (!input) return {};
+  const d = new Date(input);
+  if (!isNaN(d.getTime())) return { date: d, iso: d.toISOString() };
+  const iso = await parseDueDate(String(input));
+  if (iso) {
+    const parsed = new Date(iso);
+    if (!isNaN(parsed.getTime())) return { date: parsed, iso };
+  }
+  return {};
+}
 
 router.get('/api/transcriptions/:id/comments', async (req: Request, res: Response) => {
   const id = parseInt(req.params.id);
@@ -37,10 +50,11 @@ router.post('/api/transcriptions/:id/comments', async (req: Request, res: Respon
 
   try {
     const { dueDate, ...commentInput } = req.body;
+    const parsed = await normalizeDueDate(dueDate);
     const data = insertCommentSchema.parse({
       ...commentInput,
       transcriptId: id,
-      dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
+      dueDate: parsed.date,
     });
     const comment = await storage.createComment(data);
 
@@ -55,7 +69,7 @@ router.post('/api/transcriptions/:id/comments', async (req: Request, res: Respon
       await sendActionItemWebhook({
         transcriptionId: id,
         body: data.body,
-        dueDate: typeof dueDate === 'string' ? dueDate : undefined,
+        dueDate: parsed.iso,
       });
     }
 
@@ -81,6 +95,7 @@ router.patch('/api/transcriptions/:id/comments/:commentId', async (req: Request,
     return res.status(404).json({ message: 'Transcription not found' });
   }
 
+  const parsed = await normalizeDueDate(req.body.dueDate);
   const updates = {
     yjsPos: req.body.yjsPos,
     body: req.body.body,
@@ -88,7 +103,7 @@ router.patch('/api/transcriptions/:id/comments/:commentId', async (req: Request,
     status: req.body.status,
     assignee: req.body.assignee,
     createdBy: req.body.createdBy,
-    dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
+    dueDate: parsed.date,
     metadata: req.body.metadata,
     absolutePosition: req.body.absolutePosition,
   } as any;

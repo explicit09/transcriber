@@ -589,6 +589,45 @@ export async function tagText(text: string): Promise<string[]> {
   }
 }
 
+export async function parseDueDate(text: string): Promise<string | null> {
+  const direct = new Date(text);
+  if (!isNaN(direct.getTime())) {
+    return direct.toISOString();
+  }
+
+  if (!process.env.OPENAI_API_KEY) {
+    return null;
+  }
+
+  const response = await limiter.schedule(() =>
+    withRetry(() =>
+      openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content:
+              "Convert natural language due dates into an ISO 8601 timestamp in UTC. Respond as JSON {\"date\": string|null}.",
+          },
+          { role: "user", content: text },
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0,
+        max_tokens: 20,
+      })
+    )
+  );
+
+  try {
+    const content = response.choices[0].message.content || "";
+    const parsed = JSON.parse(content);
+    return typeof parsed.date === "string" ? parsed.date : null;
+  } catch (err) {
+    console.error("Failed to parse due date", err);
+    return null;
+  }
+}
+
 /**
  * Transcribe audio with advanced speaker diarization using pyannote.audio
  * This function uses the more accurate pyannote diarization instead of the text-based approach
