@@ -828,33 +828,50 @@ export async function transcribeWithPyannote(
   
   // Step 2: Get transcription from Whisper
   console.log("Transcribing audio with Whisper...");
-  const streamFactory = () => fs.createReadStream(audioFilePath);
-  const transcription = await limiter.schedule(() =>
-    withRetry(() =>
-      openai.audio.transcriptions.create({
-        file: streamFactory(),
-        model: "whisper-1",
-        response_format: "verbose_json",
-        timestamp_granularities: ["segment", "word"],
-      })
-    )
-  );
+  const stats = fs.statSync(audioFilePath);
+  let text: string;
+  let duration: number | undefined;
+  let language: string | undefined;
+  let whisperSegments: EnhancedTranscriptSegment[] = [];
 
-  const text = transcription.text;
-  const duration = transcription.duration;
-  const language = transcription.language;
-  
-  // Step 3: Get Whisper segments
-  const whisperSegments = transcription.segments
-    ? (transcription.segments as WhisperSegment[])
-        .map((s) => ({
-          start: s.start,
-          end: s.end,
-          text: s.text.trim(),
-          confidence: s.confidence ?? 1.0,
-        }))
-        .sort((a, b) => a.start - b.start)
-    : [];
+  if (stats.size > OPENAI_LIMIT_BYTES) {
+    const result = await transcribeInChunks(audioFilePath, {
+      enableTimestamps: true,
+      language: options.language,
+    });
+    text = result.text;
+    duration = result.duration;
+    language = result.language;
+    whisperSegments = result.segments;
+  } else {
+    const streamFactory = () => fs.createReadStream(audioFilePath);
+    const transcription = await limiter.schedule(() =>
+      withRetry(() =>
+        openai.audio.transcriptions.create({
+          file: streamFactory(),
+          model: "whisper-1",
+          response_format: "verbose_json",
+          timestamp_granularities: ["segment", "word"],
+        })
+      )
+    );
+
+    text = transcription.text;
+    duration = transcription.duration;
+    language = transcription.language;
+
+    whisperSegments = transcription.segments
+      ? (transcription.segments as WhisperSegment[])
+          .map((s) => ({
+            start: s.start,
+            end: s.end,
+            text: s.text.trim(),
+            confidence: s.confidence ?? 1.0,
+          }))
+          .sort((a, b) => a.start - b.start)
+      : [];
+  }
+
   
   if (whisperSegments.length === 0) {
     console.warn("Whisper returned no segments, using full text");
