@@ -17,7 +17,7 @@ This document lists tasks required to bring the implementation up to the require
    - Provide UI components to create, edit, and resolve comments directly in the transcript view.
    - Support assigning a comment to a user and setting a due date (parse natural language dates via LLM).
 
-4. **Action Item Webhooks**
+4. **Action Item Webhooks** ✅
    - When a comment is of type `action_item`, trigger webhook calls to ClickUp and Notion including the parsed due date.
    - Add configuration options for webhook endpoints and error handling.
 
