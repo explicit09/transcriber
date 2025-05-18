@@ -7,7 +7,10 @@ import { tempDirs } from './tempDirs';
 
 const execFilePromise = promisify(execFile);
 
-const DEFAULT_CHUNK_SIZE = 24 * 1024 * 1024; // 24MB to stay under 25MB API limit
+// Lowered from 24MB to ~23MB for safety margin
+const DEFAULT_CHUNK_SIZE = 23 * 1024 * 1024;
+const OPENAI_LIMIT_BYTES = 25 * 1024 * 1024;
+const MAX_CHUNK_DURATION = 600; // 10 minutes max per chunk
 
 export interface AudioChunk {
   filePath: string;
@@ -64,6 +67,76 @@ async function detectSilencePoints(filePath: string, silenceLen = 0.5, silenceTh
   }
 }
 
+// Helper: Verify chunk size and split if needed
+async function verifyAndSplitChunk(
+  filePath: string,
+  chunkPath: string,
+  start: number,
+  end: number,
+  targetSize: number
+): Promise<AudioChunk[]> {
+  const stats = fs.statSync(chunkPath);
+  if (stats.size <= targetSize) {
+    console.log(`Chunk size OK: ${(stats.size / 1024 / 1024).toFixed(2)}MB`);
+    return [{ filePath: chunkPath, start, end }];
+  }
+
+  console.warn(`Chunk size ${(stats.size / 1024 / 1024).toFixed(2)}MB exceeds target ${(targetSize / 1024 / 1024).toFixed(2)}MB - splitting`);
+  
+  // Remove oversized chunk
+  fs.unlinkSync(chunkPath);
+  
+  // Calculate midpoint and split
+  const midDuration = (end - start) / 2;
+  const midPoint = start + midDuration;
+  
+  const chunks: AudioChunk[] = [];
+  const ext = path.extname(chunkPath);
+  const baseDir = path.dirname(chunkPath);
+  
+  // Split into two parts
+  const firstHalf = path.join(baseDir, `${path.basename(chunkPath, ext)}-1${ext}`);
+  const secondHalf = path.join(baseDir, `${path.basename(chunkPath, ext)}-2${ext}`);
+  
+  try {
+    // Create first half
+    await execFilePromise('ffmpeg', [
+      '-i', filePath,
+      '-ss', start.toFixed(3),
+      '-to', midPoint.toFixed(3),
+      '-c', 'copy',
+      firstHalf,
+      '-y'
+    ]);
+    const firstHalfChunks = await verifyAndSplitChunk(filePath, firstHalf, start, midPoint, targetSize);
+    chunks.push(...firstHalfChunks);
+
+    // Create second half
+    await execFilePromise('ffmpeg', [
+      '-i', filePath,
+      '-ss', midPoint.toFixed(3),
+      '-to', end.toFixed(3),
+      '-c', 'copy',
+      secondHalf,
+      '-y'
+    ]);
+    const secondHalfChunks = await verifyAndSplitChunk(filePath, secondHalf, midPoint, end, targetSize);
+    chunks.push(...secondHalfChunks);
+    
+    return chunks;
+  } catch (error) {
+    // Clean up temporary files
+    [firstHalf, secondHalf].forEach(p => {
+      try {
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+      } catch (e) {
+        console.warn(`Failed to cleanup temp file ${p}:`, e);
+      }
+    });
+    throw error;
+  }
+}
+
 // Main: Split audio at silence points, ensuring each chunk is <= chunkSize, with optional overlap
 export async function splitAudio(
   filePath: string,
@@ -80,23 +153,55 @@ export async function splitAudio(
     // Always include 0 and duration as boundaries
     silencePoints = [0, ...silencePoints.filter(t => t > 0 && t < duration), duration];
 
+    // Calculate maximum duration for target chunk size
+    const maxDuration = Math.min(chunkSize / bytesPerSecond, MAX_CHUNK_DURATION);
+    console.log(`Target chunk size: ${(chunkSize / 1024 / 1024).toFixed(2)}MB, max duration: ${maxDuration.toFixed(2)}s`);
+
     // Group silence points into chunks <= chunkSize
     const chunks: { start: number; end: number }[] = [];
     let chunkStart = silencePoints[0];
+    
     for (let i = 1; i < silencePoints.length; i++) {
       const candidateEnd = silencePoints[i];
       const chunkBytes = (candidateEnd - chunkStart) * bytesPerSecond;
-      if (chunkBytes >= chunkSize || i === silencePoints.length - 1) {
-        // If too big, use previous silence point as end
-        if (chunkBytes > chunkSize && i > 1) {
+      const chunkDuration = candidateEnd - chunkStart;
+      
+      // Force split if chunk would be too large or too long
+      if (chunkBytes >= chunkSize || chunkDuration >= maxDuration || i === silencePoints.length - 1) {
+        if (i === 1) {
+          // First silence point - force an earlier cut if needed
+          if (chunkBytes > chunkSize || chunkDuration > maxDuration) {
+            const forcedEnd = chunkStart + Math.min(maxDuration, chunkSize / bytesPerSecond);
+            chunks.push({ start: chunkStart, end: forcedEnd });
+            chunkStart = forcedEnd;
+            i--; // Re-evaluate this silence point
+            continue;
+          }
+        }
+        
+        // If too big and not first chunk, use previous silence point
+        if ((chunkBytes > chunkSize || chunkDuration > maxDuration) && i > 1) {
           const prevEnd = silencePoints[i - 1];
           chunks.push({ start: chunkStart, end: prevEnd });
           chunkStart = prevEnd;
-          i--; // re-evaluate this silence point as start of next chunk
+          i--; // Re-evaluate this silence point
         } else {
           chunks.push({ start: chunkStart, end: candidateEnd });
           chunkStart = candidateEnd;
         }
+      }
+    }
+
+    // If no chunks were created (no suitable silence points), force split by duration
+    if (chunks.length === 0) {
+      console.warn('No suitable silence points found - falling back to duration-based splitting');
+      const numChunks = Math.ceil(duration / maxDuration);
+      const targetDuration = duration / numChunks;
+      
+      for (let i = 0; i < numChunks; i++) {
+        const start = i * targetDuration;
+        const end = Math.min(start + targetDuration, duration);
+        chunks.push({ start, end });
       }
     }
 
@@ -115,7 +220,7 @@ export async function splitAudio(
     const processingDir = path.join(tempDirs.processingDir, `chunk-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     fs.mkdirSync(processingDir, { recursive: true });
 
-    // Write out each chunk using ffmpeg
+    // Write out each chunk using ffmpeg and verify size
     const ext = path.extname(filePath);
     const chunkResults: AudioChunk[] = [];
     const failedChunks: Array<{ start: number; end: number; error: string }> = [];
@@ -125,6 +230,7 @@ export async function splitAudio(
       const outPath = path.join(processingDir, `part-${String(i + 1).padStart(3, '0')}${ext}`);
       
       try {
+        // Create initial chunk
         await execFilePromise('ffmpeg', [
           '-i', filePath,
           '-ss', start.toFixed(3),
@@ -133,7 +239,10 @@ export async function splitAudio(
           outPath,
           '-y',
         ]);
-        chunkResults.push({ filePath: outPath, start, end });
+
+        // Verify size and split if needed
+        const verifiedChunks = await verifyAndSplitChunk(filePath, outPath, start, end, chunkSize);
+        chunkResults.push(...verifiedChunks);
       } catch (error) {
         failedChunks.push({
           start,
