@@ -10,7 +10,8 @@
     "check": "tsc",
     "test": "node --test tests/*.js",
     "test": "tsx tests/runTests.ts",
-    "db:push": "dotenv -e .env -- drizzle-kit push"
+    "db:push": "dotenv -e .env -- drizzle-kit push",
+    "chunk-transcribe": "tsx server/chunkTranscription.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
