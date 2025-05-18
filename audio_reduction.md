@@ -81,6 +81,23 @@ Enable transcription of audio files larger than 25 MB by automatically splitti
 
 ---
 
+## Plan to Address Oversized Chunk Issue
+
+The current chunking approach sometimes produces a chunk slightly above
+OpenAI's 25 MB limit. To make the pipeline reliable we will:
+
+1. **Validate chunk size after splitting.** After FFmpeg writes a chunk,
+   check its file size and recursively split any output larger than
+   `DEFAULT_CHUNK_SIZE`.
+2. **Force an early cut** when the first detected silence comes after the
+   allowed size window so the first segment never exceeds the limit.
+3. **Lower the working chunk target** to around 23 MB to allow for
+   variable bitrate spikes.
+4. **Fallback to time-based splits** whenever no silence points are found
+   before the limit.
+5. **Add regression tests** that ensure no produced chunk exceeds
+   25 MB.
+
 ## Recommended Next Steps & Enhancements
 
 1. **Output Enhancements:**
@@ -94,6 +111,11 @@ Enable transcription of audio files larger than 25 MB by automatically splitti
 ## Next Steps (Actionable Tasks)
 - [ ] Optionally, include chunk boundary metadata in output.
 - [ ] Review and refine error handling as needed.
+- [ ] Enforce chunk-size verification and recursively split outputs over the limit.
+- [ ] Force an early cut when the first silence exceeds the target size.
+- [ ] Lower chunk size target to ~23 MB for safety margin.
+- [ ] Fallback to time-based splitting if no silence is found before the limit.
+- [ ] Add tests ensuring generated chunks never exceed 25 MB.
 
 ---
 
