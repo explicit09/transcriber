@@ -56,6 +56,7 @@
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    @apply bg-gradient-to-b from-blue-50 via-cyan-50 to-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900;
   }
 }
 
