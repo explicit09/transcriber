@@ -8,6 +8,7 @@ import { TextSelection } from "prosemirror-state";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { IndexeddbPersistence } from "y-indexeddb";
+import PresenceList from "./PresenceList";
 
 // Timestamp anchor mark
 const TimestampAnchor = Mark.create({
@@ -176,39 +177,39 @@ export function CollaborativeEditor({ docId, token, wsUrl }: CollaborativeEditor
   }, [highlightText, editor]);
 
   useEffect(() => {
-  const persistence = new IndexeddbPersistence(docId, ydoc);
-  persistence.on("synced", () => {});
+    const persistence = new IndexeddbPersistence(docId, ydoc);
+    persistence.on("synced", () => {});
 
-  const provider = new WebsocketProvider(wsUrl, docId, doc, {
-    params: { token },
-  });
-  provider.awareness.setLocalStateField("user", user);
-  providerRef.current = provider;
+    provider.awareness.setLocalStateField("user", user);
 
-  const saveHandler = (e: KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
-      e.preventDefault();
-      const match = docId.match(/transcription-(\d+)/);
-      if (match) {
-        fetch(`/api/transcriptions/${match[1]}/save-collab`, {
-          method: 'POST',
-          credentials: 'include',
-        });
+    const saveHandler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        const match = docId.match(/transcription-(\d+)/);
+        if (match) {
+          fetch(`/api/transcriptions/${match[1]}/save-collab`, {
+            method: "POST",
+            credentials: "include",
+          });
+        }
       }
-    }
-  };
-  window.addEventListener('keydown', saveHandler);
+    };
+    window.addEventListener("keydown", saveHandler);
 
-  return () => {
-    provider.destroy();
-    persistence.destroy();
-    doc.destroy();
-    window.removeEventListener('keydown', saveHandler);
-    ydoc.destroy();
-  };
-}, [docId, provider, user, ydoc]);
+    return () => {
+      provider.destroy();
+      persistence.destroy();
+      window.removeEventListener("keydown", saveHandler);
+      ydoc.destroy();
+    };
+  }, [docId, provider, user, ydoc]);
 
-  return <EditorContent editor={editor} />;
+  return (
+    <div>
+      <PresenceList provider={provider} />
+      <EditorContent editor={editor} />
+    </div>
+  );
 }
 
 export default CollaborativeEditor;
