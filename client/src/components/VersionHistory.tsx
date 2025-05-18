@@ -16,7 +16,7 @@ interface VersionHistoryProps {
 
 export default function VersionHistory({ transcriptId, currentText }: VersionHistoryProps) {
   const queryClient = useQueryClient();
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number[]>([]);
 
   const { data: revisions = [] } = useQuery<RevisionMeta[]>({
     queryKey: [`/api/transcriptions/${transcriptId}/revisions`],
@@ -24,29 +24,43 @@ export default function VersionHistory({ transcriptId, currentText }: VersionHis
     enabled: !!transcriptId,
   });
 
-  const { data: revisionText } = useQuery({
-    queryKey: [`/api/transcriptions/${transcriptId}/revisions`, selected],
+  const { data: textA } = useQuery({
+    queryKey: [`/api/transcriptions/${transcriptId}/revisions`, selected[0]],
     queryFn: async () => {
-      const res = await apiRequest('GET', `/api/transcriptions/${transcriptId}/revisions/${selected}`);
+      const res = await apiRequest('GET', `/api/transcriptions/${transcriptId}/revisions/${selected[0]}`);
       return res.text();
     },
-    enabled: selected !== null,
+    enabled: selected.length >= 1,
+  });
+
+  const { data: textB } = useQuery({
+    queryKey: [`/api/transcriptions/${transcriptId}/revisions`, selected[1]],
+    queryFn: async () => {
+      const res = await apiRequest('GET', `/api/transcriptions/${transcriptId}/revisions/${selected[1]}`);
+      return res.text();
+    },
+    enabled: selected.length === 2,
   });
 
   const diffHtml = useMemo(() => {
-    if (revisionText && currentText) {
-      const dmp = new DiffMatchPatch();
-      const diff = dmp.diff_main(revisionText, currentText);
+    const dmp = new DiffMatchPatch();
+    if (selected.length === 2 && textA && textB) {
+      const diff = dmp.diff_main(textA, textB);
+      dmp.diff_cleanupSemantic(diff);
+      return dmp.diff_prettyHtml(diff);
+    }
+    if (selected.length === 1 && textA) {
+      const diff = dmp.diff_main(textA, currentText);
       dmp.diff_cleanupSemantic(diff);
       return dmp.diff_prettyHtml(diff);
     }
     return '';
-  }, [revisionText, currentText]);
+  }, [selected, textA, textB, currentText]);
 
   const restoreMutation = useMutation({
     mutationFn: async () => {
-      if (revisionText == null) return;
-      await apiRequest('PATCH', `/api/transcriptions/${transcriptId}`, { text: revisionText });
+      if (!textA) return;
+      await apiRequest('PATCH', `/api/transcriptions/${transcriptId}`, { text: textA });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/transcriptions/${transcriptId}`] });
@@ -56,23 +70,34 @@ export default function VersionHistory({ transcriptId, currentText }: VersionHis
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
-        {revisions.map((rev) => (
-          <Button
-            key={rev.revisionNo}
-            variant={rev.revisionNo === selected ? 'default' : 'outline'}
-            onClick={() => setSelected(rev.revisionNo)}
-          >
-            {rev.revisionNo}
-            <span className="ml-1 text-xs text-gray-500">
-              {new Date(rev.createdAt).toLocaleString()}
-            </span>
-          </Button>
-        ))}
+        {revisions.map((rev) => {
+          const active = selected.includes(rev.revisionNo);
+          return (
+            <Button
+              key={rev.revisionNo}
+              variant={active ? 'default' : 'outline'}
+              onClick={() =>
+                setSelected((prev) => {
+                  if (prev.includes(rev.revisionNo)) {
+                    return prev.filter((n) => n !== rev.revisionNo);
+                  }
+                  if (prev.length === 2) return [prev[1], rev.revisionNo];
+                  return [...prev, rev.revisionNo];
+                })
+              }
+            >
+              {rev.revisionNo}
+              <span className="ml-1 text-xs text-gray-500">
+                {new Date(rev.createdAt).toLocaleString()}
+              </span>
+            </Button>
+          );
+        })}
       </div>
       {diffHtml && (
         <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: diffHtml }} />
       )}
-      {selected !== null && (
+      {selected.length === 1 && (
         <Button onClick={() => restoreMutation.mutate()} disabled={restoreMutation.isPending}>
           {restoreMutation.isPending ? 'Restoring...' : 'Restore'}
         </Button>
