@@ -5,6 +5,8 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CheckCircle2, Calendar, Users, FileText, Mic } from "lucide-react";
 import SpeakerLabels from "./SpeakerLabels";
+import CommentForm from "./CommentForm";
+import CommentList from "./CommentList";
 import { formatTimestamp, getSpeakerColorClass } from "@/lib/utils";
 
 interface TranscriptViewProps {
@@ -199,6 +201,15 @@ export default function TranscriptView({
             </div>
           )}
         </ScrollArea>
+      </div>
+
+      <Separator className="my-4" />
+      <div>
+        <h3 className="font-semibold mb-2">Comments</h3>
+        <div className="mb-4">
+          <CommentForm transcriptId={transcription.id} />
+        </div>
+        <CommentList transcriptId={transcription.id} />
       </div>
     </div>
   );
