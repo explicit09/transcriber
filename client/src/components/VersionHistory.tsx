@@ -63,6 +63,9 @@ export default function VersionHistory({ transcriptId, currentText }: VersionHis
             onClick={() => setSelected(rev.revisionNo)}
           >
             {rev.revisionNo}
+            <span className="ml-1 text-xs text-gray-500">
+              {new Date(rev.createdAt).toLocaleString()}
+            </span>
           </Button>
         ))}
       </div>
