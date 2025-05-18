@@ -86,9 +86,10 @@ interface CollaborativeEditorProps {
   token: string;
   wsUrl: string;
   highlightText?: string;
+  highlightTime?: number;
 }
 
-export function CollaborativeEditor({ docId, token, wsUrl }: CollaborativeEditorProps) {
+export function CollaborativeEditor({ docId, token, wsUrl, highlightText, highlightTime }: CollaborativeEditorProps) {
   const user = useMemo(() => {
     let name = localStorage.getItem("lx-user-name") || "";
     if (!name) {
@@ -185,7 +186,7 @@ export function CollaborativeEditor({ docId, token, wsUrl }: CollaborativeEditor
     return () => {
       editor.off("update", applyHighlight);
     };
-  }, [editor, highlightText]);
+  }, [editor, highlightText, highlightTime]);
 
   useEffect(() => {
     const persistence = new IndexeddbPersistence(docId, ydoc);

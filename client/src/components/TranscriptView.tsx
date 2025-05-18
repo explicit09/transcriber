@@ -10,12 +10,14 @@ import { formatTimestamp, getSpeakerColorClass } from "@/lib/utils";
 interface TranscriptViewProps {
   transcription: Transcription;
   highlightTime?: number | null;
+  highlightEndTime?: number | null;
   highlightText?: string | null;
 }
 
 export default function TranscriptView({
   transcription,
   highlightTime,
+  highlightEndTime,
   highlightText,
 }: TranscriptViewProps) {
   // Parse action items from summary if available
@@ -139,8 +141,9 @@ export default function TranscriptView({
                 const active =
                   highlightTime !== undefined &&
                   highlightTime !== null &&
-                  segment.start <= highlightTime &&
-                  segment.end >= highlightTime;
+                  (highlightEndTime ?? highlightTime) !== null &&
+                  segment.end >= highlightTime &&
+                  segment.start <= (highlightEndTime ?? highlightTime);
 
                 let textNode: React.ReactNode = segment.text;
                 if (active && highlightText) {

@@ -14,7 +14,7 @@ interface SearchResult {
 
 interface TranscriptSearchProps {
   transcriptId: number;
-  onJump: (time: number, text: string) => void;
+  onJump: (time: number, text: string, end: number | null) => void;
 }
 
 export default function TranscriptSearch({
@@ -52,28 +52,7 @@ export default function TranscriptSearch({
     }
   };
 
-  window.addEventListener('keydown', saveHandler);
 
-  const match = docId.match(/transcription-(\d+)/);
-  let interval: NodeJS.Timeout | undefined;
-  if (match) {
-    interval = setInterval(() => {
-      fetch(`/api/transcriptions/${match[1]}/save-collab`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-    }, 5 * 60 * 1000);
-  }
-
-  return () => {
-    provider.destroy();
-    persistence.destroy();
-    doc.destroy();
-    window.removeEventListener('keydown', saveHandler);
-    if (interval) clearInterval(interval);
-    ydoc.destroy();
-  };
-}, [docId, provider, user, ydoc]);
 
   return (
     <div className="space-y-2">
@@ -107,7 +86,7 @@ export default function TranscriptSearch({
               key={r.chunk_id}
               className="cursor-pointer hover:bg-blue-50 p-1 rounded"
               onClick={() =>
-                r.ts_start !== null && onJump(r.ts_start, r.text ?? '')
+                r.ts_start !== null && onJump(r.ts_start, r.text ?? '', r.ts_end)
               }
             >
               <div className="font-medium">{r.text}</div>

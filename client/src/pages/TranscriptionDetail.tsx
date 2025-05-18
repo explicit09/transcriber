@@ -55,6 +55,7 @@ export default function TranscriptionDetail() {
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [isMergingSpeakers, setIsMergingSpeakers] = useState(false);
   const [searchTime, setSearchTime] = useState<number | null>(null);
+  const [searchEndTime, setSearchEndTime] = useState<number | null>(null);
   const [searchText, setSearchText] = useState<string | null>(null);
 
   const id = params?.id;
@@ -502,14 +503,16 @@ export default function TranscriptionDetail() {
               <CardContent className="bg-white p-6 space-y-4">
                 <TranscriptSearch
                   transcriptId={transcription.id}
-                  onJump={(t, text) => {
+                  onJump={(t, text, end) => {
                     setSearchTime(t);
+                    setSearchEndTime(end);
                     setSearchText(text);
                   }}
                 />
                 <TranscriptView
                   transcription={transcription}
                   highlightTime={searchTime}
+                  highlightEndTime={searchEndTime}
                   highlightText={searchText}
                 />
               </CardContent>
@@ -526,6 +529,7 @@ export default function TranscriptionDetail() {
                   `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/collab`
                 }
                 highlightText={searchText ?? undefined}
+                highlightTime={searchTime ?? undefined}
               />
             )}
           </TabsContent>
