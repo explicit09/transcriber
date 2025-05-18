@@ -86,7 +86,7 @@ export default function TranscriptSearch({
               key={r.chunk_id}
               className="cursor-pointer hover:bg-blue-50 p-1 rounded"
               onClick={() =>
-                r.ts_start !== null && onJump(r.ts_start, r.text ?? '', r.ts_end)
+                r.ts_start !== null && onJump(r.ts_start, q, r.ts_end)
               }
             >
               <div className="font-medium">{r.text}</div>

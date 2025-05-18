@@ -149,23 +149,21 @@ export default function TranscriptView({
 
                 let textNode: React.ReactNode = segment.text;
                 if (active && highlightText) {
-                  const idx = segment.text
-                    .toLowerCase()
-                    .indexOf(highlightText.toLowerCase());
-                  if (idx >= 0) {
-                    const before = segment.text.slice(0, idx);
-                    const match = segment.text.slice(
-                      idx,
-                      idx + highlightText.length,
-                    );
-                    const after = segment.text.slice(
-                      idx + highlightText.length,
-                    );
+                  const escaped = highlightText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                  const regex = new RegExp(`(${escaped})`, "gi");
+                  const parts = segment.text.split(regex);
+                  if (parts.length > 1) {
                     textNode = (
                       <>
-                        {before}
-                        <mark className="bg-yellow-200">{match}</mark>
-                        {after}
+                        {parts.map((p, i) =>
+                          regex.test(p) ? (
+                            <mark key={i} className="bg-yellow-200">
+                              {p}
+                            </mark>
+                          ) : (
+                            p
+                          ),
+                        )}
                       </>
                     );
                   }
