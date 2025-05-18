@@ -39,7 +39,7 @@ This document lists tasks required to bring the implementation up to the require
    - When jumping to a search result, highlight the exact matched span and auto-scroll the editor to it.
    - Maintain highlight state when editing collaboratively.
 
-9. **Query Caching & Incremental Indexing**
+9. **Query Caching & Incremental Indexing** ✅
    - Add a caching layer for frequent search queries.
    - Implement incremental reindexing of transcripts when edits occur, using background workers.
 
