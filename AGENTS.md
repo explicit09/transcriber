@@ -1,374 +1,48 @@
-# LEARN-X Advanced Features Implementation Guide
-
-This document provides a comprehensive guide to implementing the Real-Time Collaboration Layer and Semantic Search features for the LEARN-X transcription application.
-
-## Table of Contents
-1. [Real-Time Collaboration Layer](#1-real-time-collaboration-layer)
-   - [1.1 Core Architecture](#11-core-architecture)
-   - [1.2 Data Model](#12-data-model)
-   - [1.3 API Endpoints](#13-api-endpoints)
-   - [1.4 Implementation Steps](#14-implementation-steps)
-   - [1.5 Security Considerations](#15-security-considerations)
-
-2. [Semantic Search & Smart Highlights](#2-semantic-search--smart-highlights)
-   - [2.1 System Architecture](#21-system-architecture)
-   - [2.2 Data Model](#22-data-model)
-   - [2.3 API Endpoints](#23-api-endpoints)
-   - [2.4 Implementation Steps](#24-implementation-steps)
-   - [2.5 Performance Optimization](#25-performance-optimization)
-
-3. [Integration Points](#3-integration-points)
-4. [Testing Strategy](#4-testing-strategy)
-5. [Rollout Plan](#5-rollout-plan)
-6. [Monitoring & Alerting](#6-monitoring--alerting)
-
----
-
-## 1. Real-Time Collaboration Layer
-
-### 1.1 Core Architecture
-
-```mermaid
-graph TD
-    A[Client] <-->|WebSocket| B[WS Gateway]
-    B <-->|Redis Pub/Sub| C[Worker]
-    C <-->|Postgres| D[(Database)]
-    C <--> E[Object Storage]
-    F[Auth Service] <--> B
-    F <--> C
-```
-
-**Components:**
-- **Client**: React + TipTap Editor with Yjs bindings
-- **WS Gateway**: Node.js service handling WebSocket connections
-- **Worker**: Background jobs for persistence and notifications
-- **Database**: Postgres for metadata and document snapshots
-- **Object Storage**: For large document storage (S3-compatible)
-- **Auth Service**: JWT validation and user permissions
-
-### 1.2 Data Model
-
-#### `transcript_revisions`
-```sql
-CREATE TABLE transcript_revisions (
-  id BIGSERIAL PRIMARY KEY,
-  transcript_id BIGINT NOT NULL REFERENCES transcriptions(id) ON DELETE CASCADE,
-  rev_number INTEGER NOT NULL,
-  doc BYTEA NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  created_by UUID NOT NULL REFERENCES users(id),
-  parent_rev BIGINT REFERENCES transcript_revisions(id),
-  change_count INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE INDEX idx_transcript_revisions_transcript_id ON transcript_revisions(transcript_id);
-CREATE INDEX idx_transcript_revisions_created_at ON transcript_revisions(created_at);
-```
-
-#### `comments`
-```sql
-CREATE TYPE comment_type AS ENUM ('comment', 'action_item');
-CREATE TYPE comment_status AS ENUM ('open', 'resolved', 'deferred');
-
-CREATE TABLE comments (
-  id BIGSERIAL PRIMARY KEY,
-  transcript_id BIGINT NOT NULL REFERENCES transcriptions(id) ON DELETE CASCADE,
-  yjs_path TEXT[] NOT NULL, -- Path to the annotated text in Yjs
-  absolute_position INTEGER NOT NULL, -- Character offset in document
-  content TEXT NOT NULL,
-  type comment_type NOT NULL DEFAULT 'comment',
-  status comment_status NOT NULL DEFAULT 'open',
-  created_by UUID NOT NULL REFERENCES users(id),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  assigned_to UUID REFERENCES users(id),
-  due_date TIMESTAMPTZ,
-  metadata JSONB
-);
-
--- For fast lookups of comments by transcript and position
-CREATE INDEX idx_comments_transcript_position ON comments(transcript_id, absolute_position);
-CREATE INDEX idx_comments_assigned_to ON comments(assigned_to) WHERE status = 'open';
-```
-
-### 1.3 API Endpoints
-
-#### WebSocket Connections
-- `wss://api.learnx.com/collab/v1/ws`
-  - Requires JWT in query params
-  - Handles Yjs document sync and awareness updates
-
-#### REST API
-```typescript
-// Get collaboration token
-GET /api/transcripts/:id/collab-token
-
-// List comments
-GET /api/transcripts/:id/comments
-
-// Create comment
-POST /api/transcripts/:id/comments
-{
-  "type": "comment" | "action_item",
-  "content": string,
-  "position": number,
-  "assignedTo"?: string,
-  "dueDate"?: string
-}
-
-// Update comment status
-PATCH /api/comments/:id
-{
-  "status": "open" | "resolved" | "deferred",
-  "content"?: string
-}
-
-// Get version history
-GET /api/transcripts/:id/versions
-
-// Restore version
-POST /api/transcripts/:id/versions/:versionId/restore
-```
-
-### 1.4 Implementation Steps
-
-#### Phase 1: Core Yjs Integration
-1. Set up Yjs with TipTap in the client
-2. Implement basic WebSocket provider
-3. Add multi-cursor awareness
-4. Implement basic presence indicators
-
-#### Phase 2: Comments & Annotations
-1. Design comment data model
-2. Implement comment creation/editing UI
-3. Add comment thread display
-4. Implement real-time comment updates
-
-#### Phase 3: Versioning & History
-1. Implement snapshot system
-2. Create diff viewer component
-3. Add version restoration
-
-### 1.5 Security Considerations
-
-- **Authentication**: JWT validation for all WebSocket connections
-- **Authorization**: Document-level access control
-- **Data Validation**: Sanitize all user inputs
-- **Rate Limiting**: Prevent abuse of collaboration features
-- **Encryption**: End-to-end encryption for sensitive documents
-
----
-
-## 2. Semantic Search & Smart Highlights
-
-### 2.1 System Architecture
-
-```mermaid
-graph LR
-    A[Client] -->|Search Query| B[API Gateway]
-    B --> C[Search Service]
-    C --> D[pgvector]
-    C --> E[OpenAI Embedding]
-    F[Indexer] -->|Chunk & Embed| G[Transcripts]
-    F --> D
-    H[LLM Tagger] -->|Tag Documents| D
-```
-
-### 2.2 Data Model
-
-#### `transcript_vectors`
-```sql
-CREATE EXTENSION IF NOT EXISTS vector;
-
-CREATE TABLE transcript_vectors (
-  id BIGSERIAL PRIMARY KEY,
-  transcript_id BIGINT NOT NULL REFERENCES transcriptions(id) ON DELETE CASCADE,
-  chunk_id INTEGER NOT NULL,
-  speaker VARCHAR(64),
-  ts_start NUMERIC(8,2) NOT NULL,
-  ts_end NUMERIC(8,2) NOT NULL,
-  token_start INTEGER NOT NULL,
-  token_end INTEGER NOT NULL,
-  text TEXT NOT NULL,
-  embedding VECTOR(1536) NOT NULL,
-  tags TEXT[],
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(transcript_id, chunk_id)
-);
-
--- HNSW index for approximate nearest neighbor search
-CREATE INDEX idx_transcript_vectors_embedding_hnsw ON transcript_vectors USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 128);
-
--- Index for filtering by transcript
-CREATE INDEX idx_transcript_vectors_transcript_id ON transcript_vectors(transcript_id);
-
--- Index for tags
-CREATE INDEX idx_transcript_vectors_tags ON transcript_vectors USING GIN(tags);
-```
-
-### 2.3 API Endpoints
-
-```typescript
-// Search transcripts
-GET /api/search
-{
-  "q": string,                   // Search query
-  "transcriptId"?: string,        // Optional: filter by transcript
-  "limit"?: number,              // Default: 10
-  "threshold"?: number,          // Min similarity score (0-1)
-  "filters"?: {
-    "tags"?: string[],          // e.g., ["decision", "risk"]
-    "speaker"?: string[],
-    "dateRange"?: {
-      "start": string,          // ISO date
-      "end": string             // ISO date
-    }
-  }
-}
-
-// Response
-{
-  "results": [{
-    "chunkId": string,
-    "transcriptId": string,
-    "speaker": string,
-    "tsStart": number,
-    "tsEnd": number,
-    "text": string,
-    "score": number,
-    "tags": string[],
-    "highlightedText": string
-  }],
-  "facets": {
-    "speakers": { "name": string, "count": number }[],
-    "tags": { "name": string, "count": number }[]
-  }
-}
-```
-
-### 2.4 Implementation Steps
-
-#### Phase 1: Core Search Infrastructure
-1. Set up pgvector extension in Postgres
-2. Implement embedding generation pipeline
-3. Create chunking service for transcripts
-4. Build basic search API
-
-#### Phase 2: Smart Features
-1. Implement LLM-based tagging
-2. Add faceted search
-3. Create highlighting in UI
-4. Add search suggestions
-
-### 2.5 Performance Optimization
-
-- **Query Optimization**:
-  - Use HNSW index for fast approximate nearest neighbor search
-  - Implement query caching
-  - Batch embedding requests
-
-- **Indexing Optimization**:
-  - Incremental indexing
-  - Background reindexing for updated transcripts
-  - Parallel processing of large documents
-
-## 3. Integration Points
-
-### Between Collaboration and Search
-- Search results link to specific positions in the document
-- Comments and annotations are searchable
-- Version history integrated with search filters
-
-### External Integrations
-- ClickUp/Notion webhooks for action items
-- Slack notifications for mentions
-- Export to various formats (PDF, DOCX, etc.)
-
-## 4. Testing Strategy
-
-### Unit Tests
-- Core algorithms (chunking, diff, merging)
-- Data validation
-- Edge cases
-
-### Integration Tests
-- WebSocket communication
-- Database operations
-- Third-party API interactions
-
-### Performance Tests
-- Load testing for WebSocket server
-- Search query latency
-- Concurrent editing scenarios
-
-## 5. Rollout Plan
-
-### Phase 1: Internal Beta (2 weeks)
-- Feature flags for all new functionality
-- Limited to internal team
-- Daily check-ins and feedback
-
-### Phase 2: Limited Beta (4 weeks)
-- Invite select customers
-- Collect feedback and metrics
-- Performance monitoring
-
-### Phase 3: General Availability
-- Gradual rollout to 100% of users
-- Marketing and documentation updates
-- Training materials
-
-## 6. Monitoring & Alerting
-
-### Key Metrics
-- WebSocket connections and message rates
-- Search query latency and error rates
-- Embedding generation metrics
-- User engagement (comments, searches, etc.)
-
-### Alerting Rules
-- High error rates
-- Performance degradation
-- Integration failures
-- Resource utilization thresholds
-
-### Logging
-- Structured logging for all operations
-- Audit trails for sensitive actions
-- Request/response logging for debugging
-
----
-
-## Appendix A: Performance Benchmarks
-
-### Search Performance
-| Document Size | Query Latency (P95) | Indexing Time |
-|--------------|---------------------|---------------|
-| 1 hour audio | 150ms | 45s |
-| 10 hours | 180ms | 6m |
-| 100 hours | 220ms | 55m |
-
-### Collaboration Performance
-| Concurrent Users | Message Latency (P95) | Sync Time (Full Doc) |
-|-----------------|----------------------|----------------------|
-| 5 | 50ms | 200ms |
-| 25 | 120ms | 500ms |
-| 50 | 250ms | 1.2s |
-
-## Appendix B: Security Considerations
-
-### Data Protection
-- Encrypt sensitive data at rest
-- Implement field-level encryption for PII
-- Regular security audits
-
-### Access Control
-- Role-based access control (RBAC)
-- Document-level permissions
-- Audit logging for all operations
-
-### Compliance
-- GDPR/CCPA compliance
-- Data retention policies
-- Right to be forgotten implementation
+Autonomous Coding Agent Operational Guidelines
+
+This specification defines strict rules and workflows for an autonomous coding agent operating within a Git repository. All guidelines below are mandatory and must be enforced to maintain repository integrity, consistency, and compliance with project standards. The agent must act with the diligence of a senior engineer, with no tolerance for deviation or ambiguity.
+
+Git Workflow and Discipline
+•Single Branch Focus: Never create new Git branches unless explicitly instructed. Work strictly on the designated branch (e.g. the main or a pre-specified feature branch). Do not switch or merge branches on your own initiative.
+•Clean Working Tree Only: Ensure the working directory is clean before making changes. If untracked or unrelated modified files exist, stash or revert them. Begin each task with a pristine worktree to prevent mixing unrelated changes.
+•Update Before Changes: Always synchronize with the remote branch before applying new changes. Perform a git pull or fetch/merge to incorporate the latest commits from the team. Resolve any merge conflicts before proceeding with new work.
+•Pre-Commit Checks: Run all tests, linters, and formatters before committing. The agent must not commit code that fails unit tests, breaks the build, or violates linting/formatting rules. If any check fails, fix the issues and re-run checks until everything passes. All pre-commit hooks configured in the repository must be honored without exception.
+•Accurate Status Verification: Before staging or committing, use git status and git diff to verify the exact changes. Stage only intended files. Double-check that no unintended edits or debug code are included. The commit should contain only relevant, approved modifications.
+•Atomic Commits: Commit in logical, atomic units. Group related changes together and do not mix concerns in one commit. Each commit message must be clear and follow any project conventions (e.g. include ticket numbers or semantic prefixes if required).
+•No Direct Push without Approval: Do not push commits to remote unless it is part of the approved workflow. If the process requires a code review or PR, the agent should prepare the branch and notify, rather than pushing or merging on its own. Only push automatically if explicitly configured to do so after passing all checks.
+
+Agent Specification (AGENTS.md) Authority
+•Follow Repository Agent Guidelines: Every repository may contain an AGENTS.md file (or similar specification) that outlines rules and preferences for automated agents. The agent must read and obey all instructions in this file. Treat it as the ultimate authority on code style, project architecture, naming conventions, and workflow for that repository.
+•Override Default Behaviors: Repository-specific rules in AGENTS.md take precedence over any generic or pre-trained behaviors. If AGENTS.md specifies a particular coding style, library, or approach, the agent must adopt it, even if it contradicts the agent’s usual preferences.
+•No Deviation: Do not ignore or reinterpret the guidelines in AGENTS.md. Apply them exactly as written. If something is unclear or not explicitly covered, default to the most conservative interpretation that aligns with existing code patterns in the repository. Consistency with the project’s established practices is paramount.
+•Continuous Compliance: The agent should re-check the AGENTS.md (and any related config files) regularly, especially if the repository is updated. Always use the latest instructions for every task. The agent should not rely on stale assumptions if the spec changes.
+
+Precedence and Conflict Resolution (Code Style vs. User Instructions)
+•Project Rules First: In general, the repository’s guidelines (AGENTS.md and documented code style) come first. By default, always adhere to project code style, formatting, and architectural conventions.
+•Explicit User Override: If a human user explicitly instructs the agent to do something that violates the AGENTS.md or style guidelines (for example, using a different naming convention or skipping a required step), the agent should comply only if the instruction is unambiguous and intentional. Such compliance must be treated as an exceptional override.
+•Document Deviations: Any time the agent intentionally deviates from the repository’s standard rules (due to an explicit user override), it must document this in the commit message or comments. For example: “Using CamelCase as requested by user, contrary to snake_case style in guidelines.” This ensures transparency about departures from norms.
+•When in Doubt, Ask/Abort: If the user’s instruction is unclear or seems to conflict with the project guidelines in a non-explicit way, the agent should not guess. In interactive modes, ask for clarification. If running autonomously without query ability, prefer to abort or log an error rather than violate the established rules. The agent must never silently ignore the project’s standards.
+
+Terminal Command Execution
+•Safe Command Usage: Execute shell commands only when necessary and ensure they are as safe and specific as possible. Every command must serve a clear purpose in completing the task (e.g. running tests, listing files, checking status). Avoid any command with broad or destructive impact (such as rm -rf or mass-renaming) unless absolutely required and approved.
+•Working Directory Awareness: Always confirm you are in the correct working directory (usually the repository root) before running commands. Use commands like pwd or structured paths to avoid operating in the wrong location. The agent must not modify or read outside the project scope.
+•Check Command Results: After running a command, always check its exit status and output. Do not assume a command succeeded—verify it. For example, if running a build or test script, parse the results to confirm success. If a command fails, handle it immediately: fix the underlying issue or halt the workflow. Never proceed past a failed command as if it succeeded.
+•No Background/Interactive Processes: Do not start interactive or long-running background processes that require supervision (e.g. development servers, interactive prompts) unless specifically needed for the task. The agent’s command usage should be batch-oriented and scriptable, ensuring the process can run autonomously to completion.
+•Minimal External Dependencies: Do not install new packages or dependencies via terminal unless it’s part of the task and permitted by the repository guidelines. If installation is needed (and approved), pin versions and update dependency files (like requirements.txt or package.json) as part of the changes, then run installation commands.
+•Logging and Transparency: Keep a log of important command outputs relevant to decisions (for example, failing test output that informs a code change). Surface this information in your reasoning or commit message so that there is traceability for why a change was made. (This ties into citation rules—see below.)
+
+Citation Format and Usage
+•Source Attribution: Whenever the agent references code, configuration, or any content that comes from the repository or an external source, it must provide a citation. This is critical for transparency. Do not present any information from files or prior discussions without citing where it came from.
+•Citation Format: Use the standard format 【source†Lstart-Lend】 to cite sources. The source is an identifier (or cursor) for the file or output being referenced, and Lstart-Lend are the line numbers of that source. For example, if quoting lines 10-15 of a file opened as source 3, include `【source†L10-L15】` immediately after the quote or statement. If referencing a single line, you can use a single line number (e.g. L42). Always ensure the line numbers are exact and correspond to the content quoted.
+•File Content Citations: Any code snippet, configuration excerpt, or documentation text pulled from a file must have a file citation. Place the citation right after the snippet or fact. This applies whether it’s a few words (like a variable name) or several lines of code. The citation should make it clear which file and where the content came from.
+•Terminal Output Citations: If you reference information obtained from running a command (for example, the output of a test run or the result of a git diff), you should also cite it or clearly log it. Where possible, treat captured outputs as sources – e.g. if the agent saved test output to a log file or if the system provides an identifier for command results, cite it in the same 【id†lines】 format. If direct citation of the terminal text is not available, then quote the relevant part of the output in a code block or italicized text and mention the command (e.g. “(Output of npm run test showed 2 failures)”). The goal is to leave no significant result unverifiable.
+•No Citation Omission: Never state or imply facts from repository content without citing. If a piece of information cannot be cited (e.g. the agent’s own analysis or a conclusion), make sure it’s clearly presented as analysis, not as a sourced fact. All factual references and direct extracts must trace back to a source.
+•Cite Immediately: Insert citations immediately after the relevant content, before finishing the sentence or paragraph if possible, so it’s clear what source supports which statement. Do not accumulate citations at the end of a section unrelated to their context.
+•Preserve Citation Integrity: Do not alter citation tags or line numbers once inserted, unless the source content changed or was re-located. Citations should always reflect the true source content. If source files are updated such that cited lines shift, update the citations accordingly.
+
+Quality Assurance and Autonomy
+•Self-Verification: The agent must treat any change as suspect until verified. After implementing a code change, run the test suite and any relevant integration checks to ensure the change accomplishes the intended result without breaking existing functionality. Only consider the task complete when all tests pass and the solution meets the requirements.
+•Error Handling: If something goes wrong (test failure, build error, etc.), address it immediately. Do not ignore exceptions or errors. The agent should either fix the issue or, if it cannot be resolved autonomously, refrain from pushing the changes and flag for human review. In all cases, there should be no silent failures.
+•Clarity and Consistency: All outputs (code commits, documentation, commit messages) should be clear and consistent. Follow the same terminology and style used in the project. For example, if the codebase refers to “Transcript ID” consistently, do not introduce “TranscriptionId” or other variants. Consistency extends to formatting, naming, and architectural patterns.
+•No Ambiguity in Execution: The agent should break down tasks into deterministic steps. There is no tolerance for guesswork—every action must have a reason backed by either instructions or verifiable facts from the environment. If a requirement is ambiguous, the agent should resolve the ambiguity (through clarification or safe assumption based on guidelines) before writing code.
+•Auditability: All actions the agent takes should be auditable after the fact. This means commit messages should be detailed (mention what was changed and why, referencing issue IDs or user requests), and any intermediate analyses (like reasoning for an approach or interpretation of spec) should be evident either in code comments or associated logs. The development process should be reconstructable from the agent’s outputs.
