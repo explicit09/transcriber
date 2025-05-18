@@ -18,7 +18,7 @@ import {
   transcribeWithPyannote,
   generateTranscriptSummary,
   translateTranscript,
-  autoMergeSpeakers
+  autoMergeSpeakers,
 } from "./openai";
 import { indexTranscript, scheduleReindex } from "./search";
 import { tagTranscriptVectors } from "./tagger";
@@ -26,28 +26,15 @@ import { transcribeWithAssemblyAI, formatTranscriptText } from "./assemblyai";
 import { transcribeWithHybridApproach } from "./hybrid";
 import { generateTranscriptPDF } from "./pdf";
 import { redis } from "./collab";
-import { extractPlainText } from './yjsHelpers';
-import { commentsRouter } from './routes/comments';
-import { searchRouter } from './routes/search';
+import { extractPlainText } from "./yjsHelpers";
+import { commentsRouter } from "./routes/comments";
+import { transcriptionsRouter } from "./routes/transcriptions";
+import { searchRouter } from "./routes/search";
 import jwt from "jsonwebtoken";
-import { z } from "zod";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { checkDiarizationSetup } from "./diarization";
 import * as Y from "yjs";
-
-import { commentsRouter } from './routes/comments';
-import { transcriptionsRouter } from './routes/transcriptions';
-import { searchRouter } from './routes/search';
-import { extractPlainText } from "./yjsHelpers";
-
-
-import { extractPlainText, insertCommentAnchor } from "./yjsHelpers";
-import commentRouter from './routers/comments';
-import searchRouter from './routers/search';
-import { extractPlainText } from "./yjsHelpers";
-
-import { yDocToPlainText } from "./yjsHelpers";
 
 
 // Setup multer for file uploads
