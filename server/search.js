@@ -16,14 +16,47 @@ let defaultEmbed;
 try {
   ({ embedText: defaultEmbed } = await import('./openai.js'));
 } catch {}
+let chunkTranscript;
+try {
+  ({ chunkTranscript } = await import('./chunk.js'));
+} catch {}
 
 let storage;
 try {
   ({ storage } = await import('./storage.js'));
 } catch {}
 
-const cache = new Map();
-const CACHE_TTL = 5 * 60 * 1000;
+class LruCache {
+  constructor(max = 100, ttl = 5 * 60 * 1000) {
+    this.max = max;
+    this.ttl = ttl;
+    this.store = new Map();
+  }
+  get(key) {
+    const entry = this.store.get(key);
+    if (!entry) return undefined;
+    if (Date.now() - entry.ts > this.ttl) {
+      this.store.delete(key);
+      return undefined;
+    }
+    this.store.delete(key);
+    this.store.set(key, entry);
+    return entry;
+  }
+  set(key, value) {
+    if (this.store.has(key)) this.store.delete(key);
+    this.store.set(key, value);
+    if (this.store.size > this.max) {
+      const oldest = this.store.keys().next().value;
+      if (oldest) this.store.delete(oldest);
+    }
+  }
+  clear() {
+    this.store.clear();
+  }
+}
+
+const cache = new LruCache();
 
 const reindexTimers = new Map();
 
@@ -33,10 +66,28 @@ async function reindexTranscript(id) {
   if (!t || !t.structuredTranscript) return;
   const data = JSON.parse(t.structuredTranscript);
   if (!Array.isArray(data.segments)) return;
-  if (defaultDb.execute) {
-    await defaultDb.execute(sql`DELETE FROM transcript_vectors WHERE transcript_id = ${id}`);
+  const newChunks = chunkTranscript ? chunkTranscript(data.segments) : data.segments.map((s, i) => ({ chunkId:i, text:s.text, speaker:s.speaker??null, tsStart:s.start, tsEnd:s.end, tokenStart:0, tokenEnd:s.text.split(/\s+/).length }));
+  const existing = defaultDb.execute ? (await defaultDb.execute(sql`SELECT * FROM transcript_vectors WHERE transcript_id = ${id}`)).rows : [];
+  const byId = new Map();
+  for (const row of existing) byId.set(row.chunk_id, row);
+  const seen = new Set();
+  for (const chunk of newChunks) {
+    const row = byId.get(chunk.chunkId);
+    if (row && row.text === chunk.text && row.speaker === chunk.speaker && Number(row.ts_start) === chunk.tsStart && Number(row.ts_end) === chunk.tsEnd) {
+      seen.add(row.id);
+      continue;
+    }
+    const embedding = await defaultEmbed(chunk.text);
+    if (row) {
+      await defaultDb.execute(sql`UPDATE transcript_vectors SET speaker=${chunk.speaker}, text=${chunk.text}, ts_start=${chunk.tsStart}, ts_end=${chunk.tsEnd}, token_start=${chunk.tokenStart}, token_end=${chunk.tokenEnd}, embedding=${embedding} WHERE id=${row.id}`);
+      seen.add(row.id);
+    } else {
+      await defaultDb.insert(transcriptVectors).values({ transcriptId:id, chunkId: chunk.chunkId, speaker:chunk.speaker, text:chunk.text, tsStart:chunk.tsStart, tsEnd:chunk.tsEnd, tokenStart:chunk.tokenStart, tokenEnd:chunk.tokenEnd, embedding });
+    }
   }
-  await indexTranscript(id, data.segments);
+  for (const row of existing) {
+    if (!seen.has(row.id)) await defaultDb.execute(sql`DELETE FROM transcript_vectors WHERE id=${row.id}`);
+  }
 }
 
 export function scheduleReindex(id, delay = 30000) {
@@ -96,9 +147,9 @@ export async function indexTranscript(transcriptId, segments, options = {}) {
 export async function searchTranscript(transcriptId, query, top, options = {}) {
   const { db: database = defaultDb, embedFn: embed = defaultEmbed, tags = [], bypassCache = false } = options;
   const key = `${transcriptId}:${query}:${tags.sort().join(',')}`;
-  if (!bypassCache && cache.has(key)) {
+  if (!bypassCache) {
     const c = cache.get(key);
-    if (Date.now() - c.ts < CACHE_TTL) return c.result;
+    if (c) return c.result;
   }
   const embedding = await embed(query);
   if (database.execute.length === 1) {

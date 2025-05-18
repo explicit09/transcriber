@@ -1,6 +1,6 @@
 import { db } from './db';
 import { transcriptVectors, transcriptions } from '@shared/schema';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, and } from 'drizzle-orm';
 import { storage } from './storage';
 
 export async function ensureVectorIndex() {
@@ -17,13 +17,44 @@ import { chunkTranscriptSegments } from './chunker';
 
 import { chunkTranscript } from './chunking';
 
-// ---- simple in-memory cache for search results ----
+// ---- simple LRU cache for search results ----
 interface CacheEntry {
   ts: number;
   result: any;
 }
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-const cache = new Map<string, CacheEntry>();
+
+class LruCache {
+  private store = new Map<string, CacheEntry>();
+  constructor(private max = 100, private ttl = 5 * 60 * 1000) {}
+
+  get(key: string): CacheEntry | undefined {
+    const entry = this.store.get(key);
+    if (!entry) return undefined;
+    if (Date.now() - entry.ts > this.ttl) {
+      this.store.delete(key);
+      return undefined;
+    }
+    // refresh position for LRU
+    this.store.delete(key);
+    this.store.set(key, entry);
+    return entry;
+  }
+
+  set(key: string, value: CacheEntry) {
+    if (this.store.has(key)) this.store.delete(key);
+    this.store.set(key, value);
+    if (this.store.size > this.max) {
+      const oldest = this.store.keys().next().value;
+      if (oldest) this.store.delete(oldest);
+    }
+  }
+
+  clear() {
+    this.store.clear();
+  }
+}
+
+const cache = new LruCache();
 
 export function clearSearchCache() {
   cache.clear();
@@ -37,8 +68,61 @@ async function reindexTranscript(id: number) {
   if (!t || !t.structuredTranscript) return;
   const data = JSON.parse(t.structuredTranscript);
   if (!Array.isArray(data.segments)) return;
-  await db.delete(transcriptVectors).where(eq(transcriptVectors.transcriptId, id));
-  await indexTranscript(id, data.segments);
+  const newChunks = chunkTranscript(data.segments);
+  const existing = await db
+    .select()
+    .from(transcriptVectors)
+    .where(eq(transcriptVectors.transcriptId, id));
+  const byId = new Map<number, any>();
+  for (const row of existing) byId.set(row.chunkId, row);
+  const seen = new Set<number>();
+  for (let i = 0; i < newChunks.length; i++) {
+    const chunk = newChunks[i];
+    const row = byId.get(i);
+    if (
+      row &&
+      row.text === chunk.text &&
+      row.speaker === chunk.speaker &&
+      Number(row.tsStart) === chunk.tsStart &&
+      Number(row.tsEnd) === chunk.tsEnd
+    ) {
+      seen.add(row.id);
+      continue;
+    }
+    const embedding = await embedText(chunk.text);
+    if (row) {
+      await db
+        .update(transcriptVectors)
+        .set({
+          speaker: chunk.speaker,
+          text: chunk.text,
+          tsStart: chunk.tsStart,
+          tsEnd: chunk.tsEnd,
+          tokenStart: chunk.tokenStart,
+          tokenEnd: chunk.tokenEnd,
+          embedding,
+        })
+        .where(and(eq(transcriptVectors.id, row.id), eq(transcriptVectors.transcriptId, id)));
+      seen.add(row.id);
+    } else {
+      await db.insert(transcriptVectors).values({
+        transcriptId: id,
+        chunkId: i,
+        speaker: chunk.speaker,
+        text: chunk.text,
+        tsStart: chunk.tsStart,
+        tsEnd: chunk.tsEnd,
+        tokenStart: chunk.tokenStart,
+        tokenEnd: chunk.tokenEnd,
+        embedding,
+      });
+    }
+  }
+  for (const row of existing) {
+    if (!seen.has(row.id)) {
+      await db.delete(transcriptVectors).where(eq(transcriptVectors.id, row.id));
+    }
+  }
 }
 
 export function scheduleReindex(id: number, delay = 30000) {
@@ -96,7 +180,7 @@ export async function searchTranscript(
   const cacheKey = `${transcriptId}:${query}:${tags.sort().join(',')}:${options.speaker ?? ''}:${options.start ?? ''}:${options.end ?? ''}`;
   if (!options.bypassCache) {
     const cached = cache.get(cacheKey);
-    if (cached && Date.now() - cached.ts < CACHE_TTL) {
+    if (cached) {
       return cached.result;
     }
   }
