@@ -9,7 +9,7 @@ This document lists tasks required to bring the implementation up to the require
    - Generate a migration and update the database accordingly.
    - Update `server/storage.ts` and API routes to handle the new fields.
 
-2. **User Presence Enhancements**
+2. **User Presence Enhancements** ✅
    - Implement multi-user awareness with distinct names and colors in the TipTap editor.
    - Display presence indicators (cursor color + user name) for active collaborators.
 
