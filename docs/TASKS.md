@@ -4,7 +4,7 @@ This document lists tasks required to bring the implementation up to the require
 
 ## 1. Real-Time Collaboration Layer
 
-1. **Expand Comments Schema**
+1. **Expand Comments Schema** ✅
    - Add `created_by`, `due_date`, `metadata`, and `absolute_position` columns in `shared/schema.ts`.
    - Generate a migration and update the database accordingly.
    - Update `server/storage.ts` and API routes to handle the new fields.
