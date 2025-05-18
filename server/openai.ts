@@ -72,7 +72,7 @@ async function transcribeChunk(
   };
 }
 
-async function transcribeInChunks(
+export async function transcribeInChunks(
   filePath: string,
   options: { enableTimestamps?: boolean; language?: string } = {}
 ): Promise<{ text: string; segments: EnhancedTranscriptSegment[]; duration: number; language?: string }> {
