@@ -230,7 +230,12 @@ export function CollaborativeEditor({ docId, token, wsUrl }: CollaborativeEditor
   };
 }, [docId, provider, user, ydoc]);
 
-  return <EditorContent editor={editor} />;
+  return (
+    <div className="space-y-2">
+      <PresenceList provider={provider} />
+      <EditorContent editor={editor} />
+    </div>
+  );
 }
 
 export default CollaborativeEditor;
