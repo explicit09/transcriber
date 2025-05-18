@@ -27,7 +27,7 @@ This document lists tasks required to bring the implementation up to the require
 
 ## 2. Semantic Search & Smart Highlights
 
-6. **LLM-based Tagging**
+6. **LLM-based Tagging** ✅
    - Implement background job that tags transcript chunks with `Decision`, `Risk`, or `Date` labels using an LLM.
    - Store tags in `transcript_vectors` or a new table referenced by chunk.
 

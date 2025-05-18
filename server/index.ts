@@ -6,6 +6,7 @@ import { setupVite, serveStatic, log } from "./vite";
 import { startCollabGateway } from './collab';
 import dotenv from 'dotenv';
 import { ensureVectorIndex } from './search';
+import { startTaggingJob } from './tagger';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -53,6 +54,7 @@ app.use((req, res, next) => {
 
 (async () => {
   await ensureVectorIndex();
+  startTaggingJob();
   const server = await registerRoutes(app);
   startCollabGateway(server);
 
