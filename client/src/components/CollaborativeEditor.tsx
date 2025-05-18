@@ -199,11 +199,23 @@ export function CollaborativeEditor({ docId, token, wsUrl }: CollaborativeEditor
   };
   window.addEventListener('keydown', saveHandler);
 
+  const match = docId.match(/transcription-(\d+)/);
+  let interval: NodeJS.Timeout | undefined;
+  if (match) {
+    interval = setInterval(() => {
+      fetch(`/api/transcriptions/${match[1]}/save-collab`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+    }, 5 * 60 * 1000);
+  }
+
   return () => {
     provider.destroy();
     persistence.destroy();
     doc.destroy();
     window.removeEventListener('keydown', saveHandler);
+    if (interval) clearInterval(interval);
     ydoc.destroy();
   };
 }, [docId, provider, user, ydoc]);
