@@ -5,6 +5,7 @@ import os from "os";
 import Bottleneck from "bottleneck";
 import { TranscriptSegment, StructuredTranscript } from "@shared/schema";
 import { diarizeAudio } from "./diarization";
+import { splitAudio } from "./audioChunker";
 
 interface WhisperSegment {
   start: number;
@@ -30,17 +31,7 @@ const OPENAI_LIMIT_BYTES = 25 * 1024 * 1024;
 const CHUNK_SIZE = 24 * 1024 * 1024;
 
 async function splitFile(filePath: string, chunkSize = CHUNK_SIZE): Promise<string[]> {
-  const chunkPaths: string[] = [];
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "whisper-chunk-"));
-  const stream = fs.createReadStream(filePath, { highWaterMark: chunkSize });
-  let idx = 0;
-  for await (const chunk of stream) {
-    const part = path.join(dir, `part-${idx}${path.extname(filePath)}`);
-    fs.writeFileSync(part, chunk as Buffer);
-    chunkPaths.push(part);
-    idx++;
-  }
-  return chunkPaths;
+  return splitAudio(filePath, chunkSize);
 }
 
 async function transcribeChunk(
