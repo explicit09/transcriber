@@ -64,10 +64,10 @@ export default function Home() {
   }, []);
   
   return (
-    <div className="bg-gradient-to-b from-gray-50 to-white min-h-[calc(100vh-64px)]">
+    <div className="bg-gradient-to-b from-blue-50 via-cyan-50 to-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 min-h-[calc(100vh-64px)]">
       <div className="container mx-auto max-w-6xl px-4 py-8">
         <div className="mb-8 text-center">
-          <h1 className="text-3xl sm:text-4xl font-bold mb-3 bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-cyan-500">
+          <h1 className="text-3xl sm:text-4xl font-bold mb-3 bg-clip-text text-transparent bg-gradient-to-r from-blue-600 via-cyan-500 to-emerald-500">
             Audio Transcription & Analysis
           </h1>
           <p className="mt-2 text-gray-600 text-lg max-w-3xl mx-auto">
@@ -76,7 +76,7 @@ export default function Home() {
         </div>
 
         <Card className="shadow-md border-0 overflow-hidden mb-8">
-          <div className="bg-gradient-to-r from-blue-600 to-cyan-500 h-2"></div>
+          <div className="bg-gradient-to-r from-blue-600 via-cyan-500 to-emerald-500 h-2"></div>
           <CardContent className="p-0">
             <Suspense fallback={
               <div className="flex items-center justify-center h-64">

@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { Headphones, History, FileText } from "lucide-react";
 import learnXLogo from "../assets/learn-x-logo.png";
 import { Button } from "@/components/ui/button";
+import ThemeToggle from "./ThemeToggle";
 
 export default function Navbar() {
   return (
@@ -42,6 +43,7 @@ export default function Navbar() {
               <span className="whitespace-nowrap">Latest Transcript</span>
             </Button>
           </Link>
+          <ThemeToggle />
         </nav>
       </div>
     </header>
