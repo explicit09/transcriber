@@ -3,6 +3,7 @@ import { Router, Request, Response } from 'express';
 import { insertCommentSchema } from '@shared/schema';
 import { storage } from '../storage';
 import { sendActionItemWebhook } from '../integrations';
+import { parseDateWithLLM } from '../openai';
 import { ZodError } from 'zod';
 import { fromZodError } from 'zod-validation-error';
 import { redis } from '../collab';
@@ -31,10 +32,14 @@ commentsRouter.post('/api/transcriptions/:id/comments', async (req: Request, res
   try {
 
     const { dueDate, ...commentInput } = req.body;
+    let parsedDate: string | null = null;
+    if (typeof dueDate === 'string') {
+      parsedDate = await parseDateWithLLM(dueDate);
+    }
     const data = insertCommentSchema.parse({
       ...commentInput,
       transcriptId: id,
-      dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
+      dueDate: parsedDate ? new Date(parsedDate) : undefined,
     });
     const comment = await storage.createComment(data);
 
@@ -73,18 +78,21 @@ commentsRouter.patch('/api/transcriptions/:id/comments/:commentId', async (req: 
   const transcription = await storage.getTranscription(id);
   if (!transcription) return res.status(404).json({ message: 'Transcription not found' });
 
-  const updates = {
+  let parsedDate: string | null = null;
+  if (typeof req.body.dueDate === 'string') {
+    parsedDate = await parseDateWithLLM(req.body.dueDate);
+  }
 
+  const updates = {
     yjsPos: req.body.yjsPos,
     body: req.body.body,
     kind: req.body.kind,
     status: req.body.status,
     assignee: req.body.assignee,
     createdBy: req.body.createdBy,
-    dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
+    dueDate: parsedDate ? new Date(parsedDate) : undefined,
     metadata: req.body.metadata,
     absolutePosition: req.body.absolutePosition,
-
   } as any;
 
   const updated = await storage.updateComment(commentId, updates);

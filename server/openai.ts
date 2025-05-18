@@ -38,6 +38,47 @@ async function withRetry<T>(
   }
 }
 
+export async function parseDateWithLLM(text: string): Promise<string | null> {
+  const input = text.trim();
+  if (!input) return null;
+
+  // Fallback to basic parsing if no API key provided
+  if (!process.env.OPENAI_API_KEY) {
+    const d = new Date(input);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+
+  try {
+    const resp = await limiter.schedule(() =>
+      withRetry(() =>
+        openai.chat.completions.create({
+          model: 'gpt-3.5-turbo',
+          messages: [
+            {
+              role: 'system',
+              content:
+                'Convert the user provided date to ISO 8601 format (YYYY-MM-DD). Return only the date.',
+            },
+            { role: 'user', content: input },
+          ],
+          temperature: 0,
+        })
+      )
+    );
+
+    const out = resp.choices?.[0]?.message?.content?.trim() ?? '';
+    const d = new Date(out);
+    if (isNaN(d.getTime())) {
+      const fallback = new Date(input);
+      return isNaN(fallback.getTime()) ? null : fallback.toISOString();
+    }
+    return d.toISOString();
+  } catch {
+    const d = new Date(input);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+}
+
 export async function embedText(text: string): Promise<number[]> {
   const resp = await limiter.schedule(() =>
     withRetry(() =>
